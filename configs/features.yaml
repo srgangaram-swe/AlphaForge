@@ -1,0 +1,19 @@
+# Feature engineering configuration.
+# All features use information available at or before time t only.
+return_lags: [1, 2, 3, 5, 10, 20]
+vol_windows: [5, 20, 60]
+ma_windows: [10, 20, 50, 200]
+momentum_windows: [20, 60, 120]
+rsi_window: 14
+macd: { fast: 12, slow: 26, signal: 9 }
+bollinger_window: 20
+mean_reversion_window: 5
+volume_window: 20
+beta_window: 60
+rolling_sharpe_window: 60
+drawdown_window: 252
+regime_vol_window: 20
+regime_trend_fast: 50
+regime_trend_slow: 200
+cross_sectional: true      # per-date ranks/z-scores across the universe
+output_dir: data/processed

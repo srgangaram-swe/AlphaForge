@@ -1,0 +1,10 @@
+# Risk analytics configuration
+var_confidence: 0.95
+es_confidence: 0.95
+vol_window: 20
+beta_window: 60
+stress_scenarios:
+  - { name: "2008-style crash", market_shock: -0.40, vol_multiplier: 3.0 }
+  - { name: "Rate shock",       market_shock: -0.15, vol_multiplier: 2.0 }
+  - { name: "Flash crash day",  market_shock: -0.09, vol_multiplier: 5.0 }
+regime_vol_threshold_pct: 0.75   # percentile of trailing vol defining "high-vol regime"

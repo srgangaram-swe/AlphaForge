@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data & artifacts (never commit market data or run outputs)
+data/raw/
+data/cache/
+data/processed/
+runs/
+*.parquet
+*.h5
+*.feather
+
+# Secrets
+.env
+*.pem
+*.key
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
