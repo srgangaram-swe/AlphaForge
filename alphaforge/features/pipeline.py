@@ -15,6 +15,7 @@ from alphaforge.features.technical import (
     compute_market_regime,
     compute_symbol_features,
 )
+from alphaforge.models.regime import causal_stress_probability
 
 ID_COLUMNS = ["date", "symbol"]
 
@@ -53,6 +54,18 @@ def build_features(
 
     features = pd.concat(frames, ignore_index=True)
     features = features.merge(regime.drop(columns=["bench_ret"]), on="date", how="left")
+
+    if cfg.get("hmm_regime", True):
+        # causal HMM stress probability: expanding refits + filtered inference
+        stress = causal_stress_probability(
+            regime["bench_ret"],
+            refit_every=int(cfg.get("hmm_refit_every", 63)),
+            min_train=int(cfg.get("hmm_min_train", 252)),
+        )
+        hmm_frame = pd.DataFrame(
+            {"date": regime["date"].to_numpy(), "hmm_stress_prob": stress.to_numpy()}
+        )
+        features = features.merge(hmm_frame, on="date", how="left")
 
     if cfg.get("cross_sectional", True):
         features = _add_cross_sectional(features)

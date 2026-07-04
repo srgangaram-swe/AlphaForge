@@ -24,13 +24,16 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
 
+      - name: Build C++ execution core
+        run: python scripts/build_native.py
+
       - name: Lint (ruff)
         run: ruff check alphaforge tests scripts apps
 
       - name: Format check (black)
         run: black --check alphaforge tests scripts apps
 
-      - name: Tests (network tests excluded)
+      - name: Tests (network tests excluded; includes C++/Python parity)
         run: pytest -m "not network" --cov=alphaforge --cov-report=term-missing
 
   smoke-demo:

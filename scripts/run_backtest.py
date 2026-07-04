@@ -8,9 +8,16 @@ import pandas as pd
 from _common import latest_run_dir
 
 from alphaforge.backtesting import run_backtest
+from alphaforge.evaluation import deflated_sharpe_ratio
 from alphaforge.portfolio import construct_portfolio
-from alphaforge.risk import monthly_returns, performance_summary, stress_test_summary
-from alphaforge.signals import build_signals, select_model_predictions
+from alphaforge.risk import (
+    exposure_summary,
+    monthly_returns,
+    performance_summary,
+    regime_performance,
+    stress_test_summary,
+)
+from alphaforge.signals import apply_regime_filter, build_signals, select_model_predictions
 from alphaforge.utils import load_yaml, save_json
 
 
@@ -44,6 +51,8 @@ def main() -> None:
     signals = build_signals(
         selected, strategy=cfg.get("strategy", "long_short"), params=cfg.get("strategy_params", {})
     )
+    if cfg.get("risk", {}).get("regime_filter"):
+        signals = apply_regime_filter(signals, features)
     weights = construct_portfolio(signals, features=features, config=cfg.get("portfolio", {}))
 
     result = run_backtest(
@@ -57,6 +66,17 @@ def main() -> None:
         risk=cfg.get("risk", {}),
     )
     summary = performance_summary(result.equity_curve)
+    summary.update({f"latest_{k}": v for k, v in exposure_summary(result.weights).items()})
+
+    # Deflated Sharpe: deflate by the number of model variants that competed
+    # for selection in this run. Understating n_trials overstates the result.
+    n_trials = int(predictions["model"].nunique()) if "model" in predictions else 1
+    active_returns = (
+        result.equity_curve.loc[result.equity_curve["active"], "return"]
+        if "active" in result.equity_curve
+        else result.equity_curve["return"]
+    )
+    summary.update(deflated_sharpe_ratio(active_returns, n_trials=n_trials))
 
     signals.to_csv(run_dir / "signals.csv", index=False)
     weights.to_csv(run_dir / "target_weights.csv", index=False)
@@ -64,7 +84,23 @@ def main() -> None:
     result.weights.to_csv(run_dir / "executed_weights.csv", index=False)
     result.trades.to_csv(run_dir / "trades.csv", index=False)
     monthly_returns(result.equity_curve).to_csv(run_dir / "monthly_returns.csv", index=False)
-    stress_test_summary(result.weights, risk_cfg.get("stress_scenarios", [])).to_csv(
+
+    # regime-conditional performance (causal HMM stress feature when present)
+    regime_col = "hmm_stress_prob" if "hmm_stress_prob" in features.columns else "high_vol_regime"
+    if regime_col in features.columns:
+        regime = (features.groupby("date")[regime_col].first() > 0.5).map(
+            {True: "stress", False: "calm"}
+        )
+        regime_performance(result.equity_curve, regime, regime_name="regime").to_csv(
+            run_dir / "regime_performance.csv", index=False
+        )
+
+    betas = (
+        features.sort_values("date").groupby("symbol")["beta"].last()
+        if "beta" in features.columns
+        else None
+    )
+    stress_test_summary(result.weights, risk_cfg.get("stress_scenarios", []), betas=betas).to_csv(
         run_dir / "stress_tests.csv", index=False
     )
     save_json(summary, run_dir / "backtest_summary.json")

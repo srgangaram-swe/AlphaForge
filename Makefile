@@ -2,7 +2,8 @@ PYTHON ?= python
 PIP ?= pip
 
 .PHONY: install install-all test lint format typecheck download-data build-features train evaluate \
-        walk-forward backtest paper dashboard api report demo docker-build clean
+        walk-forward backtest paper dashboard api report demo docker-build clean \
+        native bench bench-native
 
 install:
 	$(PIP) install -e ".[dev]"
@@ -59,6 +60,18 @@ demo:
 	$(PYTHON) scripts/run_walk_forward.py --synthetic --fast
 	$(PYTHON) scripts/run_backtest.py --latest
 	$(PYTHON) scripts/generate_report.py
+
+# --- C++ execution core ---
+native:
+	$(PYTHON) scripts/build_native.py
+
+bench:
+	$(PYTHON) scripts/bench_orderbook.py
+
+bench-native:
+	cmake -S cpp -B build -DCMAKE_BUILD_TYPE=Release
+	cmake --build build --target bench_orderbook
+	./build/bench_orderbook
 
 docker-build:
 	docker build -t alphaforge:latest .

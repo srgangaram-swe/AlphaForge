@@ -15,5 +15,8 @@ drawdown_window: 252
 regime_vol_window: 20
 regime_trend_fast: 50
 regime_trend_slow: 200
+hmm_regime: true           # 2-state Gaussian HMM stress probability (causal refits)
+hmm_refit_every: 63
+hmm_min_train: 252
 cross_sectional: true      # per-date ranks/z-scores across the universe
 output_dir: data/processed

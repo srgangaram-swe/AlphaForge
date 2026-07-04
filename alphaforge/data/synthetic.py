@@ -41,9 +41,10 @@ class SyntheticMarketConfig:
     stress_vol: float = 0.32 / np.sqrt(TRADING_DAYS)
     p_calm_to_stress: float = 0.01
     p_stress_to_calm: float = 0.05
-    # embedded (weak) predictable structure
-    mean_reversion: float = -0.03  # loading of next-day idio return on past 5d idio return
-    momentum: float = 0.008  # loading of next-day return on past 60d return
+    # embedded (weak) predictable structure — calibrated so cross-sectional
+    # rank ICs land in the mid-single-digits, comparable to real equity alpha
+    mean_reversion: float = -0.012  # loading of next-day idio return on past 5d idio return
+    momentum: float = 0.004  # loading of next-day return on past 60d return
     idio_vol_range: tuple[float, float] = (0.010, 0.028)
     beta_range: tuple[float, float] = (0.5, 1.5)
     symbols: list[str] = field(default_factory=list)

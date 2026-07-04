@@ -2,14 +2,22 @@ from __future__ import annotations
 
 import argparse
 
+import pandas as pd
 from _common import configure_fast_demo, load_configs, make_run_dir, save_meta, write_latest
 
 from alphaforge.data import data_quality_report, load_prices
-from alphaforge.evaluation import quantile_return_table
+from alphaforge.evaluation import (
+    ic_decay,
+    ic_summary,
+    information_coefficient_by_date,
+    probability_of_backtest_overfitting,
+    quantile_return_table,
+)
 from alphaforge.features import build_features
 from alphaforge.labels.labels import build_labels
 from alphaforge.signals import select_model_predictions
 from alphaforge.training import run_walk_forward
+from alphaforge.utils import save_json
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,6 +74,27 @@ def main() -> None:
     selected = select_model_predictions(result.predictions)
     quantiles = quantile_return_table(selected)
     quantiles.to_csv(run_dir / "quantile_returns.csv", index=False)
+
+    # --- IC inference per model (Newey-West robust to overlapping labels) ---
+    ic_rows = []
+    ic_panels = {}
+    for name, g in result.predictions.groupby("model"):
+        by_date = information_coefficient_by_date(g)
+        ic_panels[name] = by_date.set_index("date")["rank_ic"]
+        ic_rows.append({"model": name, **ic_summary(by_date)})
+    ic_table = pd.DataFrame(ic_rows).sort_values("mean_ic", ascending=False)
+    ic_table.to_csv(run_dir / "ic_summary.csv", index=False)
+
+    # --- IC decay: how fast does the selected signal's edge fade? ---
+    ic_decay(selected, labels, horizons).to_csv(run_dir / "ic_decay.csv", index=False)
+
+    # --- PBO across models: is the winner real or selection bias? ---
+    ic_matrix = pd.DataFrame(ic_panels).sort_index()
+    pbo = probability_of_backtest_overfitting(ic_matrix, n_blocks=min(16, len(ic_matrix) // 4))
+    save_json(
+        {k: v for k, v in pbo.items() if k != "logits"},
+        run_dir / "overfitting.json",
+    )
 
     save_meta(
         run_dir,

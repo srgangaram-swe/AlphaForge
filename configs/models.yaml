@@ -16,6 +16,7 @@ models:                      # models to train & compare
     params: { max_iter: 300, max_depth: 4, learning_rate: 0.05, l2_regularization: 1.0 }
   - name: ensemble
     params:
+      weighting: ic          # weight members by rank IC on a chronological inner split
       members:
         - { name: ridge, params: { alpha: 10.0 } }
         - { name: gradient_boosting, params: { max_iter: 300, max_depth: 4, learning_rate: 0.05 } }

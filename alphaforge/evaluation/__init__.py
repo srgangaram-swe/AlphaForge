@@ -4,10 +4,26 @@ from alphaforge.evaluation.metrics import (
     quantile_return_table,
     regression_metrics,
 )
+from alphaforge.evaluation.overfitting import (
+    deflated_sharpe_ratio,
+    expected_max_sharpe,
+    ic_decay,
+    ic_summary,
+    newey_west_tstat,
+    probabilistic_sharpe_ratio,
+    probability_of_backtest_overfitting,
+)
 
 __all__ = [
+    "deflated_sharpe_ratio",
     "evaluate_prediction_panel",
+    "expected_max_sharpe",
+    "ic_decay",
+    "ic_summary",
     "information_coefficient_by_date",
+    "newey_west_tstat",
+    "probabilistic_sharpe_ratio",
+    "probability_of_backtest_overfitting",
     "quantile_return_table",
     "regression_metrics",
 ]

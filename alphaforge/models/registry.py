@@ -33,9 +33,9 @@ def _make_torch(kind: str) -> Callable[..., AlphaModel]:
     return factory
 
 
-def _make_ensemble(members: list[dict], weights: list[float] | None = None) -> EnsembleModel:
+def _make_ensemble(members: list[dict], **kwargs: Any) -> EnsembleModel:
     built = [create_model(m["name"], **m.get("params", {})) for m in members]
-    return EnsembleModel(built, weights=weights)
+    return EnsembleModel(built, **kwargs)
 
 
 MODEL_REGISTRY: dict[str, Callable[..., AlphaModel]] = {

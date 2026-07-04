@@ -1,4 +1,14 @@
-"""Vectorized close-to-close backtest with lagged execution and costs."""
+"""Vectorized close-to-close backtest with lagged execution and costs.
+
+Execution model (deliberately conservative):
+- ``execution_lag=1``: weights decided from date-t information earn date t+1
+  close-to-close returns — no same-close fills.
+- Transaction costs apply to *levered* traded notional, so volatility-target
+  or drawdown-control adjustments generate turnover costs like any trade.
+- Drawdown deleveraging uses the trailing drawdown of the unlevered strategy
+  shifted by one day (causal, ignores the second-order feedback of the
+  control on its own drawdown — documented in docs/backtesting.md).
+"""
 
 from __future__ import annotations
 
@@ -9,6 +19,7 @@ import pandas as pd
 
 from alphaforge.data.schemas import to_wide
 from alphaforge.execution import CostModel
+from alphaforge.utils import ANNUALIZATION_DAYS
 
 
 @dataclass
@@ -42,9 +53,20 @@ def _causal_vol_leverage(
 ) -> pd.Series:
     if vol_target is None:
         return pd.Series(1.0, index=gross_returns.index)
-    realized = gross_returns.rolling(lookback).std().shift(1) * np.sqrt(252)
+    realized = gross_returns.rolling(lookback).std().shift(1) * np.sqrt(ANNUALIZATION_DAYS)
     leverage = (vol_target / realized.replace(0, np.nan)).clip(upper=max_leverage)
     return leverage.replace([np.inf, -np.inf], np.nan).fillna(1.0)
+
+
+def _causal_drawdown_scale(
+    gross_returns: pd.Series, threshold: float | None, cut: float = 0.5
+) -> pd.Series:
+    """Exposure multiplier from the previous day's trailing drawdown."""
+    if threshold is None:
+        return pd.Series(1.0, index=gross_returns.index)
+    wealth = (1.0 + gross_returns.fillna(0.0)).cumprod()
+    dd = (wealth / wealth.cummax() - 1.0).shift(1)
+    return pd.Series(np.where(dd < -abs(threshold), cut, 1.0), index=gross_returns.index)
 
 
 def run_backtest(
@@ -57,11 +79,7 @@ def run_backtest(
     costs: CostModel | dict | None = None,
     risk: dict | None = None,
 ) -> BacktestResult:
-    """Run an OOS-only backtest from target weights.
-
-    ``execution_lag=1`` means weights produced from date t information are
-    applied to date t+1 close-to-close returns. This prevents same-close fills.
-    """
+    """Run an OOS-only backtest from target weights."""
     if execution_lag < 1:
         raise ValueError("execution_lag must be >= 1 for next-bar execution")
     cost_model = costs if isinstance(costs, CostModel) else CostModel.from_config(costs)
@@ -78,22 +96,25 @@ def run_backtest(
     raw_targets = _weights_wide(target_weights, returns.index)[tradable_symbols]
     scheduled = _apply_rebalance_frequency(raw_targets, int(rebalance_frequency))
     held_weights = scheduled.shift(execution_lag).fillna(0.0)
-
     asset_returns = returns[tradable_symbols]
-    gross_returns = (held_weights * asset_returns).sum(axis=1)
 
-    delta = held_weights.diff().fillna(held_weights)
-    turnover = delta.abs().sum(axis=1)
-    trading_cost = cost_model.costs(turnover)
-
+    # risk overlays are sized from the *unlevered* strategy, then applied as a
+    # causal exposure multiplier; the resulting weight changes are costed
+    unlevered_returns = (held_weights * asset_returns).sum(axis=1)
     leverage = _causal_vol_leverage(
-        gross_returns,
+        unlevered_returns,
         risk_cfg.get("vol_target"),
         int(risk_cfg.get("vol_lookback", 20)),
         float(risk_cfg.get("max_leverage", 1.5)),
-    )
-    gross_returns = gross_returns * leverage
-    trading_cost = trading_cost * leverage
+    ) * _causal_drawdown_scale(unlevered_returns, risk_cfg.get("drawdown_deleverage"))
+
+    levered_weights = held_weights.mul(leverage, axis=0)
+    gross_returns = (levered_weights * asset_returns).sum(axis=1)
+
+    delta = levered_weights.diff()
+    delta.iloc[0] = levered_weights.iloc[0]
+    turnover = delta.abs().sum(axis=1)
+    trading_cost = cost_model.costs(turnover)
     net_returns = gross_returns - trading_cost
     equity = initial_capital * (1.0 + net_returns).cumprod()
 
@@ -102,6 +123,7 @@ def run_backtest(
         if benchmark_symbol is not None and benchmark_symbol in returns
         else 0.0
     )
+    gross_exposure = levered_weights.abs().sum(axis=1)
     curve = pd.DataFrame(
         {
             "date": returns.index,
@@ -111,14 +133,15 @@ def run_backtest(
             "equity": equity.to_numpy(),
             "benchmark_return": np.asarray(benchmark_return),
             "turnover": turnover.to_numpy(),
-            "gross_exposure": held_weights.abs().sum(axis=1).to_numpy() * leverage.to_numpy(),
-            "net_exposure": held_weights.sum(axis=1).to_numpy() * leverage.to_numpy(),
+            "gross_exposure": gross_exposure.to_numpy(),
+            "net_exposure": levered_weights.sum(axis=1).to_numpy(),
             "leverage": leverage.to_numpy(),
+            "active": (gross_exposure > 0).to_numpy(),
         }
     )
 
     weights_long = (
-        held_weights.reset_index()
+        levered_weights.reset_index()
         .melt(id_vars="date", var_name="symbol", value_name="weight")
         .sort_values(["date", "symbol"])
         .reset_index(drop=True)
