@@ -1,14 +1,15 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "alphaforge"
-version = "0.1.0"
+version = "0.2.0"
 description = "Regime-aware, multi-horizon ML alpha research platform with leakage-safe walk-forward validation and realistic backtesting."
 readme = "README.md"
-requires-python = ">=3.10"
-license = { text = "MIT" }
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Saif Gangaram" }]
 keywords = [
     "quantitative-finance",
@@ -21,6 +22,9 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Office/Business :: Financial :: Investment",
 ]
 dependencies = [
@@ -57,7 +61,7 @@ include = ["alphaforge*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "SIM"]
@@ -65,7 +69,7 @@ ignore = ["E501", "SIM108", "B905"]
 
 [tool.black]
 line-length = 100
-target-version = ["py310"]
+target-version = ["py312"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -76,7 +80,8 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 ignore_missing_imports = true
+check_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true

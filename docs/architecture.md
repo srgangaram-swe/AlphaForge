@@ -13,10 +13,13 @@ flowchart TD
     preds --> overfit[Overfitting stats: DSR, PBO, NW t-stats]
     preds --> signals[Signals + regime filter]
     signals --> portfolio[Portfolio construction]
-    portfolio --> backtest[Backtest engine: next-bar, costed risk overlays]
-    backtest --> risk[Risk analytics: regimes, betas, stress, concentration]
+    portfolio --> orders[Close-time target decisions]
+    orders --> execution[Next-open causal fill model]
+    execution --> ledger[Self-financing cash + signed-share ledger]
+    ledger --> backtest[Reconciled P&L + drifted holdings]
+    backtest --> risk[Risk, attribution, capacity sensitivity]
     risk --> outputs[Report, dashboard, API, paper sim]
-    native[C++ order book via pybind11] -.depth-aware fills.-> outputs
+    native[C++ order book via pybind11] -.uncalibrated systems demo.-> outputs
 ```
 
 The central contract is the canonical panel:
@@ -33,6 +36,13 @@ Two implementation layers sit beside the Python pipeline:
 - **Native execution core** (`cpp/`): C++17 limit order book with pybind11
   bindings and a pure-Python reference implementation kept bit-identical by
   parity tests (docs/execution_engine.md).
+- **Historical execution and accounting** (`alphaforge/execution/models.py`,
+  `alphaforge/backtesting/ledger.py`, `alphaforge/backtesting/engine.py`): typed
+  order/fill contracts, lagged-liquidity next-open fills, signed shares and
+  cash, and fail-closed P&L reconciliation. The timing decision is recorded in
+  [ADR 0001](adr/0001-temporal-integrity.md).
 - **Validation science** (`alphaforge/training/purged_cv.py`,
   `alphaforge/evaluation/overfitting.py`): purged/combinatorial splitters and
   the PSR/DSR/PBO statistics attached to every run report.
+- **Capacity evaluation** (`alphaforge/evaluation/capacity.py`): auditable AUM,
+  participation, fill-ratio, and cost sensitivities using supplied lagged ADV.

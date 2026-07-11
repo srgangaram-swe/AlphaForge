@@ -48,6 +48,10 @@ def write_markdown_report(run_dir: str | Path, output_path: str | Path | None = 
     ic_table = _read_csv(run_dir / "ic_summary.csv")
     decay = _read_csv(run_dir / "ic_decay.csv")
     regimes = _read_csv(run_dir / "regime_performance.csv")
+    fills = _read_csv(run_dir / "fills.csv")
+    attribution = _read_csv(run_dir / "pnl_attribution.csv")
+    capacity = _read_csv(run_dir / "capacity_curve.csv")
+    capacity_diagnostics = _read_json(run_dir / "capacity_diagnostics.json")
 
     lines = ["# AlphaForge Research Report", "", DISCLAIMER, "", "## Backtest Summary", ""]
     lines.extend(_kv_lines(summary) if summary else ["_Backtest summary not found._"])
@@ -71,6 +75,72 @@ def write_markdown_report(run_dir: str | Path, output_path: str | Path | None = 
         ]
     else:
         lines.append("_No overfitting diagnostics available._")
+
+    lines += ["", "## Execution and Accounting", ""]
+    execution_keys = (
+        "execution_orders",
+        "execution_fill_ratio",
+        "execution_partial_fill_rate",
+        "execution_rejected_rate",
+        "total_trading_cost_dollars",
+        "total_commission_dollars",
+        "total_spread_cost_dollars",
+        "total_impact_cost_dollars",
+    )
+    execution_summary = {key: summary[key] for key in execution_keys if key in summary}
+    if execution_summary:
+        lines.extend(_kv_lines(execution_summary))
+    else:
+        lines.append("_No execution summary available._")
+    lines += [
+        "",
+        "_Targets are decided at a session close and fill no earlier than a future "
+        "open. Shares and cash are tracked in a self-financing ledger; positions "
+        "drift between explicit, costed rebalances._",
+    ]
+    if not fills.empty:
+        fill_columns = [
+            column
+            for column in (
+                "decision_date",
+                "fill_date",
+                "symbol",
+                "status",
+                "requested_notional",
+                "traded_notional",
+                "participation_rate",
+                "total_cost",
+            )
+            if column in fills
+        ]
+        lines += ["", "### Recent fills", "", _table(fills[fill_columns].tail(12))]
+    if not attribution.empty:
+        contribution = (
+            attribution.groupby("symbol", as_index=False)[["market_pnl", "trading_cost", "net_pnl"]]
+            .sum()
+            .sort_values("net_pnl", ascending=False)
+        )
+        lines += ["", "### P&L attribution by symbol", "", _table(contribution)]
+
+    lines += ["", "## Capacity Sensitivity", ""]
+    if capacity.empty:
+        lines.append("_No capacity sensitivity available._")
+    else:
+        capacity_columns = [
+            column
+            for column in (
+                "scenario_aum",
+                "fill_ratio",
+                "capacity_constrained_fraction",
+                "participation_p95",
+                "modeled_cost_bps_per_traded_notional",
+            )
+            if column in capacity
+        ]
+        lines.append(_table(capacity[capacity_columns]))
+        assumptions = capacity_diagnostics.get("assumptions", [])
+        if assumptions:
+            lines += ["", *[f"- {assumption}" for assumption in assumptions]]
 
     lines += ["", "## Information Coefficient by Model", "", _table(ic_table)]
     if not decay.empty:

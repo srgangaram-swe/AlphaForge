@@ -19,8 +19,10 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Overfitting statistics: Probabilistic and Deflated Sharpe Ratios, Probability of
   Backtest Overfitting (CSCV), and Newey-West IC t-statistics.
 - Backtests that use out-of-sample predictions only.
-- Next-bar execution assumptions, turnover, commission, spread, and slippage —
-  including costed turnover from volatility-targeting and drawdown-control trades.
+- Close-decision → next-open execution with a self-financing cash/share ledger,
+  drifted holdings, causal lagged-liquidity inputs, partial fills, and reconciled P&L.
+- Commission, spread, fixed slippage, square-root impact sensitivity, and capacity
+  scenarios — including costed volatility-targeting and drawdown-control trades.
 - Portfolio caps, inverse-vol sizing, turnover controls, and regime-aware exposure.
 - Risk metrics, beta-aware stress tests, regime-conditional performance, reporting,
   API endpoints, and paper-trading replay.
@@ -38,12 +40,15 @@ flowchart LR
     E --> F[Model training and OOS predictions]
     F --> G[Signal construction]
     G --> H[Portfolio construction]
-    H --> I[Backtest: next-bar execution and costs]
-    I --> J[Risk and performance analytics]
+    H --> I[Future-open fills + self-financing ledger]
+    I --> J[Risk, P&L attribution, and capacity sensitivity]
     J --> K[Report / dashboard / API / paper sim]
 ```
 
 ## Quickstart
+
+Requires Python 3.12–3.14. The synthetic demo is offline and does not require
+market-data credentials.
 
 ```bash
 make install
@@ -68,7 +73,7 @@ make api                # FastAPI service
 
 ## Low-Latency Execution Core (C++)
 
-`cpp/` contains a price-time-priority limit order book and depth-aware fill
+`cpp/` contains a price-time-priority limit order book and synthetic depth-walk
 simulator written in C++17 (header-only, no dependencies), exposed to Python via
 pybind11 and backed by a pure-Python reference implementation with identical
 semantics. Parity tests drive both engines with the same random order flow and
@@ -85,11 +90,12 @@ Measured on an Apple M-series laptop (`make bench-native`, 2M mixed ops:
 | pure-Python reference | ~1.1M ops/s |
 
 Honest framing: the daily-bar research pipeline does not need nanosecond
-matching. The native core exists to (a) replace flat-bps slippage with
-depth-aware fill simulation in the paper trader, and (b) demonstrate the
-systems side of trading infrastructure — data-structure design (intrusive
-lists + price-level maps + O(1) cancel index), integer-tick determinism, FFI,
-and cross-implementation testing.
+matching and does not fabricate historical L2 books. Historical and paper
+replay use the causal daily-bar execution policy above. The native core is a
+separate systems demonstration: price-level maps, FIFO queues, O(1) cancel
+index, integer-tick determinism, FFI, and cross-implementation testing. It
+would require point-in-time L2 data and calibration before serving as a
+historical execution model.
 
 ```bash
 make native        # build the pybind11 extension in-place
@@ -121,8 +127,14 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - Feature functions are causal; tests mutate future data and assert past features do not change.
 - Backtests consume only out-of-sample walk-forward predictions.
 - Walk-forward splits reject embargo settings shorter than the longest label horizon.
-- Execution requires `execution_lag >= 1`; no same-close fills are allowed.
-- Transaction costs are charged on traded notional through commission, half-spread, and slippage.
+- Execution requires `execution_lag >= 1`; a close-time decision fills no
+  earlier than a future open and cannot capture the preceding overnight gap.
+- Equity is reconciled to cash plus signed marked holdings every day; weights
+  drift between explicit, costed rebalances.
+- ADV and volatility used at the open are lagged one full session. Participation
+  limits create reported partial fills rather than assumed liquidity.
+- Transaction costs are decomposed into commission, half-spread, fixed
+  slippage, and impact sensitivity on traded notional.
 
 ## Repository Map
 
@@ -136,11 +148,13 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - `alphaforge/signals`: rank, long-short, top-k, threshold, confidence-weighted,
   and regime-filtered signals.
 - `alphaforge/portfolio`: capped, inverse-vol, turnover-aware target weights.
-- `alphaforge/backtesting`: vectorized next-bar backtest with costs (risk-overlay trades included).
+- `alphaforge/backtesting`: chronological self-financing ledger and future-open
+  event loop with accounting invariants and P&L attribution.
 - `alphaforge/risk`: performance, drawdown, VaR, expected shortfall, regime tables,
   beta-aware stress tests, concentration.
-- `alphaforge/execution`: cost model, order books (Python + native loader), fill simulation.
-- `alphaforge/paper`: simulated paper-trading replay.
+- `alphaforge/execution`: typed orders/fills, causal daily-bar execution, and
+  separately scoped Python/C++ order-book implementations.
+- `alphaforge/paper`: simulated replay using the same execution and ledger contract.
 - `cpp/`: C++17 order book, pybind11 bindings, CMake project, native benchmark.
 - `scripts`: command-line pipeline entry points.
 - `apps`: Streamlit and FastAPI entry points.
@@ -155,6 +169,8 @@ After `make demo`, inspect:
 - `model_metrics.csv`
 - `walk_forward_windows.csv`
 - `equity_curve.csv`
+- `orders.csv` / `fills.csv` / `pnl_attribution.csv`
+- `capacity_curve.csv` / `capacity_diagnostics.json`
 - `backtest_summary.json`
 - `report.md`
 
@@ -164,3 +180,8 @@ evidence of live profitability: the generator embeds a deliberately faint but
 interesting outputs are the diagnostics — monotone prediction quantiles, IC
 decay curves, Newey-West t-stats, PBO, and the deflated Sharpe — which show the
 measurement machinery working.
+
+## License and Changes
+
+Released under the [MIT License](LICENSE). See [CHANGELOG.md](CHANGELOG.md) for
+the evolving pre-1.0 research and artifact contracts.

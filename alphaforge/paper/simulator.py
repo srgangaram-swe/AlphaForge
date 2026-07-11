@@ -1,12 +1,10 @@
-"""Paper-trading replay utilities.
+"""Paper-trading replay built on the historical engine's execution contract.
 
-This module never routes real orders. It converts target weights into
-simulated orders and fills using historical prices.
-
-Fills are depth-aware: each order walks a synthetic limit order book (the C++
-engine when built, the parity-tested Python reference otherwise), so larger
-orders pay more slippage instead of a flat bps assumption. Book depth per
-level is sized from the symbol's traded volume that day.
+This module never routes real orders.  It replays close-time targets through
+the same close-decision -> future-open-fill policy, causal lagged-liquidity
+inputs, transaction costs, and self-financing ledger used by ``run_backtest``.
+The optional C++ order book remains a separate, uncalibrated systems demo; it
+is not presented as a reconstruction of historical daily-bar liquidity.
 """
 
 from __future__ import annotations
@@ -14,43 +12,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from alphaforge.data.schemas import to_wide
-from alphaforge.execution import BUY, SELL, simulate_fill
-
-PRICE_TICKS_PER_DOLLAR = 100  # $0.01 tick
-
-
-def _depth_aware_fill(
-    side: int,
-    shares: float,
-    price: float,
-    day_volume: float,
-    half_spread_bps: float = 2.5,
-    depth_fraction_per_level: float = 0.005,
-    n_levels: int = 10,
-) -> tuple[float, float, float]:
-    """Fill ``shares`` against a synthetic book around ``price``.
-
-    Returns (fill_price, filled_shares, slippage_bps vs mid).
-    """
-    mid_ticks = max(1, round(price * PRICE_TICKS_PER_DOLLAR))
-    half_spread_ticks = max(1, round(mid_ticks * half_spread_bps / 1e4))
-    qty_per_level = max(1, int(day_volume * depth_fraction_per_level))
-    avg_ticks, filled = simulate_fill(
-        side,
-        int(max(1, round(shares))),
-        mid=mid_ticks,
-        half_spread=half_spread_ticks,
-        tick=1,
-        n_levels=n_levels,
-        qty_per_level=qty_per_level,
-    )
-    if filled == 0:
-        return (price, 0.0, 0.0)
-    fill_price = avg_ticks / PRICE_TICKS_PER_DOLLAR
-    sign = 1.0 if side == BUY else -1.0
-    slippage_bps = sign * (fill_price - price) / price * 1e4
-    return (fill_price, float(filled), float(slippage_bps))
+from alphaforge.backtesting import run_backtest
+from alphaforge.execution import CostModel, ExecutionPolicy
 
 
 def simulate_paper_trading(
@@ -59,50 +22,101 @@ def simulate_paper_trading(
     capital: float = 1_000_000.0,
     lookback_days: int = 20,
     half_spread_bps: float = 2.5,
+    *,
+    costs: CostModel | dict | None = None,
+    execution: ExecutionPolicy | dict | None = None,
+    execution_lag: int = 1,
+    rebalance_frequency: int = 1,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Replay the latest target-weight changes as simulated, depth-aware fills."""
-    close = to_wide(panel, "close")
-    volume = to_wide(panel, "volume")
-    weights = target_weights.pivot(
-        index="date", columns="symbol", values="target_weight"
-    ).sort_index()
-    weights = weights.reindex(close.index).ffill().fillna(0.0).tail(lookback_days)
-    prices = close.reindex(weights.index).ffill()
-    volumes = volume.reindex(weights.index).ffill()
-    deltas = weights.diff().fillna(weights)
+    """Replay targets as simulated DAY orders and return recent fills/state."""
+    if lookback_days < 1:
+        raise ValueError("lookback_days must be >= 1")
+    cost_config: CostModel | dict = (
+        costs
+        if costs is not None
+        else {
+            "commission_bps": 0.0,
+            "half_spread_bps": float(half_spread_bps),
+            "slippage_bps": 0.0,
+        }
+    )
+    result = run_backtest(
+        panel=panel,
+        target_weights=target_weights,
+        initial_capital=capital,
+        execution_lag=execution_lag,
+        rebalance_frequency=rebalance_frequency,
+        costs=cost_config,
+        execution=execution,
+        risk={},
+    )
 
-    orders = []
-    for date, row in deltas.iterrows():
-        for symbol, delta_weight in row.items():
-            if delta_weight == 0 or symbol not in prices.columns:
-                continue
-            price = float(prices.loc[date, symbol])
-            if not np.isfinite(price) or price <= 0:
-                continue
-            notional = float(delta_weight * capital)
-            side = BUY if notional > 0 else SELL
-            shares = abs(notional) / price
-            day_volume = float(volumes.loc[date, symbol]) if symbol in volumes.columns else 1e6
-            fill_price, filled_shares, slippage_bps = _depth_aware_fill(
-                side, shares, price, day_volume, half_spread_bps=half_spread_bps
-            )
-            orders.append(
-                {
-                    "date": date,
-                    "symbol": symbol,
-                    "side": "BUY" if side == BUY else "SELL",
-                    "target_weight_change": float(delta_weight),
-                    "simulated_notional": abs(notional),
-                    "reference_price": price,
-                    "simulated_fill_price": fill_price,
-                    "simulated_shares": filled_shares,
-                    "slippage_bps": slippage_bps,
-                    "status": (
-                        "SIMULATED_FILL" if filled_shares >= shares - 0.5 else "SIMULATED_PARTIAL"
-                    ),
-                }
-            )
-    latest = weights.tail(1).T.rename(columns={weights.index[-1]: "target_weight"}).reset_index()
-    latest = latest.rename(columns={"index": "symbol"})
-    latest["simulated_notional"] = latest["target_weight"] * capital
-    return pd.DataFrame(orders), latest
+    fills = result.fills.copy()
+    if fills.empty:
+        orders = pd.DataFrame(
+            columns=[
+                "date",
+                "symbol",
+                "side",
+                "decision_date",
+                "status",
+                "simulated_notional",
+                "reference_price",
+                "simulated_fill_price",
+                "simulated_shares",
+                "residual_shares",
+                "slippage_bps",
+                "total_cost",
+                "lagged_adv_shares",
+                "participation_rate",
+            ]
+        )
+    else:
+        fills["fill_date"] = pd.to_datetime(fills["fill_date"])
+        # Anchor the audit window at the most recent order rather than the end
+        # of a market panel that may extend beyond the last OOS prediction.
+        latest_fill_date = pd.Timestamp(fills["fill_date"].max())
+        recent_dates = pd.DatetimeIndex(result.equity_curve["date"])
+        recent_dates = recent_dates[recent_dates <= latest_fill_date].sort_values()[-lookback_days:]
+        fills = fills.loc[fills["fill_date"].isin(recent_dates)].copy()
+        direction = np.sign(fills["requested_shares"])
+        execution_shortfall_bps = np.where(
+            direction >= 0,
+            (fills["fill_price"] / fills["reference_price"] - 1.0) * 10_000.0,
+            (1.0 - fills["fill_price"] / fills["reference_price"]) * 10_000.0,
+        )
+        orders = pd.DataFrame(
+            {
+                "date": fills["fill_date"],
+                "symbol": fills["symbol"],
+                "side": np.where(direction > 0, "BUY", "SELL"),
+                "decision_date": fills["decision_date"],
+                "status": fills["status"]
+                .str.upper()
+                .map(
+                    {
+                        "FILLED": "SIMULATED_FILL",
+                        "PARTIAL": "SIMULATED_PARTIAL",
+                        "REJECTED": "SIMULATED_REJECTED",
+                    }
+                ),
+                "simulated_notional": fills["traded_notional"],
+                "reference_price": fills["reference_price"],
+                "simulated_fill_price": fills["fill_price"],
+                "simulated_shares": fills["filled_shares"].abs(),
+                "residual_shares": fills["residual_shares"].abs(),
+                "slippage_bps": execution_shortfall_bps,
+                "total_cost": fills["total_cost"],
+                "lagged_adv_shares": fills["lagged_adv_shares"],
+                "participation_rate": fills["participation_rate"],
+            }
+        ).sort_values(["date", "symbol"])
+        orders = orders.reset_index(drop=True)
+
+    latest_date = pd.Timestamp(result.weights["date"].max())
+    state = result.weights.loc[result.weights["date"] == latest_date].copy()
+    state = state[
+        ["date", "symbol", "target_weight", "weight", "shares", "mark_price", "market_value"]
+    ]
+    state = state.rename(columns={"market_value": "simulated_notional"})
+    return orders, state.reset_index(drop=True)

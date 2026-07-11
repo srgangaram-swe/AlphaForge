@@ -10,12 +10,11 @@ from __future__ import annotations
 from alphaforge.execution import orderbook_py
 
 try:
-    from alphaforge import alphaforge_native as _native
-
-    NATIVE_AVAILABLE = True
+    import alphaforge.alphaforge_native as _native
 except ImportError:
-    _native = None
     NATIVE_AVAILABLE = False
+else:
+    NATIVE_AVAILABLE = True
 
 BUY = orderbook_py.BUY
 SELL = orderbook_py.SELL
@@ -23,7 +22,7 @@ SELL = orderbook_py.SELL
 
 def native_side(side: int):
     """Map integer side to the native enum (native module required)."""
-    if _native is None:
+    if not NATIVE_AVAILABLE:
         raise RuntimeError("native module not built — run `make native`")
     return _native.Side.BUY if side == BUY else _native.Side.SELL
 

@@ -55,12 +55,13 @@ def test_vol_targeting_changes_generate_costed_turnover():
     with_vt = run_backtest(
         panel, weights, costs={"commission_bps": 10}, risk={"vol_target": 0.05, "vol_lookback": 20}
     )
-    # constant target weights: after the initial trade, an unlevered book is
-    # cost-free, but volatility targeting must keep paying to adjust exposure
+    # A self-financing book drifts away from even constant target weights, so
+    # ordinary rebalances are no longer (incorrectly) free. Volatility
+    # targeting introduces additional exposure changes and therefore costs.
     later_costs_no_vt = no_vt.equity_curve["transaction_cost"].iloc[60:].sum()
     later_costs_vt = with_vt.equity_curve["transaction_cost"].iloc[60:].sum()
-    assert later_costs_no_vt == pytest.approx(0.0, abs=1e-12)
-    assert later_costs_vt > 0.0
+    assert later_costs_no_vt > 0.0
+    assert later_costs_vt > later_costs_no_vt
 
 
 def test_performance_summary_trims_dead_leading_period():
@@ -71,6 +72,18 @@ def test_performance_summary_trims_dead_leading_period():
     untrimmed = performance_summary(result.equity_curve, trim_inactive=False)
     assert trimmed["n_days"] < untrimmed["n_days"]
     assert trimmed["average_gross_exposure"] > untrimmed["average_gross_exposure"]
+
+
+def test_total_return_includes_the_first_active_day():
+    curve = pd.DataFrame(
+        {
+            "date": pd.bdate_range("2024-01-02", periods=2),
+            "return": [0.10, 0.10],
+            "equity": [110.0, 121.0],
+            "gross_exposure": [1.0, 1.0],
+        }
+    )
+    assert performance_summary(curve)["total_return"] == pytest.approx(0.21)
 
 
 def test_drawdown_deleverage_reduces_exposure():
@@ -129,4 +142,5 @@ def test_ic_weighted_ensemble_prefers_the_skilled_member():
     unskilled = ZeroBaseline()
     ens = EnsembleModel([skilled, unskilled], weighting="ic").fit(X, y)
     assert ens.weights[0] > 0.7
+    assert ens.member_ics_ is not None
     assert ens.member_ics_[0] > 0.5

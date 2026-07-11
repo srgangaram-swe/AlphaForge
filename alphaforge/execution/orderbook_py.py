@@ -111,7 +111,14 @@ class PyOrderBook:
         return out
 
     def clear(self) -> None:
-        self.__init__()
+        self._bids.clear()
+        self._asks.clear()
+        self._level_total.clear()
+        self._index.clear()
+        self._fills.clear()
+        self._next_id = 1
+        self._bid_prices.clear()
+        self._ask_prices.clear()
 
     # -- internals --
 
