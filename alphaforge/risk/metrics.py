@@ -67,7 +67,10 @@ def performance_summary(equity_curve: pd.DataFrame, trim_inactive: bool = True) 
     avg_turnover = float(turnover.mean())
     return {
         "n_days": int(len(r)),
-        "total_return": float(equity.iloc[-1] / equity.iloc[0] - 1.0) if len(equity) > 1 else 0.0,
+        # Compounding daily returns retains the first active day's P&L. Using
+        # final_equity / first_active_equity silently drops that day because
+        # the first marked equity is already post-return.
+        "total_return": float((1.0 + r).prod() - 1.0) if len(r) else 0.0,
         "annual_return": float(ann_ret),
         "annual_volatility": ann_vol,
         "sharpe": (

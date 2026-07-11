@@ -104,7 +104,11 @@ def signals() -> list[dict[str, Any]]:
 
 @app.get("/portfolio")
 def portfolio() -> dict[str, Any]:
-    return {"disclaimer": DISCLAIMER, "target_weights": _read_csv("target_weights.csv")}
+    return {
+        "disclaimer": DISCLAIMER,
+        "target_weights": _read_csv("target_weights.csv"),
+        "executed_weights": _read_csv("executed_weights.csv"),
+    }
 
 
 @app.get("/backtest")
@@ -112,6 +116,8 @@ def backtest() -> dict[str, Any]:
     return {
         "summary": _read_json("backtest_summary.json"),
         "equity_curve_tail": _read_csv("equity_curve.csv"),
+        "fills_tail": _read_csv("fills.csv"),
+        "pnl_attribution_tail": _read_csv("pnl_attribution.csv"),
         "disclaimer": DISCLAIMER,
     }
 
@@ -123,6 +129,8 @@ def risk() -> dict[str, Any]:
         "overfitting": _read_json("overfitting.json"),
         "stress_tests": _read_csv("stress_tests.csv"),
         "regime_performance": _read_csv("regime_performance.csv"),
+        "capacity_curve": _read_csv("capacity_curve.csv"),
+        "capacity_diagnostics": _read_json("capacity_diagnostics.json"),
         "disclaimer": DISCLAIMER,
     }
 

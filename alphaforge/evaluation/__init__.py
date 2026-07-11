@@ -1,3 +1,10 @@
+from alphaforge.evaluation.capacity import (
+    CapacityColumns,
+    CapacityConfig,
+    CapacityDiagnostics,
+    CapacityResult,
+    estimate_capacity,
+)
 from alphaforge.evaluation.metrics import (
     evaluate_prediction_panel,
     information_coefficient_by_date,
@@ -15,7 +22,12 @@ from alphaforge.evaluation.overfitting import (
 )
 
 __all__ = [
+    "CapacityColumns",
+    "CapacityConfig",
+    "CapacityDiagnostics",
+    "CapacityResult",
     "deflated_sharpe_ratio",
+    "estimate_capacity",
     "evaluate_prediction_panel",
     "expected_max_sharpe",
     "ic_decay",

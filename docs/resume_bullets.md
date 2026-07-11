@@ -12,10 +12,11 @@ Pick 3–5 per application; lead with the ones matching the job description.
 ## ML engineering / infrastructure flavor
 
 - Built a config-driven model platform spanning baselines, regularized linear models, tree ensembles, optional PyTorch sequence models (GRU/TCN), and an IC-weighted ensemble that scores members on a chronological inner validation split.
-- Designed a vectorized backtesting engine with next-bar execution, turnover-based commissions, spread/slippage, and volatility-targeting/drawdown controls whose own rebalancing trades are costed; added beta-aware stress testing and regime-conditional attribution.
-- Shipped reproducible research infrastructure: YAML-configured CLI pipelines, deterministic seeds, versioned run artifacts, pytest suites (leakage, parity, split integrity, cost impact), Docker, GitHub Actions CI, a Streamlit dashboard, and FastAPI endpoints.
+- Replaced a vectorized weight approximation with a chronological, self-financing backtest ledger: close-time decisions fill at future opens, signed holdings drift, lagged ADV caps produce partial fills, and daily/symbol P&L reconciles to cash, marks, and decomposed costs.
+- Added auditable AUM/participation/cost capacity sensitivities, beta-aware stress testing, regime analytics, and execution artifacts spanning orders, fills, residuals, holdings, and attribution.
+- Shipped YAML-configured offline pipelines, timestamped run artifacts, pytest suites for leakage/accounting/parity/split integrity, Docker, GitHub Actions CI, a Streamlit dashboard, and FastAPI endpoints.
 
 ## Low-latency / systems flavor
 
 - Implemented a C++17 price-time-priority limit order book (O(1) cancels via an iterator index, integer-tick determinism) with pybind11 bindings, benchmarked at ~6M ops/s with ~125 ns median and sub-microsecond p99 latency.
-- Maintained a pure-Python reference implementation with identical semantics and CI parity tests requiring bit-identical fills, depth, and book state across both engines; used the native core for depth-aware fill simulation replacing flat-bps slippage assumptions.
+- Maintained a pure-Python reference implementation with identical semantics and CI parity tests requiring bit-identical fills, depth, and book state; kept the uncalibrated order book explicitly separate from historical daily-bar execution claims.

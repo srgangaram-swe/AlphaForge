@@ -18,6 +18,8 @@ def _two_regime_returns(seed: int = 5, calm_days: int = 300, stress_days: int = 
 def test_hmm_recovers_separated_volatility_regimes():
     r = _two_regime_returns()
     model = GaussianHMM2().fit(r)
+    assert model.variances_ is not None
+    assert model.transition_ is not None
     # canonical ordering: state 1 is the high-variance (stress) state
     assert model.variances_[1] > model.variances_[0] * 3
     # transition matrix should be persistent (regimes are sticky)
@@ -34,6 +36,8 @@ def test_hmm_fit_is_deterministic():
     r = _two_regime_returns()
     a = GaussianHMM2().fit(r)
     b = GaussianHMM2().fit(r)
+    assert a.means_ is not None and b.means_ is not None
+    assert a.transition_ is not None and b.transition_ is not None
     np.testing.assert_allclose(a.means_, b.means_)
     np.testing.assert_allclose(a.transition_, b.transition_)
 
