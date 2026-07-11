@@ -166,6 +166,8 @@ def _build_sequences(
 
 
 class _TorchSequenceModel(_TorchBase):
+    needs_sequence_index = True
+
     def __init__(self, seq_len: int = 20, **kwargs):
         super().__init__(**kwargs)
         self.seq_len = seq_len

@@ -33,6 +33,12 @@ def _make_torch(kind: str) -> Callable[..., AlphaModel]:
     return factory
 
 
+def _make_temporal(**params: Any) -> AlphaModel:
+    from alphaforge.models.temporal import TemporalAlphaModel
+
+    return TemporalAlphaModel(**params)
+
+
 def _make_ensemble(members: list[dict], **kwargs: Any) -> EnsembleModel:
     built = [create_model(m["name"], **m.get("params", {})) for m in members]
     return EnsembleModel(built, **kwargs)
@@ -51,6 +57,7 @@ MODEL_REGISTRY: dict[str, Callable[..., AlphaModel]] = {
     "torch_mlp": _make_torch("mlp"),
     "torch_gru": _make_torch("gru"),
     "torch_tcn": _make_torch("tcn"),
+    "temporal_alpha": _make_temporal,
     "ensemble": _make_ensemble,
 }
 

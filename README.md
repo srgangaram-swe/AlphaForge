@@ -16,6 +16,11 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Walk-forward model training with an embargo at least as large as the longest label horizon.
 - Purged K-Fold and Combinatorial Purged CV (CPCV) splitters for overlap-safe evaluation.
 - Baselines, linear models, tree models, optional torch models, and an IC-weighted ensemble.
+- A neural temporal alpha model (dilated causal TCN + attention pooling, composite
+  Huber + cross-sectional IC loss) with a real training loop — early stopping on
+  validation rank IC, checkpointing, persisted history — via `make train` (ADR 0002).
+- Evaluation plots (training curves, IC time series/decay, quantile returns,
+  model comparison) rendered into every run and embedded in the report.
 - Overfitting statistics: Probabilistic and Deflated Sharpe Ratios, Probability of
   Backtest Overfitting (CSCV), and Newey-West IC t-statistics.
 - Backtests that use out-of-sample predictions only.

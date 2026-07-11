@@ -117,9 +117,10 @@ def supervised_frame(
     return data.sort_values(ID_COLUMNS).reset_index(drop=True), x_cols
 
 
-def _model_matrix(frame: pd.DataFrame, columns: list[str], model_name: str) -> pd.DataFrame:
+def _model_matrix(frame: pd.DataFrame, columns: list[str], model) -> pd.DataFrame:
+    """Feature matrix for one model; sequence models get a (date, symbol) index."""
     X = frame[columns].copy()
-    if model_name.startswith("torch_g") or model_name == "torch_tcn":
+    if getattr(model, "needs_sequence_index", False):
         X.index = pd.MultiIndex.from_frame(frame[ID_COLUMNS])
     return X
 
@@ -162,8 +163,8 @@ def run_walk_forward(
             name = spec["name"]
             params = spec.get("params", {})
             model = create_model(name, **params)
-            X_train = _model_matrix(train, x_cols, name)
-            X_test = _model_matrix(test, x_cols, name)
+            X_train = _model_matrix(train, x_cols, model)
+            X_test = _model_matrix(test, x_cols, model)
             y_train = train[target].astype(float)
             y_test = test[target].astype(float)
 
