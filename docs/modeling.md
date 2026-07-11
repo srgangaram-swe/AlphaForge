@@ -9,6 +9,14 @@
   HistGradientBoosting otherwise).
 - Optional PyTorch MLP, GRU, and temporal CNN with causal per-symbol sequence
   construction and time-ordered early-stopping splits.
+- **TemporalAlphaNet** (`alphaforge/models/temporal.py`, ADR 0002): the
+  flagship neural model — dilated causal TCN encoder with attention pooling,
+  optional multi-task horizon heads, and a composite Huber + cross-sectional
+  IC loss on date-batched mini-batches. Trained by a real loop (AdamW +
+  cosine decay, gradient clipping, early stopping on validation rank IC,
+  best-checkpoint restore, persisted per-epoch history) via
+  `scripts/train_model.py` (`make train`), and available in walk-forward
+  comparisons as `temporal_alpha`.
 - **IC-weighted ensemble**: members are fit on the first 80% of the training
   window (chronological, never shuffled), scored by rank IC on the held-out
   tail, weighted by max(IC, 0) + floor, then refit on the full window.

@@ -20,6 +20,27 @@ models:                      # models to train & compare
       members:
         - { name: ridge, params: { alpha: 10.0 } }
         - { name: gradient_boosting, params: { max_iter: 300, max_depth: 4, learning_rate: 0.05 } }
+  # Neural temporal model (requires `pip install 'alphaforge[torch]'`).
+  # Uncomment to include it in walk-forward comparisons; it is also trained
+  # standalone by `make train` using the `temporal:` block below.
+  # - name: temporal_alpha
+  #   params: { max_epochs: 40, seq_len: 64 }
+
+# Hyperparameters for the standalone training loop (scripts/train_model.py).
+temporal:
+  seq_len: 64
+  hidden_size: 64
+  n_blocks: 4
+  dropout: 0.15
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  max_epochs: 60
+  patience: 8
+  dates_per_batch: 16
+  ic_loss_weight: 1.0
+  aux_loss_weight: 0.3
+  val_fraction: 0.15
+  seed: 42
 
 walk_forward:
   scheme: expanding          # expanding | rolling

@@ -60,6 +60,10 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]"
 
+      - name: Install PyTorch (CPU) for temporal-model tests
+        if: matrix.python-version == '3.11'
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
       - name: Build C++ execution core
         run: python scripts/build_native.py
 

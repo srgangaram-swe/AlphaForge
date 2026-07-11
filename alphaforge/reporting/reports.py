@@ -159,5 +159,15 @@ def write_markdown_report(run_dir: str | Path, output_path: str | Path | None = 
         "",
     ]
 
+    plots_dir = run_dir / "plots"
+    if plots_dir.exists():
+        pngs = sorted(plots_dir.glob("*.png"))
+        if pngs:
+            lines += ["", "## Evaluation Plots", ""]
+            for png in pngs:
+                title = png.stem.replace("_", " ")
+                lines.append(f"![{title}](plots/{png.name})")
+                lines.append("")
+
     output_path.write_text("\n".join(lines))
     return output_path
