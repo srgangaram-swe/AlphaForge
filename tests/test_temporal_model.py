@@ -80,6 +80,7 @@ def test_training_loop_learns_a_temporal_signal():
 
     model = TemporalAlphaModel(**FAST_PARAMS).fit(X_tr, y_tr)
     history = model.history_
+    assert history is not None
     assert len(history.train_loss) >= 2
     assert history.best_epoch >= 1
     assert np.isfinite(history.val_rank_ic).any()

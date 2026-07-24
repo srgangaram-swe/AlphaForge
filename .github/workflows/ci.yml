@@ -18,6 +18,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -26,7 +28,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,data]"
 
       - name: Repository policy hooks
         run: pre-commit run --all-files
@@ -36,10 +38,10 @@ jobs:
 
       - name: Build and install wheel
         run: |
-          pip wheel . --no-deps --wheel-dir dist
+          python -m build --wheel --sdist
           python -m venv /tmp/alphaforge-wheel-smoke
           /tmp/alphaforge-wheel-smoke/bin/pip install --no-deps dist/*.whl
-          /tmp/alphaforge-wheel-smoke/bin/python -c "import alphaforge; assert alphaforge.__version__ == '0.2.0'"
+          /tmp/alphaforge-wheel-smoke/bin/python -c "import alphaforge; assert alphaforge.__version__ == '0.2.1'"
 
   test:
     runs-on: ubuntu-latest
@@ -50,6 +52,8 @@ jobs:
         python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -58,11 +62,7 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev]"
-
-      - name: Install PyTorch (CPU) for temporal-model tests
-        if: matrix.python-version == '3.11'
-        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+        run: pip install -e ".[dev,data,torch]"
 
       - name: Build C++ execution core
         run: python scripts/build_native.py
@@ -75,6 +75,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -86,3 +88,17 @@ jobs:
           python scripts/run_walk_forward.py --synthetic --fast
           python scripts/run_backtest.py --latest
           python scripts/generate_report.py
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Build hardened data-excluding image
+        run: docker build --tag alphaforge:ci .
+      - name: Verify package and native core
+        run: |
+          docker run --rm --entrypoint python alphaforge:ci -c \
+            "import alphaforge; from alphaforge.execution import NATIVE_AVAILABLE; assert alphaforge.__version__ == '0.2.1'; assert NATIVE_AVAILABLE"

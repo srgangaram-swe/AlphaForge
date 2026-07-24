@@ -101,8 +101,11 @@ def main() -> None:
         f"{len(trainval_dates)} dates, target={target}, aux={aux_cols}"
     )
     model.fit(matrix(train_frame), train_frame[target], aux_y=train_frame[aux_cols])
-    history = model.history_.to_frame()
-    best = int(model.history_.best_epoch)
+    history_record = model.history_
+    if history_record is None:
+        raise RuntimeError("temporal training completed without a training history")
+    history = history_record.to_frame()
+    best = int(history_record.best_epoch)
     print(
         f"trained {len(history)} epochs; best epoch {best} "
         f"(val rank IC {history['val_rank_ic'].max():.4f})"

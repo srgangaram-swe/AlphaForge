@@ -2,7 +2,7 @@ PYTHON ?= python
 PIP ?= pip
 
 .PHONY: install install-all test lint format typecheck policy check download-data build-features train evaluate \
-        walk-forward backtest paper dashboard api report demo docker-build clean \
+        walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
         native bench bench-native
 
 install:
@@ -47,6 +47,11 @@ walk-forward:
 
 backtest:
 	$(PYTHON) scripts/run_backtest.py --config configs/backtest.yaml
+
+# Usage: make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
+signal-foundry:
+	@test -n "$(BUNDLE)" || (echo "BUNDLE must name a verified Signal Foundry bundle" >&2; exit 2)
+	$(PYTHON) scripts/run_signal_foundry_research.py "$(BUNDLE)"
 
 paper:
 	$(PYTHON) scripts/simulate_paper_trading.py --config configs/backtest.yaml

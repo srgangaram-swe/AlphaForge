@@ -1,6 +1,6 @@
 # AlphaForge
 
-AlphaForge is an end-to-end quantitative machine learning research platform for building, validating, and backtesting multi-horizon alpha signals on public or synthetic market data.
+AlphaForge is an end-to-end quantitative machine learning research platform for building, validating, and backtesting multi-horizon alpha signals on verified Signal Foundry, public, or synthetic market data.
 
 It is designed to look and behave like a small professional research stack rather than a notebook-only demo: canonical long-format OHLCV data, causal feature engineering, forward labels, embargoed walk-forward validation, out-of-sample prediction panels, signal and portfolio construction, realistic transaction costs, risk analytics, reports, a dashboard, and an API.
 
@@ -9,6 +9,9 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 ## What It Demonstrates
 
 - Public market data engineering with yfinance, CSV, and synthetic sources.
+- Independent validation of immutable Signalattice bundles: contract version,
+  semantic identity, content hashes, temporal availability, license policy, and
+  explicit point-in-time limitations.
 - Leak-safe feature engineering on a canonical `(date, symbol, OHLCV)` panel.
 - A 2-state Gaussian HMM regime engine (custom Baum-Welch EM) used strictly causally:
   expanding parameter refits + filtered (never smoothed) state probabilities.
@@ -33,12 +36,17 @@ AlphaForge is an educational quantitative research and ML engineering project. I
   API endpoints, and paper-trading replay.
 - A C++17 limit-order-book execution core with pybind11 bindings, a parity-tested
   pure-Python reference implementation, and reproducible latency benchmarks.
+- A pre-registered final-holdout workflow with a hash-chained trial ledger,
+  DSR/PBO gates, cost/latency/liquidity/placebo stresses, and an immutable
+  machine-readable paper-readiness dossier.
+- Fail-closed, zero-capital paper controls with idempotency, stale-data, exposure,
+  notional, loss, drawdown, and one-way kill-switch enforcement.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Raw data: yfinance / CSV / synthetic] --> B[Validation and quality report]
+    A[Signalattice bundle / public / synthetic] --> B[Validation and quality report]
     B --> C[Leak-safe feature engineering]
     C --> D[Multi-horizon forward labels]
     D --> E[Walk-forward splits with embargo]
@@ -49,6 +57,12 @@ flowchart LR
     I --> J[Risk, P&L attribution, and capacity sensitivity]
     J --> K[Report / dashboard / API / paper sim]
 ```
+
+Signalattice and AlphaForge are separate repositories joined only by the
+versioned `signal-foundry-market-data` contract. AlphaForge does not trust
+producer code: it independently checks the manifest, every partition hash,
+the exact schema, temporal semantics, license policy, and adjustment state
+before research begins.
 
 ## Quickstart
 
@@ -70,11 +84,19 @@ make download-data      # yfinance / CSV / synthetic per configs/data.yaml
 make build-features     # feature and label panels
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
+make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
 make paper              # simulated paper-trading replay only
 make report             # markdown report
 make dashboard          # Streamlit dashboard
 make api                # FastAPI service
 ```
+
+The governed Signal Foundry command consumes a local immutable bundle and
+writes one content-addressed run under `runs/signal-foundry/`. The committed
+rubric in `configs/signal_foundry_research.yaml` separates development-only
+model selection from a purged final holdout. Its result can authorize only
+zero-capital shadow evaluation; it cannot authorize broker access, orders, or
+capital deployment. See [the Signal Foundry operator guide](docs/signal_foundry.md).
 
 ## Low-Latency Execution Core (C++)
 
@@ -160,6 +182,7 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - `alphaforge/execution`: typed orders/fills, causal daily-bar execution, and
   separately scoped Python/C++ order-book implementations.
 - `alphaforge/paper`: simulated replay using the same execution and ledger contract.
+- `alphaforge/research`: governed selection, immutable holdout, stress, and dossier workflow.
 - `cpp/`: C++17 order book, pybind11 bindings, CMake project, native benchmark.
 - `scripts`: command-line pipeline entry points.
 - `apps`: Streamlit and FastAPI entry points.
