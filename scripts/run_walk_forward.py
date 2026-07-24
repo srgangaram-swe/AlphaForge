@@ -96,6 +96,12 @@ def main() -> None:
         run_dir / "overfitting.json",
     )
 
+    # --- evaluation plots (PNG) for the report and dashboard ---
+    from alphaforge.visualization import save_evaluation_plots
+
+    plot_paths = save_evaluation_plots(run_dir)
+    print(f"evaluation plots: {len(plot_paths)} written to {run_dir / 'plots'}")
+
     save_meta(
         run_dir,
         benchmark_symbol=benchmark,

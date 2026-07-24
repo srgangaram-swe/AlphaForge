@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -64,4 +64,4 @@ def set_seed(seed: int) -> None:
 
 
 def timestamp_id(prefix: str = "run") -> str:
-    return f"{prefix}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}"
+    return f"{prefix}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}"

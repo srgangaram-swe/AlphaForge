@@ -1,5 +1,5 @@
 # AlphaForge — research image with the C++ execution core built in.
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential g++ \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md LICENSE CHANGELOG.md ./
 COPY alphaforge ./alphaforge
 COPY cpp ./cpp
 COPY scripts ./scripts

@@ -59,6 +59,11 @@ class _TorchBase(AlphaModel):
         self.x_mean_: np.ndarray | None = None
         self.x_std_: np.ndarray | None = None
 
+    def _require_net(self) -> nn.Module:
+        if self.net is None:
+            raise RuntimeError("fit the model before using it")
+        return self.net
+
     def _scale_fit(self, X: np.ndarray) -> np.ndarray:
         self.x_mean_ = np.nanmean(X, axis=0)
         self.x_std_ = np.nanstd(X, axis=0)
@@ -70,33 +75,34 @@ class _TorchBase(AlphaModel):
 
     def _train_loop(self, X: torch.Tensor, y: torch.Tensor) -> None:
         torch.manual_seed(self.seed)
+        net = self._require_net()
         # time-ordered validation split: last fraction of training rows
         n_val = max(1, int(len(X) * self.val_fraction))
         X_tr, y_tr, X_val, y_val = X[:-n_val], y[:-n_val], X[-n_val:], y[-n_val:]
-        opt = torch.optim.Adam(self.net.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        opt = torch.optim.Adam(net.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         loss_fn = nn.MSELoss()
         best_val, best_state, bad_epochs = np.inf, None, 0
         for _ in range(self.epochs):
-            self.net.train()
+            net.train()
             perm = torch.randperm(len(X_tr))
             for i in range(0, len(X_tr), self.batch_size):
                 idx = perm[i : i + self.batch_size]
                 opt.zero_grad()
-                loss = loss_fn(self.net(X_tr[idx]).squeeze(-1), y_tr[idx])
+                loss = loss_fn(net(X_tr[idx]).squeeze(-1), y_tr[idx])
                 loss.backward()
                 opt.step()
-            self.net.eval()
+            net.eval()
             with torch.no_grad():
-                val = float(loss_fn(self.net(X_val).squeeze(-1), y_val))
+                val = float(loss_fn(net(X_val).squeeze(-1), y_val))
             if val < best_val - 1e-7:
                 best_val, bad_epochs = val, 0
-                best_state = {k: v.clone() for k, v in self.net.state_dict().items()}
+                best_state = {k: v.clone() for k, v in net.state_dict().items()}
             else:
                 bad_epochs += 1
                 if bad_epochs >= self.patience:
                     break
         if best_state is not None:
-            self.net.load_state_dict(best_state)
+            net.load_state_dict(best_state)
 
 
 class TorchMLP(_TorchBase):
@@ -119,10 +125,11 @@ class TorchMLP(_TorchBase):
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
+        net = self._require_net()
         Xs = self._scale(X[self.columns_].to_numpy(dtype=np.float64))
-        self.net.eval()
+        net.eval()
         with torch.no_grad():
-            return self.net(_to_tensor(Xs)).squeeze(-1).numpy()
+            return net(_to_tensor(Xs)).squeeze(-1).numpy()
 
 
 def _build_sequences(
@@ -159,6 +166,8 @@ def _build_sequences(
 
 
 class _TorchSequenceModel(_TorchBase):
+    needs_sequence_index = True
+
     def __init__(self, seq_len: int = 20, **kwargs):
         super().__init__(**kwargs)
         self.seq_len = seq_len
@@ -174,19 +183,22 @@ class _TorchSequenceModel(_TorchBase):
         seqs, targets, _ = _build_sequences(Xs, y, self.seq_len)
         if len(seqs) == 0:
             raise ValueError("not enough history to build any training sequences")
+        if targets is None:
+            raise RuntimeError("training sequence construction did not return targets")
         self.net = self._make_net(len(self.columns_))
         self._train_loop(_to_tensor(seqs), _to_tensor(targets))
         return self
 
     def predict(self, X: pd.DataFrame) -> np.ndarray:
+        net = self._require_net()
         Xs = X[self.columns_].copy()
         Xs.loc[:, :] = self._scale(X[self.columns_].to_numpy(dtype=np.float64))
         seqs, _, positions = _build_sequences(Xs, None, self.seq_len)
         preds = np.zeros(len(X))  # zero fallback for rows lacking history
         if len(seqs) > 0:
-            self.net.eval()
+            net.eval()
             with torch.no_grad():
-                out = self.net(_to_tensor(seqs)).squeeze(-1).numpy()
+                out = net(_to_tensor(seqs)).squeeze(-1).numpy()
             preds[positions] = out
         return preds
 

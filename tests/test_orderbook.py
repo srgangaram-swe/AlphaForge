@@ -53,6 +53,20 @@ def test_market_order_walks_the_book():
     assert book.ask_depth(1) == [(102, 3)]
 
 
+def test_clear_resets_book_state_and_order_ids():
+    book = PyOrderBook()
+    book.add_limit(BUY, 100, 10)
+    book.add_limit(SELL, 100, 4)
+
+    book.clear()
+
+    assert book.best_bid() is None
+    assert book.best_ask() is None
+    assert book.open_orders() == 0
+    assert book.take_fills() == []
+    assert book.add_limit(BUY, 99, 1) == 1
+
+
 def test_slippage_increases_with_order_size():
     small_px, small_fill = simulate_fill(BUY, 500, mid=10_000, half_spread=5, prefer_native=False)
     large_px, large_fill = simulate_fill(BUY, 5_000, mid=10_000, half_spread=5, prefer_native=False)
@@ -62,8 +76,8 @@ def test_slippage_increases_with_order_size():
 
 def _random_flow(book, n_ops: int, seed: int):
     rng = np.random.default_rng(seed)
-    live = []
-    log = []
+    live: list[int] = []
+    log: list[tuple[str, int] | tuple[str, int, bool]] = []
     for _ in range(n_ops):
         op = int(rng.integers(0, 100))
         if op < 55:

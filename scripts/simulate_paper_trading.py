@@ -31,6 +31,10 @@ def main() -> None:
         panel,
         weights,
         capital=args.capital or float(cfg.get("initial_capital", 1_000_000)),
+        costs=cfg.get("costs", {}),
+        execution=cfg.get("execution", {}),
+        execution_lag=int(cfg.get("execution_lag", 1)),
+        rebalance_frequency=int(cfg.get("rebalance_frequency", 1)),
     )
     orders.to_csv(run_dir / "paper_orders.csv", index=False)
     state.to_csv(run_dir / "paper_state.csv", index=False)

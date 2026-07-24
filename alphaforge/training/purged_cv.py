@@ -118,10 +118,10 @@ def run_purged_cv(
         for spec in model_specs or [{"name": "zero_baseline"}]:
             name = spec["name"]
             model = create_model(name, **spec.get("params", {}))
-            model.fit(_model_matrix(train, x_cols, name), train[target].astype(float))
+            model.fit(_model_matrix(train, x_cols, model), train[target].astype(float))
             block = test[ID_COLUMNS + [target]].rename(columns={target: "target"})
             block = block.assign(
-                prediction=model.predict(_model_matrix(test, x_cols, name)),
+                prediction=model.predict(_model_matrix(test, x_cols, model)),
                 model=name,
                 split_id=split_id,
                 test_groups=str(combo),

@@ -1,8 +1,8 @@
 PYTHON ?= python
 PIP ?= pip
 
-.PHONY: install install-all test lint format typecheck download-data build-features train evaluate \
-        walk-forward backtest paper dashboard api report demo docker-build clean \
+.PHONY: install install-all test lint format typecheck policy check download-data build-features train evaluate \
+        walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
         native bench bench-native
 
 install:
@@ -12,7 +12,7 @@ install-all:
 	$(PIP) install -e ".[all]"
 
 test:
-	pytest -m "not network"
+	pytest -m "not network" --cov=alphaforge --cov-branch --cov-report=term-missing --cov-fail-under=78
 
 lint:
 	ruff check alphaforge tests scripts apps
@@ -23,7 +23,12 @@ format:
 	black alphaforge tests scripts apps
 
 typecheck:
-	mypy alphaforge
+	mypy alphaforge tests scripts apps
+
+policy:
+	pre-commit run --all-files
+
+check: policy typecheck test
 
 download-data:
 	$(PYTHON) scripts/download_data.py --config configs/data.yaml
@@ -42,6 +47,11 @@ walk-forward:
 
 backtest:
 	$(PYTHON) scripts/run_backtest.py --config configs/backtest.yaml
+
+# Usage: make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
+signal-foundry:
+	@test -n "$(BUNDLE)" || (echo "BUNDLE must name a verified Signal Foundry bundle" >&2; exit 2)
+	$(PYTHON) scripts/run_signal_foundry_research.py "$(BUNDLE)"
 
 paper:
 	$(PYTHON) scripts/simulate_paper_trading.py --config configs/backtest.yaml
