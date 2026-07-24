@@ -137,6 +137,12 @@ def load_prices(config: dict) -> tuple[pd.DataFrame, str]:
         symbols = list(config.get("symbols", [])) + [benchmark]
         return load_csv_dir(config.get("csv_dir", "data/csv"), symbols), benchmark
 
+    if source == "signal_foundry":
+        raise ValueError(
+            "signal_foundry data requires the governed dual-panel workflow; "
+            "use scripts/run_signal_foundry_research.py"
+        )
+
     if source == "yfinance":
         symbols = list(dict.fromkeys(list(config.get("symbols", [])) + [benchmark]))
         panel = download_yfinance(

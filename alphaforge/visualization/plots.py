@@ -32,25 +32,27 @@ GRID = "#e5e4e1"
 TEXT = "#0b0b0b"
 TEXT_2 = "#52514e"
 
-_RC = {
-    "figure.facecolor": SURFACE,
-    "axes.facecolor": SURFACE,
-    "savefig.facecolor": SURFACE,
-    "axes.edgecolor": GRID,
-    "axes.labelcolor": TEXT_2,
-    "axes.titlecolor": TEXT,
-    "axes.titlesize": 11,
-    "axes.labelsize": 9,
-    "xtick.color": TEXT_2,
-    "ytick.color": TEXT_2,
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
-    "grid.color": GRID,
-    "grid.linewidth": 0.8,
-    "legend.frameon": False,
-    "legend.fontsize": 8,
-    "font.size": 9,
-}
+_RC = matplotlib.RcParams(
+    {
+        "figure.facecolor": SURFACE,
+        "axes.facecolor": SURFACE,
+        "savefig.facecolor": SURFACE,
+        "axes.edgecolor": GRID,
+        "axes.labelcolor": TEXT_2,
+        "axes.titlecolor": TEXT,
+        "axes.titlesize": 11,
+        "axes.labelsize": 9,
+        "xtick.color": TEXT_2,
+        "ytick.color": TEXT_2,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
+        "grid.color": GRID,
+        "grid.linewidth": 0.8,
+        "legend.frameon": False,
+        "legend.fontsize": 8,
+        "font.size": 9,
+    }
+)
 
 
 def _style(ax: plt.Axes) -> None:

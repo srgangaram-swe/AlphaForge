@@ -22,7 +22,7 @@ DISCLAIMER = "Educational research output. Simulated results only. Not financial
 
 app = FastAPI(
     title="AlphaForge API",
-    version="0.2.0",
+    version="0.2.1",
     description=DISCLAIMER,
 )
 
