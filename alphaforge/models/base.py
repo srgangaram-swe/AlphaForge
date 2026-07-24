@@ -17,6 +17,9 @@ class AlphaModel(ABC):
     """
 
     name: str = "alpha_model"
+    # sequence models set this True so the training driver attaches a
+    # (date, symbol) MultiIndex to X before fit/predict
+    needs_sequence_index: bool = False
 
     @abstractmethod
     def fit(self, X: pd.DataFrame, y: pd.Series) -> AlphaModel: ...

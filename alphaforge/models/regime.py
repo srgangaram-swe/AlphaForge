@@ -116,7 +116,12 @@ class GaussianHMM2:
 
     def filtered_probabilities(self, returns: pd.Series | np.ndarray) -> np.ndarray:
         """P(state_t | x_{1..t}) — causal given fixed parameters. T x 2."""
-        if self.pi_ is None:
+        if (
+            self.pi_ is None
+            or self.transition_ is None
+            or self.means_ is None
+            or self.variances_ is None
+        ):
             raise RuntimeError("fit the model first")
         x = pd.Series(returns).to_numpy(dtype=float)
         B = _emission_probs(np.nan_to_num(x, nan=0.0), self.means_, self.variances_)

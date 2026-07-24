@@ -60,6 +60,22 @@ def main() -> None:
         if metrics is not None:
             st.subheader("Model metrics per walk-forward window")
             st.dataframe(metrics, use_container_width=True)
+        fills = _csv(run_dir, "fills.csv")
+        if fills is not None:
+            st.subheader("Recent next-open fills")
+            st.caption(
+                "Decision and fill dates are explicit; liquidity inputs are lagged before the open."
+            )
+            st.dataframe(fills.tail(50), use_container_width=True)
+        attribution = _csv(run_dir, "pnl_attribution.csv")
+        if attribution is not None:
+            by_symbol = (
+                attribution.groupby("symbol")[["market_pnl", "trading_cost", "net_pnl"]]
+                .sum()
+                .sort_values("net_pnl")
+            )
+            st.subheader("P&L attribution by symbol")
+            st.bar_chart(by_symbol["net_pnl"])
 
     with tab_ic:
         ic = _csv(run_dir, "ic_summary.csv")
@@ -84,6 +100,11 @@ def main() -> None:
         if stress is not None:
             st.subheader("Beta-aware stress scenarios")
             st.dataframe(stress, use_container_width=True)
+        capacity = _csv(run_dir, "capacity_curve.csv")
+        if capacity is not None:
+            st.subheader("Capacity sensitivity (not an AUM forecast)")
+            st.line_chart(capacity.set_index("scenario_aum")[["fill_ratio"]])
+            st.dataframe(capacity, use_container_width=True)
         weights = _csv(run_dir, "executed_weights.csv")
         if weights is not None:
             st.subheader("Latest holdings")
@@ -98,7 +119,7 @@ def main() -> None:
         st.warning("SIMULATED PAPER TRADING ONLY — no real orders are ever placed.")
         orders = _csv(run_dir, "paper_orders.csv")
         if orders is not None:
-            st.subheader("Simulated depth-aware fills")
+            st.subheader("Simulated causal next-open fills")
             st.dataframe(orders.tail(50), use_container_width=True)
         else:
             st.info("Run `make paper` to generate simulated orders.")

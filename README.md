@@ -1,6 +1,6 @@
 # AlphaForge
 
-AlphaForge is an end-to-end quantitative machine learning research platform for building, validating, and backtesting multi-horizon alpha signals on public or synthetic market data.
+AlphaForge is an end-to-end quantitative machine learning research platform for building, validating, and backtesting multi-horizon alpha signals on verified Signal Foundry, public, or synthetic market data.
 
 It is designed to look and behave like a small professional research stack rather than a notebook-only demo: canonical long-format OHLCV data, causal feature engineering, forward labels, embargoed walk-forward validation, out-of-sample prediction panels, signal and portfolio construction, realistic transaction costs, risk analytics, reports, a dashboard, and an API.
 
@@ -9,6 +9,9 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 ## What It Demonstrates
 
 - Public market data engineering with yfinance, CSV, and synthetic sources.
+- Independent validation of immutable Signalattice bundles: contract version,
+  semantic identity, content hashes, temporal availability, license policy, and
+  explicit point-in-time limitations.
 - Leak-safe feature engineering on a canonical `(date, symbol, OHLCV)` panel.
 - A 2-state Gaussian HMM regime engine (custom Baum-Welch EM) used strictly causally:
   expanding parameter refits + filtered (never smoothed) state probabilities.
@@ -16,34 +19,55 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Walk-forward model training with an embargo at least as large as the longest label horizon.
 - Purged K-Fold and Combinatorial Purged CV (CPCV) splitters for overlap-safe evaluation.
 - Baselines, linear models, tree models, optional torch models, and an IC-weighted ensemble.
+- A neural temporal alpha model (dilated causal TCN + attention pooling, composite
+  Huber + cross-sectional IC loss) with a real training loop — early stopping on
+  validation rank IC, checkpointing, persisted history — via `make train` (ADR 0002).
+- Evaluation plots (training curves, IC time series/decay, quantile returns,
+  model comparison) rendered into every run and embedded in the report.
 - Overfitting statistics: Probabilistic and Deflated Sharpe Ratios, Probability of
   Backtest Overfitting (CSCV), and Newey-West IC t-statistics.
 - Backtests that use out-of-sample predictions only.
-- Next-bar execution assumptions, turnover, commission, spread, and slippage —
-  including costed turnover from volatility-targeting and drawdown-control trades.
+- Close-decision → next-open execution with a self-financing cash/share ledger,
+  drifted holdings, causal lagged-liquidity inputs, partial fills, and reconciled P&L.
+- Commission, spread, fixed slippage, square-root impact sensitivity, and capacity
+  scenarios — including costed volatility-targeting and drawdown-control trades.
 - Portfolio caps, inverse-vol sizing, turnover controls, and regime-aware exposure.
 - Risk metrics, beta-aware stress tests, regime-conditional performance, reporting,
   API endpoints, and paper-trading replay.
 - A C++17 limit-order-book execution core with pybind11 bindings, a parity-tested
   pure-Python reference implementation, and reproducible latency benchmarks.
+- A pre-registered final-holdout workflow with a hash-chained trial ledger,
+  DSR/PBO gates, cost/latency/liquidity/placebo stresses, and an immutable
+  machine-readable paper-readiness dossier.
+- Fail-closed, zero-capital paper controls with idempotency, stale-data, exposure,
+  notional, loss, drawdown, and one-way kill-switch enforcement.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Raw data: yfinance / CSV / synthetic] --> B[Validation and quality report]
+    A[Signalattice bundle / public / synthetic] --> B[Validation and quality report]
     B --> C[Leak-safe feature engineering]
     C --> D[Multi-horizon forward labels]
     D --> E[Walk-forward splits with embargo]
     E --> F[Model training and OOS predictions]
     F --> G[Signal construction]
     G --> H[Portfolio construction]
-    H --> I[Backtest: next-bar execution and costs]
-    I --> J[Risk and performance analytics]
+    H --> I[Future-open fills + self-financing ledger]
+    I --> J[Risk, P&L attribution, and capacity sensitivity]
     J --> K[Report / dashboard / API / paper sim]
 ```
 
+Signalattice and AlphaForge are separate repositories joined only by the
+versioned `signal-foundry-market-data` contract. AlphaForge does not trust
+producer code: it independently checks the manifest, every partition hash,
+the exact schema, temporal semantics, license policy, and adjustment state
+before research begins.
+
 ## Quickstart
+
+Requires Python 3.12–3.14. The synthetic demo is offline and does not require
+market-data credentials.
 
 ```bash
 make install
@@ -60,15 +84,23 @@ make download-data      # yfinance / CSV / synthetic per configs/data.yaml
 make build-features     # feature and label panels
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
+make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
 make paper              # simulated paper-trading replay only
 make report             # markdown report
 make dashboard          # Streamlit dashboard
 make api                # FastAPI service
 ```
 
+The governed Signal Foundry command consumes a local immutable bundle and
+writes one content-addressed run under `runs/signal-foundry/`. The committed
+rubric in `configs/signal_foundry_research.yaml` separates development-only
+model selection from a purged final holdout. Its result can authorize only
+zero-capital shadow evaluation; it cannot authorize broker access, orders, or
+capital deployment. See [the Signal Foundry operator guide](docs/signal_foundry.md).
+
 ## Low-Latency Execution Core (C++)
 
-`cpp/` contains a price-time-priority limit order book and depth-aware fill
+`cpp/` contains a price-time-priority limit order book and synthetic depth-walk
 simulator written in C++17 (header-only, no dependencies), exposed to Python via
 pybind11 and backed by a pure-Python reference implementation with identical
 semantics. Parity tests drive both engines with the same random order flow and
@@ -85,11 +117,12 @@ Measured on an Apple M-series laptop (`make bench-native`, 2M mixed ops:
 | pure-Python reference | ~1.1M ops/s |
 
 Honest framing: the daily-bar research pipeline does not need nanosecond
-matching. The native core exists to (a) replace flat-bps slippage with
-depth-aware fill simulation in the paper trader, and (b) demonstrate the
-systems side of trading infrastructure — data-structure design (intrusive
-lists + price-level maps + O(1) cancel index), integer-tick determinism, FFI,
-and cross-implementation testing.
+matching and does not fabricate historical L2 books. Historical and paper
+replay use the causal daily-bar execution policy above. The native core is a
+separate systems demonstration: price-level maps, FIFO queues, O(1) cancel
+index, integer-tick determinism, FFI, and cross-implementation testing. It
+would require point-in-time L2 data and calibration before serving as a
+historical execution model.
 
 ```bash
 make native        # build the pybind11 extension in-place
@@ -121,8 +154,14 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - Feature functions are causal; tests mutate future data and assert past features do not change.
 - Backtests consume only out-of-sample walk-forward predictions.
 - Walk-forward splits reject embargo settings shorter than the longest label horizon.
-- Execution requires `execution_lag >= 1`; no same-close fills are allowed.
-- Transaction costs are charged on traded notional through commission, half-spread, and slippage.
+- Execution requires `execution_lag >= 1`; a close-time decision fills no
+  earlier than a future open and cannot capture the preceding overnight gap.
+- Equity is reconciled to cash plus signed marked holdings every day; weights
+  drift between explicit, costed rebalances.
+- ADV and volatility used at the open are lagged one full session. Participation
+  limits create reported partial fills rather than assumed liquidity.
+- Transaction costs are decomposed into commission, half-spread, fixed
+  slippage, and impact sensitivity on traded notional.
 
 ## Repository Map
 
@@ -136,11 +175,14 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - `alphaforge/signals`: rank, long-short, top-k, threshold, confidence-weighted,
   and regime-filtered signals.
 - `alphaforge/portfolio`: capped, inverse-vol, turnover-aware target weights.
-- `alphaforge/backtesting`: vectorized next-bar backtest with costs (risk-overlay trades included).
+- `alphaforge/backtesting`: chronological self-financing ledger and future-open
+  event loop with accounting invariants and P&L attribution.
 - `alphaforge/risk`: performance, drawdown, VaR, expected shortfall, regime tables,
   beta-aware stress tests, concentration.
-- `alphaforge/execution`: cost model, order books (Python + native loader), fill simulation.
-- `alphaforge/paper`: simulated paper-trading replay.
+- `alphaforge/execution`: typed orders/fills, causal daily-bar execution, and
+  separately scoped Python/C++ order-book implementations.
+- `alphaforge/paper`: simulated replay using the same execution and ledger contract.
+- `alphaforge/research`: governed selection, immutable holdout, stress, and dossier workflow.
 - `cpp/`: C++17 order book, pybind11 bindings, CMake project, native benchmark.
 - `scripts`: command-line pipeline entry points.
 - `apps`: Streamlit and FastAPI entry points.
@@ -155,6 +197,8 @@ After `make demo`, inspect:
 - `model_metrics.csv`
 - `walk_forward_windows.csv`
 - `equity_curve.csv`
+- `orders.csv` / `fills.csv` / `pnl_attribution.csv`
+- `capacity_curve.csv` / `capacity_diagnostics.json`
 - `backtest_summary.json`
 - `report.md`
 
@@ -164,3 +208,8 @@ evidence of live profitability: the generator embeds a deliberately faint but
 interesting outputs are the diagnostics — monotone prediction quantiles, IC
 decay curves, Newey-West t-stats, PBO, and the deflated Sharpe — which show the
 measurement machinery working.
+
+## License and Changes
+
+Released under the [MIT License](LICENSE). See [CHANGELOG.md](CHANGELOG.md) for
+the evolving pre-1.0 research and artifact contracts.

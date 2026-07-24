@@ -5,10 +5,9 @@
 The daily-bar research pipeline does not need nanosecond matching, and this
 document says so up front. The native core exists for two honest reasons:
 
-1. **Better fills in simulation.** A flat slippage-in-bps assumption ignores
-   order size. The depth-aware `simulate_fill` walks a synthetic book, so
-   larger simulated orders pay more — slippage becomes an emergent property
-   of consuming liquidity instead of a constant.
+1. **Controlled microstructure experiments.** The depth-aware `simulate_fill`
+   function walks a synthetic book, so tests can study how order size consumes
+   visible liquidity. It is not used as evidence of historical fill quality.
 2. **Systems engineering demonstration.** Matching engines are the canonical
    trading-infrastructure exercise: data-structure choice under latency
    constraints, integer determinism, FFI, and cross-implementation testing.
@@ -36,6 +35,20 @@ same contract; `alphaforge/execution/native.py` dispatches to whichever is
 available. `tests/test_orderbook.py` drives both with identical random flow
 (4,000 mixed operations) and requires identical order ids, fills, depth,
 volumes, and best quotes.
+
+## Boundary with daily-bar execution
+
+Historical backtests and paper replay use `alphaforge.execution.models` plus
+the self-financing ledger, not a fabricated order-book snapshot. Their fills
+occur at a future open and use lagged ADV/volatility sensitivities, explicit
+participation caps, and reconciled implementation shortfall. This is the more
+defensible model for OHLCV inputs because the data does not contain queue or L2
+state.
+
+The native book becomes a candidate execution backend only if a future data
+source supplies point-in-time L2 events and the fill model is calibrated and
+validated. Until then, native benchmark figures demonstrate implementation
+performance—not achievable strategy latency or trading capacity.
 
 ## Benchmarks
 

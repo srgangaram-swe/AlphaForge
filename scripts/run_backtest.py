@@ -2,13 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from _common import latest_run_dir
 
 from alphaforge.backtesting import run_backtest
-from alphaforge.evaluation import deflated_sharpe_ratio
+from alphaforge.evaluation import (
+    CapacityColumns,
+    CapacityConfig,
+    deflated_sharpe_ratio,
+    estimate_capacity,
+)
 from alphaforge.portfolio import construct_portfolio
 from alphaforge.risk import (
     exposure_summary,
@@ -64,6 +71,8 @@ def main() -> None:
         rebalance_frequency=int(cfg.get("rebalance_frequency", 1)),
         costs=cfg.get("costs", {}),
         risk=cfg.get("risk", {}),
+        execution=cfg.get("execution", {}),
+        liquidate_at_end=bool(cfg.get("liquidate_at_end", True)),
     )
     summary = performance_summary(result.equity_curve)
     summary.update({f"latest_{k}": v for k, v in exposure_summary(result.weights).items()})
@@ -83,7 +92,66 @@ def main() -> None:
     result.equity_curve.to_csv(run_dir / "equity_curve.csv", index=False)
     result.weights.to_csv(run_dir / "executed_weights.csv", index=False)
     result.trades.to_csv(run_dir / "trades.csv", index=False)
+    result.orders.to_csv(run_dir / "orders.csv", index=False)
+    result.fills.to_csv(run_dir / "fills.csv", index=False)
+    result.pnl_attribution.to_csv(run_dir / "pnl_attribution.csv", index=False)
     monthly_returns(result.equity_curve).to_csv(run_dir / "monthly_returns.csv", index=False)
+
+    if not result.fills.empty:
+        requested = float(result.fills["requested_notional"].sum())
+        traded = float(result.fills["traded_notional"].sum())
+        summary.update(
+            {
+                "execution_orders": int(len(result.fills)),
+                "execution_fill_ratio": traded / requested if requested > 0 else 0.0,
+                "execution_partial_fill_rate": float((result.fills["status"] == "partial").mean()),
+                "execution_rejected_rate": float((result.fills["status"] == "rejected").mean()),
+                "total_trading_cost_dollars": float(result.fills["total_cost"].sum()),
+                "total_commission_dollars": float(result.fills["commission"].sum()),
+                "total_spread_cost_dollars": float(result.fills["spread_cost"].sum()),
+                "total_impact_cost_dollars": float(
+                    result.fills[["fixed_slippage_cost", "impact_cost"]].sum().sum()
+                ),
+            }
+        )
+
+    capacity_cfg = cfg.get("capacity", {})
+    if capacity_cfg.get("enabled", True) and not result.fills.empty:
+        eligible = result.fills.loc[
+            (result.fills["requested_notional"] > 0)
+            & np.isfinite(result.fills["lagged_adv_notional"])
+            & (result.fills["lagged_adv_notional"] > 0)
+        ].copy()
+        if not eligible.empty:
+            reference_aum = float(cfg.get("initial_capital", 1_000_000))
+            multiples = tuple(
+                float(value) for value in capacity_cfg.get("aum_multiples", [0.5, 1, 2, 5, 10])
+            )
+            capacity_result = estimate_capacity(
+                eligible,
+                CapacityConfig(
+                    reference_aum=reference_aum,
+                    aum_values=tuple(reference_aum * multiple for multiple in multiples),
+                    max_participation_rate=float(capacity_cfg.get("max_participation_rate", 0.10)),
+                    impact_exponent=float(capacity_cfg.get("impact_exponent", 0.50)),
+                    variable_cost_fraction=float(capacity_cfg.get("variable_cost_fraction", 0.50)),
+                    columns=CapacityColumns.for_fill_records(),
+                ),
+            )
+            capacity_result.curve.to_csv(run_dir / "capacity_curve.csv", index=False)
+            capacity_result.scenario_trades.to_csv(run_dir / "capacity_scenarios.csv", index=False)
+            diagnostics = asdict(capacity_result.diagnostics)
+            diagnostics["excluded_rows_missing_lagged_adv"] = int(len(result.fills) - len(eligible))
+            save_json(diagnostics, run_dir / "capacity_diagnostics.json")
+            minimum_fill_ratio = float(capacity_cfg.get("minimum_fill_ratio", 0.95))
+            feasible = capacity_result.curve.loc[
+                capacity_result.curve["fill_ratio"] >= minimum_fill_ratio,
+                "scenario_aum",
+            ]
+            summary["capacity_sensitivity_max_aum"] = (
+                float(feasible.max()) if not feasible.empty else np.nan
+            )
+            summary["capacity_minimum_fill_ratio"] = minimum_fill_ratio
 
     # regime-conditional performance (causal HMM stress feature when present)
     regime_col = "hmm_stress_prob" if "hmm_stress_prob" in features.columns else "high_vol_regime"
