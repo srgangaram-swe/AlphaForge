@@ -1,10 +1,14 @@
-# Pre-registered Signal Foundry research and zero-capital paper-readiness rubric.
-# Change this file only before creating a new immutable run identity. A final
-# holdout result never authorizes live trading or implies future profitability.
+# Pre-registered engineering profile for the stale Nasdaq WIKI bootstrap bundle.
+# The 2017-01-03 holdout boundary, candidate family, stresses, and thresholds are
+# fixed before inspecting final-holdout results. This profile validates pipeline
+# mechanics only: incomplete point-in-time evidence must force NOT_READY.
 
 research:
-  holdout_start: "2024-01-02"
-  benchmark_symbol: SPY
+  holdout_start: "2017-01-03"
+  # Matches the public Signalattice WIKI sample's declared benchmark. AAPL is
+  # not a diversified market proxy; that limitation independently blocks this
+  # engineering profile from qualifying paper or live readiness.
+  benchmark_symbol: AAPL
   target: fwd_ret_5
   horizons: [1, 5, 20]
   selection_metric: rank_ic

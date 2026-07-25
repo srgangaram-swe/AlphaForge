@@ -5,8 +5,9 @@
 - Zero, historical mean, and momentum baselines — every ML model must beat these.
 - Linear regression, ridge, lasso, and elastic net (imputation + scaling
   embedded in the pipeline, so statistics are always train-window-only).
-- Random forest and gradient boosting (LightGBM when installed, sklearn
-  HistGradientBoosting otherwise).
+- Random forest and gradient boosting. Gradient boosting pins an explicit
+  `sklearn` or `lightgbm` backend in configuration; installing an optional
+  package never silently changes estimator semantics.
 - Optional PyTorch MLP, GRU, and temporal CNN with causal per-symbol sequence
   construction and time-ordered early-stopping splits.
 - **TemporalAlphaNet** (`alphaforge/models/temporal.py`, ADR 0002): the

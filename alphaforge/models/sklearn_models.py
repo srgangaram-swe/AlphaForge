@@ -4,11 +4,14 @@ All wrappers embed imputation + scaling in an sklearn Pipeline, so those
 statistics are fit on the training window only — the walk-forward driver
 never has to remember to scale separately.
 
-Gradient boosting prefers LightGBM when installed and falls back to
-sklearn's HistGradientBoostingRegressor, so the core install stays light.
+Gradient boosting requires an explicit backend. The default is sklearn's
+HistGradientBoostingRegressor; an installed optional package must never
+silently change experiment semantics.
 """
 
 from __future__ import annotations
+
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -78,23 +81,53 @@ def make_random_forest(random_state: int = 42, **params) -> SklearnModel:
     )
 
 
-def make_gradient_boosting(random_state: int = 42, **params) -> AlphaModel:
-    try:
-        import lightgbm as lgb
+def make_gradient_boosting(
+    random_state: int = 42,
+    backend: Literal["sklearn", "lightgbm"] = "sklearn",
+    **params,
+) -> AlphaModel:
+    """Build an explicitly selected gradient-boosting implementation.
 
+    Args:
+        random_state: Deterministic estimator seed.
+        backend: Exact implementation; never inferred from installed extras.
+        **params: Backend-neutral estimator settings.
+
+    Raises:
+        ImportError: If the explicit LightGBM backend is unavailable.
+        ValueError: If ``backend`` is unsupported.
+    """
+    if backend == "lightgbm":
+        try:
+            import lightgbm as lgb
+        except ImportError as exc:
+            raise ImportError(
+                "gradient_boosting backend='lightgbm' requires the 'ml' extra"
+            ) from exc
+
+        translated = dict(params)
+        max_iter = translated.pop("max_iter", 300)
+        max_depth = translated.pop("max_depth", 4)
+        learning_rate = translated.pop("learning_rate", 0.05)
+        if "l2_regularization" in translated:
+            translated["reg_lambda"] = translated.pop("l2_regularization")
+        if "max_leaf_nodes" in translated:
+            translated["num_leaves"] = translated.pop("max_leaf_nodes")
+        if "min_samples_leaf" in translated:
+            translated["min_child_samples"] = translated.pop("min_samples_leaf")
         defaults = dict(
-            n_estimators=params.pop("max_iter", 300),
-            max_depth=params.pop("max_depth", 4),
-            learning_rate=params.pop("learning_rate", 0.05),
+            n_estimators=max_iter,
+            max_depth=max_depth,
+            learning_rate=learning_rate,
             verbose=-1,
         )
-        defaults.update(params)
+        defaults.update(translated)
         return SklearnModel(
             lgb.LGBMRegressor(random_state=random_state, **defaults),
             "gradient_boosting",
             scale=False,
         )
-    except ImportError:
+    if backend == "sklearn":
         defaults = dict(max_iter=300, max_depth=4, learning_rate=0.05)
         defaults.update(params)
         return SklearnModel(
@@ -102,3 +135,4 @@ def make_gradient_boosting(random_state: int = 42, **params) -> AlphaModel:
             "gradient_boosting",
             scale=False,
         )
+    raise ValueError("gradient_boosting backend must be 'sklearn' or 'lightgbm'")

@@ -14,6 +14,11 @@ from alphaforge.visualization.plots import (
     plot_training_history,
     save_evaluation_plots,
 )
+from alphaforge.visualization.signal_foundry_plots import (
+    plot_capacity_sensitivity,
+    plot_readiness_gates,
+    plot_scenario_returns,
+)
 from alphaforge.visualization.temporal_plots import plot_temporal_folds
 
 __all__ = [
@@ -24,8 +29,11 @@ __all__ = [
     "plot_ic_decay",
     "plot_ic_timeseries",
     "plot_model_comparison",
+    "plot_capacity_sensitivity",
     "plot_prediction_scatter",
     "plot_quantile_returns",
+    "plot_readiness_gates",
+    "plot_scenario_returns",
     "plot_training_history",
     "plot_temporal_folds",
     "save_label_diagnostic_plots",
