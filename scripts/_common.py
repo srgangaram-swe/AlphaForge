@@ -1,9 +1,23 @@
 from __future__ import annotations
 
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from alphaforge.utils import load_yaml, save_json, timestamp_id
+import pandas as pd
+
+from alphaforge.config import load_data_config, load_feature_config, load_models_config
+from alphaforge.research import (
+    ExperimentManifest,
+    capture_environment,
+    capture_git_context,
+    inventory_artifacts,
+    redact_cli_arguments,
+    write_experiment_manifest,
+)
+from alphaforge.research.manifest import sha256_file
+from alphaforge.utils import save_json, timestamp_id
 
 
 def make_run_dir(runs_dir: str | Path = "runs", prefix: str = "run") -> Path:
@@ -32,7 +46,11 @@ def load_configs(
     data_config: str | Path = "configs/data.yaml",
     feature_config: str | Path = "configs/features.yaml",
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    return load_yaml(model_config), load_yaml(data_config), load_yaml(feature_config)
+    return (
+        load_models_config(model_config),
+        load_data_config(data_config),
+        load_feature_config(feature_config),
+    )
 
 
 def configure_fast_demo(model_cfg: dict[str, Any], data_cfg: dict[str, Any]) -> None:
@@ -58,3 +76,58 @@ def configure_fast_demo(model_cfg: dict[str, Any], data_cfg: dict[str, Any]) -> 
 
 def save_meta(run_dir: Path, **meta: Any) -> None:
     save_json(meta, run_dir / "run_meta.json")
+
+
+def utc_timestamp() -> str:
+    """Return the current UTC timestamp in the manifest's canonical form."""
+
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def record_pipeline_manifest(
+    *,
+    run_dir: Path,
+    panel: pd.DataFrame,
+    data_config: dict[str, Any],
+    model_config: dict[str, Any],
+    feature_config: dict[str, Any],
+    started_at: str,
+    invocation: list[str] | None = None,
+    transaction_costs: dict[str, Any] | None = None,
+) -> ExperimentManifest:
+    """Record a deterministic manifest for a local walk-forward or training run."""
+
+    panel_path = run_dir / "panel.table.json"
+    if not panel_path.is_file():
+        raise FileNotFoundError("panel.table.json must exist before manifest publication")
+    manifest = ExperimentManifest.build(
+        code=capture_git_context(),
+        dataset={
+            "id": sha256_file(panel_path),
+            "source": data_config["source"],
+            "observations_redistributable": data_config["source"] == "synthetic",
+        },
+        universe=sorted(str(symbol) for symbol in panel["symbol"].unique()),
+        date_range={
+            "start": str(pd.Timestamp(panel["date"].min()).date()),
+            "end": str(pd.Timestamp(panel["date"].max()).date()),
+        },
+        features=feature_config,
+        label={
+            "target": model_config["target"],
+            "horizons": model_config["horizons"],
+        },
+        models=model_config["models"],
+        validation=model_config["walk_forward"],
+        transaction_costs=transaction_costs or {},
+        root_seed=int(model_config["seed"]),
+        environment=capture_environment(),
+        invocation={
+            "entrypoint": Path(sys.argv[0]).name,
+            "arguments": redact_cli_arguments(invocation or sys.argv[1:]),
+        },
+        execution={"started_at": started_at, "finished_at": utc_timestamp()},
+        artifacts=inventory_artifacts(run_dir, exclude=("run_manifest.json",)),
+    )
+    write_experiment_manifest(manifest, run_dir / "run_manifest.json")
+    return manifest

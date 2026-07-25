@@ -3,12 +3,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import pandas as pd
 from _common import latest_run_dir
 
+from alphaforge.config import load_backtest_config, load_portfolio_config
 from alphaforge.portfolio import construct_portfolio
+from alphaforge.research import read_frame_artifact, refresh_experiment_manifest
 from alphaforge.signals import build_signals, select_model_predictions
-from alphaforge.utils import load_yaml
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,10 +22,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     run_dir = Path(args.run_dir) if args.run_dir else latest_run_dir()
-    portfolio_cfg = load_yaml(args.config)
-    backtest_cfg = load_yaml(args.backtest_config)
-    predictions = pd.read_pickle(run_dir / "predictions.pkl")
-    features = pd.read_pickle(run_dir / "features.pkl")
+    portfolio_cfg = load_portfolio_config(args.config)
+    backtest_cfg = load_backtest_config(args.backtest_config)
+    predictions = read_frame_artifact(run_dir / "predictions.table.json")
+    features = read_frame_artifact(run_dir / "features.table.json")
     selected = select_model_predictions(predictions)
     signals = build_signals(
         selected,
@@ -34,6 +34,7 @@ def main() -> None:
     )
     weights = construct_portfolio(signals, features=features, config=portfolio_cfg)
     weights.to_csv(run_dir / "target_weights.csv", index=False)
+    refresh_experiment_manifest(run_dir)
     print(f"target weights written: {run_dir / 'target_weights.csv'}")
 
 

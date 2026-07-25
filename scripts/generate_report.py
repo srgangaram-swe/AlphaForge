@@ -6,6 +6,7 @@ from pathlib import Path
 from _common import latest_run_dir
 
 from alphaforge.reporting import write_markdown_report
+from alphaforge.research import refresh_experiment_manifest
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,6 +21,7 @@ def main() -> None:
     args = parse_args()
     run_dir = Path(args.run_dir) if args.run_dir else latest_run_dir()
     report = write_markdown_report(run_dir, output_path=args.output)
+    refresh_experiment_manifest(run_dir)
     print(f"report written: {report}")
 
 
