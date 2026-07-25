@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import pytest
+from sklearn.ensemble import HistGradientBoostingRegressor
 
-from alphaforge.models.registry import seed_model_specs
+from alphaforge.models.registry import create_model, seed_model_specs
+from alphaforge.models.sklearn_models import SklearnModel
 
 
 def test_model_seed_injection_is_order_independent_and_non_mutating() -> None:
@@ -47,3 +49,12 @@ def test_model_seed_policy_rejects_invalid_boundaries() -> None:
         seed_model_specs([{"name": "ridge", "params": []}], 1)
     with pytest.raises(TypeError, match="ensemble members"):
         seed_model_specs([{"name": "ensemble", "params": {}}], 1)
+
+
+def test_gradient_boosting_backend_is_explicit_and_environment_independent() -> None:
+    model = create_model("gradient_boosting", max_iter=10)
+
+    assert isinstance(model, SklearnModel)
+    assert isinstance(model.pipeline.named_steps["model"], HistGradientBoostingRegressor)
+    with pytest.raises(ValueError, match="backend must be"):
+        create_model("gradient_boosting", backend="automatic")

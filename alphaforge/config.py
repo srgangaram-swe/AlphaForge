@@ -348,6 +348,7 @@ MODEL_PARAMETER_FIELDS: dict[str, frozenset[str]] = {
     ),
     "gradient_boosting": frozenset(
         {
+            "backend",
             "loss",
             "learning_rate",
             "max_iter",

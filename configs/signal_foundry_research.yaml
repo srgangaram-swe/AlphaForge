@@ -28,6 +28,7 @@ models:
     params: {alpha: 10.0}
   - name: gradient_boosting
     params:
+      backend: sklearn
       max_iter: 200
       max_depth: 4
       learning_rate: 0.05
