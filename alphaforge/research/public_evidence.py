@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -23,6 +24,7 @@ from alphaforge.visualization import (
 PUBLIC_EVIDENCE_SCHEMA_VERSION = "1.0.0"
 MAX_JSON_BYTES = 8 * 1024 * 1024
 MAX_CAPACITY_BYTES = 4 * 1024 * 1024
+MAX_PROFILE_BYTES = 64 * 1024
 PUBLIC_METRICS = (
     "n_days",
     "gross_total_return",
@@ -99,6 +101,40 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     )
 
 
+def _load_time_profile(path: Path) -> dict[str, float | int]:
+    """Parse the bounded fields emitted by macOS ``/usr/bin/time -l``."""
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("performance profile must be a real file")
+    size = path.stat().st_size
+    if size <= 0 or size > MAX_PROFILE_BYTES:
+        raise ValueError("performance profile has an invalid byte length")
+    text = path.read_text(encoding="utf-8")
+    duration = re.search(
+        r"^\s*([0-9.]+) real\s+([0-9.]+) user\s+([0-9.]+) sys\s*$",
+        text,
+        flags=re.MULTILINE,
+    )
+    maximum_rss = re.search(
+        r"^\s*(\d+)\s+maximum resident set size\s*$",
+        text,
+        flags=re.MULTILINE,
+    )
+    peak_footprint = re.search(
+        r"^\s*(\d+)\s+peak memory footprint\s*$",
+        text,
+        flags=re.MULTILINE,
+    )
+    if duration is None or maximum_rss is None or peak_footprint is None:
+        raise ValueError("performance profile lacks required macOS time fields")
+    return {
+        "wall_seconds": float(duration.group(1)),
+        "user_cpu_seconds": float(duration.group(2)),
+        "system_cpu_seconds": float(duration.group(3)),
+        "maximum_resident_set_bytes": int(maximum_rss.group(1)),
+        "peak_memory_footprint_bytes": int(peak_footprint.group(1)),
+    }
+
+
 def _validate_source(
     *,
     bundle: dict[str, Any],
@@ -141,6 +177,7 @@ def publish_signal_foundry_evidence(
     bundle_dir: str | Path,
     config_path: str | Path,
     output_dir: str | Path,
+    performance_profile: str | Path | None = None,
 ) -> Path:
     """Publish aggregate JSON/CSV and Seaborn plots without licensed observations.
 
@@ -166,6 +203,11 @@ def publish_signal_foundry_evidence(
         dossier=dossier,
     )
     config = load_signal_foundry_research_config(config_source)
+    profile = (
+        _load_time_profile(Path(performance_profile).resolve())
+        if performance_profile is not None
+        else None
+    )
 
     gates_raw = dossier.get("gates")
     scenarios_raw = dossier.get("scenarios")
@@ -253,9 +295,18 @@ def publish_signal_foundry_evidence(
                 "date_min": bundle.get("date_min"),
                 "date_max": bundle.get("date_max"),
                 "partition_count": len(bundle.get("files", [])),
+                "universe_rows": int(bundle.get("universe_rows", 0)),
+                "corporate_action_rows": int(bundle.get("corporate_action_rows", 0)),
                 "point_in_time_limits": dataset.get("point_in_time_limits"),
                 "licensed_observations_published": False,
                 "provider_requests": 0,
+                "consumer_exclusions": {
+                    "rows": 0,
+                    "tickers": 0,
+                    "dates": 0,
+                    "policy": "fail the complete bundle rather than silently exclude invalid input",
+                    "producer_exclusions_declared": "not present in source manifest",
+                },
             },
             "metrics": {
                 field: _json_scalar(metrics_raw.get(field))
@@ -273,12 +324,32 @@ def publish_signal_foundry_evidence(
                     dossier.get("paper_controls", {}).get("executable_orders_emitted")
                 ),
             },
+            "performance": (
+                {
+                    **profile,
+                    "scope": "single local cached-bundle governed run",
+                    "provider_requests": 0,
+                    "compute_path": (
+                        "CPU sklearn/NumPy; accelerator inventory records availability, not use"
+                    ),
+                    "environment": {
+                        "python": experiment.get("environment", {}).get("python"),
+                        "operating_system": experiment.get("environment", {}).get(
+                            "operating_system"
+                        ),
+                        "hardware": experiment.get("environment", {}).get("hardware"),
+                    },
+                }
+                if profile is not None
+                else None
+            ),
             "limitations": [
                 "The WIKI bundle ends in 2018 and is stale, current-vintage data.",
                 "Universe membership, historical revisions, and corporate actions are incomplete.",
                 "The evidence validates historical pipeline mechanics, not current paper/live readiness.",
                 "Backtested returns are not realized profits and do not predict future performance.",
                 "No licensed observation, ticker list, order, fill, position, or date-level return is public.",
+                "The performance profile is one local run, not a latency distribution or capacity SLA.",
             ],
         }
         _write_json(staging / "summary.json", summary)

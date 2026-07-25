@@ -125,6 +125,9 @@ contracts.
 
 Supply-chain and release controls are documented in
 [Release and security governance](docs/release_security.md).
+The [Sprint 1 evidence report](docs/sprint_1_report.md) records the final
+`NOT_READY` result and its reproducible Seaborn evidence without publishing
+licensed rows.
 
 ## Low-Latency Execution Core (C++)
 

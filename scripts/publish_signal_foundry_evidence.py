@@ -15,6 +15,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bundle-dir", required=True)
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--performance-profile",
+        help="Optional bounded macOS /usr/bin/time -l output for aggregate profiling evidence.",
+    )
     return parser.parse_args()
 
 
@@ -25,6 +29,7 @@ def main() -> None:
         bundle_dir=args.bundle_dir,
         config_path=args.config,
         output_dir=args.output_dir,
+        performance_profile=args.performance_profile,
     )
     print(f"published aggregate Signal Foundry evidence: {destination}")
 

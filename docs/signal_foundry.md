@@ -169,6 +169,7 @@ make signal-foundry-evidence \
   RUN=/absolute/path/to/runs/signal-foundry/<run-id> \
   BUNDLE=/absolute/path/to/<wiki-bundle-id> \
   SIGNAL_FOUNDRY_CONFIG=configs/signal_foundry_wiki_bootstrap.yaml \
+  PROFILE=/absolute/path/to/macos-time-profile.txt \
   OUTPUT=/absolute/path/to/new-public-evidence
 ```
 
@@ -177,6 +178,9 @@ then emits aggregate gate, scenario, and capacity tables plus reproducible
 Seaborn plots. It never copies ticker identities, observations, predictions,
 orders, fills, positions, or date-level returns. Existing destinations and
 symlinked inputs fail closed.
+When supplied, `PROFILE` must be bounded output from macOS `/usr/bin/time -l`;
+the publisher extracts only duration and memory aggregates and labels the
+single-machine result as a profile rather than a service-level claim.
 
 ## Readiness decision
 

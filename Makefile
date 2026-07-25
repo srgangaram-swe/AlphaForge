@@ -79,7 +79,8 @@ signal-foundry-evidence:
 		--run-dir "$(RUN)" \
 		--bundle-dir "$(BUNDLE)" \
 		--config "$(SIGNAL_FOUNDRY_CONFIG)" \
-		--output-dir "$(OUTPUT)"
+		--output-dir "$(OUTPUT)" \
+		$(if $(PROFILE),--performance-profile "$(PROFILE)",)
 
 paper:
 	$(PYTHON) scripts/simulate_paper_trading.py --config configs/backtest.yaml

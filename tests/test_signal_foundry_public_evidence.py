@@ -122,17 +122,26 @@ def test_public_evidence_is_deterministic_and_never_copies_licensed_rows(
     tmp_path: Path,
 ) -> None:
     run, bundle = _sources(tmp_path)
+    profile = tmp_path / "time.txt"
+    profile.write_text(
+        "       13.44 real        17.38 user         2.09 sys\n"
+        "           585334784  maximum resident set size\n"
+        "           389236104  peak memory footprint\n",
+        encoding="utf-8",
+    )
     first = publish_signal_foundry_evidence(
         run_dir=run,
         bundle_dir=bundle,
         config_path="configs/signal_foundry_wiki_bootstrap.yaml",
         output_dir=tmp_path / "first",
+        performance_profile=profile,
     )
     second = publish_signal_foundry_evidence(
         run_dir=run,
         bundle_dir=bundle,
         config_path="configs/signal_foundry_wiki_bootstrap.yaml",
         output_dir=tmp_path / "second",
+        performance_profile=profile,
     )
 
     first_hashes = {
@@ -150,7 +159,11 @@ def test_public_evidence_is_deterministic_and_never_copies_licensed_rows(
     assert summary["decision"] == "NOT_READY"
     assert summary["source"]["provider_requests"] == 0
     assert summary["source"]["licensed_observations_published"] is False
+    assert summary["source"]["consumer_exclusions"]["rows"] == 0
     assert summary["paper_controls"]["executable_orders_emitted"] is False
+    assert summary["performance"]["wall_seconds"] == 13.44
+    assert summary["performance"]["maximum_resident_set_bytes"] == 585_334_784
+    assert summary["performance"]["compute_path"].startswith("CPU")
     text = "\n".join(
         path.read_text(encoding="utf-8")
         for path in first.rglob("*")
