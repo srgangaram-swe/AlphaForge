@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from alphaforge.data import load_signal_foundry_dataset
@@ -53,6 +54,10 @@ def main() -> None:
         research_config=GovernedResearchConfig(**research_values),
         readiness_thresholds=ReadinessThresholds.from_mapping(dict(config["readiness"])),
         output_root=Path(args.output),
+        invocation={
+            "entrypoint": "scripts/run_signal_foundry_research.py",
+            "arguments": sys.argv[1:],
+        },
     )
     print(f"run_id={result.run_id}")
     print(f"candidate={result.candidate_model}")

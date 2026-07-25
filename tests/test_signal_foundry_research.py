@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -128,6 +129,11 @@ def _run(tmp_path: Path):
         ),
         output_root=tmp_path / "runs",
         code_sha="b" * 40,
+        invocation={
+            "entrypoint": "test_signal_foundry_research",
+            "arguments": ["--config", "synthetic"],
+        },
+        clock=lambda: datetime(2026, 7, 24, tzinfo=UTC),
     )
 
 
@@ -143,7 +149,14 @@ def test_governed_run_is_transactional_auditable_and_not_ready_on_missing_pit(
     assert (result.run_dir / "final_holdout_predictions.csv").is_file()
     assert (result.run_dir / "capacity_curve.csv").is_file()
     manifest = json.loads((result.run_dir / "run_manifest.json").read_text())
-    assert manifest["trial_ledger_head"]
+    assert manifest["run_manifest_version"] == "2.0.0"
+    assert manifest["result"]["trial_ledger_head"]
+    assert manifest["experiment"]["experiment_id"] == result.run_id
+    assert manifest["experiment"]["code"]["sha"] == "b" * 40
+    assert manifest["experiment"]["dataset"]["bundle_id"] == "a" * 64
+    assert manifest["experiment"]["seeds"]
+    assert manifest["experiment"]["environment"]["dependencies"]
+    assert manifest["experiment"]["artifacts"]
     ledger = [
         json.loads(line)
         for line in (result.run_dir / "trial_ledger.jsonl").read_text().splitlines()

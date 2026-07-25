@@ -25,20 +25,24 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-          cache: pip
 
-      - name: Install
-        run: pip install -e ".[dev,data]"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.9.7"
+
+      - name: Install locked environment
+        run: uv sync --locked --extra dev --extra data
 
       - name: Repository policy hooks
-        run: pre-commit run --all-files
+        run: uv run python -m pre_commit run --all-files
 
       - name: Type check (mypy)
-        run: mypy alphaforge tests scripts apps
+        run: uv run python -m mypy alphaforge tests scripts apps
 
       - name: Build and install wheel
         run: |
-          python -m build --wheel --sdist
+          uv run python -m build --wheel --sdist
           python -m venv /tmp/alphaforge-wheel-smoke
           /tmp/alphaforge-wheel-smoke/bin/pip install --no-deps dist/*.whl
           /tmp/alphaforge-wheel-smoke/bin/python -c "import alphaforge; assert alphaforge.__version__ == '0.2.1'"
@@ -59,16 +63,20 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
 
-      - name: Install
-        run: pip install -e ".[dev,data,torch]"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.9.7"
+
+      - name: Install locked environment
+        run: uv sync --locked --extra dev --extra data --extra torch
 
       - name: Build C++ execution core
-        run: python scripts/build_native.py
+        run: uv run python scripts/build_native.py
 
       - name: Tests (network tests excluded; includes C++/Python parity)
-        run: pytest -m "not network" --cov=alphaforge --cov-branch --cov-report=term-missing --cov-fail-under=78
+        run: uv run python -m pytest -m "not network" --cov=alphaforge --cov-branch --cov-report=term-missing --cov-fail-under=78
 
   smoke-demo:
     runs-on: ubuntu-latest
@@ -80,14 +88,17 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
-          cache: pip
-      - name: Install
-        run: pip install -e .
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.9.7"
+      - name: Install locked environment
+        run: uv sync --locked
       - name: End-to-end synthetic pipeline
         run: |
-          python scripts/run_walk_forward.py --synthetic --fast
-          python scripts/run_backtest.py --latest
-          python scripts/generate_report.py
+          uv run python scripts/run_walk_forward.py --synthetic --fast
+          uv run python scripts/run_backtest.py --latest
+          uv run python scripts/generate_report.py
 
   container:
     runs-on: ubuntu-latest

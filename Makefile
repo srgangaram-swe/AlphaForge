@@ -1,34 +1,37 @@
 PYTHON ?= python
-PIP ?= pip
+UV ?= uv
 
-.PHONY: install install-all test lint format typecheck policy check download-data build-features train evaluate \
+.PHONY: install install-all lock-check test lint format typecheck policy check download-data build-features train evaluate \
         walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
         native bench bench-native
 
 install:
-	$(PIP) install -e ".[dev]"
+	$(UV) sync --locked --extra dev
 
 install-all:
-	$(PIP) install -e ".[all]"
+	$(UV) sync --locked --all-extras
+
+lock-check:
+	$(UV) lock --check
 
 test:
-	pytest -m "not network" --cov=alphaforge --cov-branch --cov-report=term-missing --cov-fail-under=78
+	$(PYTHON) -m pytest -m "not network" --cov=alphaforge --cov-branch --cov-report=term-missing --cov-fail-under=78
 
 lint:
-	ruff check alphaforge tests scripts apps
-	black --check alphaforge tests scripts apps
+	$(PYTHON) -m ruff check alphaforge tests scripts apps
+	$(PYTHON) -m black --check alphaforge tests scripts apps
 
 format:
-	ruff check --fix alphaforge tests scripts apps
-	black alphaforge tests scripts apps
+	$(PYTHON) -m ruff check --fix alphaforge tests scripts apps
+	$(PYTHON) -m black alphaforge tests scripts apps
 
 typecheck:
-	mypy alphaforge tests scripts apps
+	$(PYTHON) -m mypy alphaforge tests scripts apps
 
 policy:
-	pre-commit run --all-files
+	$(PYTHON) -m pre_commit run --all-files
 
-check: policy typecheck test
+check: lock-check policy typecheck test
 
 download-data:
 	$(PYTHON) scripts/download_data.py --config configs/data.yaml

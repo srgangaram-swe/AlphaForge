@@ -6,6 +6,20 @@ still evolve between minor releases.
 
 ## [Unreleased]
 
+### Added
+
+- Versioned experiment manifests with canonical configuration identities, full
+  Git provenance, immutable dataset fingerprints, named deterministic seed
+  streams, exact dependency versions, safe runtime metadata, redacted
+  invocation arguments, and hashed artifact inventories.
+- A committed universal `uv.lock` plus locked CI and container installation for
+  reproducible dependency resolution across supported Python versions.
+
+### Changed
+
+- Governed Signal Foundry run manifests now use the versioned `2.0.0` wrapper
+  and separate semantic experiment identity from execution and result metadata.
+
 ## [0.2.1] - 2026-07-23
 
 ### Added

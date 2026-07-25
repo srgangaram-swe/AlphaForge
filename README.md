@@ -66,13 +66,15 @@ before research begins.
 
 ## Quickstart
 
-Requires Python 3.12–3.14. The synthetic demo is offline and does not require
+Requires Python 3.12–3.14 and
+[uv](https://docs.astral.sh/uv/). The committed lockfile is the supported
+dependency resolution; the synthetic demo is offline and does not require
 market-data credentials.
 
 ```bash
 make install
-make test
-make demo
+uv run make test
+uv run make demo
 ```
 
 The demo is fully offline. It generates synthetic market data, trains a small walk-forward experiment, runs an out-of-sample backtest, and writes a markdown report under `runs/`.
@@ -97,6 +99,10 @@ rubric in `configs/signal_foundry_research.yaml` separates development-only
 model selection from a purged final holdout. Its result can authorize only
 zero-capital shadow evaluation; it cannot authorize broker access, orders, or
 capital deployment. See [the Signal Foundry operator guide](docs/signal_foundry.md).
+Every governed run also writes a versioned, content-addressed experiment
+manifest. See [Reproducibility and experiment provenance](docs/reproducibility.md)
+for the identity, seed, environment, artifact, and credential-redaction
+contracts.
 
 ## Low-Latency Execution Core (C++)
 
