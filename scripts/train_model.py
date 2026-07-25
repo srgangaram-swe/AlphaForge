@@ -21,6 +21,7 @@ script exists so there is a real, inspectable training loop with artifacts.
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 
 import pandas as pd
 from _common import (
@@ -39,7 +40,7 @@ from alphaforge.evaluation import (
     quantile_return_table,
     regression_metrics,
 )
-from alphaforge.features import build_features
+from alphaforge.features import FittedFeatureTransformer, FittedTransformSpec, build_features
 from alphaforge.labels.labels import build_labels
 from alphaforge.models.registry import seed_model_specs
 from alphaforge.research import write_frame_artifact
@@ -116,8 +117,18 @@ def main() -> None:
     train_frame = data[data["date"].isin(trainval_dates)]
     test_frame = data[data["date"].isin(test_dates)]
 
-    def matrix(frame: pd.DataFrame) -> pd.DataFrame:
-        X = frame[x_cols].copy()
+    transform_spec = FittedTransformSpec.from_config(feature_cfg.get("fitted_transform"))
+    transformer: FittedFeatureTransformer | None = None
+    if transform_spec.enabled:
+        transformer = FittedFeatureTransformer(transform_spec)
+        train_values = transformer.fit_transform(train_frame[x_cols], train_frame["date"])
+        test_values = transformer.transform(test_frame[x_cols])
+    else:
+        train_values = train_frame[x_cols].copy()
+        test_values = test_frame[x_cols].copy()
+
+    def matrix(values: pd.DataFrame, frame: pd.DataFrame) -> pd.DataFrame:
+        X = values.copy()
         X.index = pd.MultiIndex.from_frame(frame[ID_COLUMNS])
         return X
 
@@ -126,7 +137,11 @@ def main() -> None:
         f"training temporal_alpha: {len(train_frame):,} rows, "
         f"{len(trainval_dates)} dates, target={target}, aux={aux_cols}"
     )
-    model.fit(matrix(train_frame), train_frame[target], aux_y=train_frame[aux_cols])
+    model.fit(
+        matrix(train_values, train_frame),
+        train_frame[target],
+        aux_y=train_frame[aux_cols],
+    )
     history_record = model.history_
     if history_record is None:
         raise RuntimeError("temporal training completed without a training history")
@@ -140,7 +155,7 @@ def main() -> None:
     # single-touch test evaluation
     predictions = test_frame[ID_COLUMNS].copy()
     predictions["target"] = test_frame[target].to_numpy()
-    predictions["prediction"] = model.predict(matrix(test_frame))
+    predictions["prediction"] = model.predict(matrix(test_values, test_frame))
     predictions["model"] = "temporal_alpha"
     metrics = regression_metrics(predictions["target"], predictions["prediction"])
     by_date = information_coefficient_by_date(predictions)
@@ -157,6 +172,8 @@ def main() -> None:
     quantile_return_table(predictions).to_csv(run_dir / "quantile_returns.csv", index=False)
     ic_decay(predictions, labels, horizons).to_csv(run_dir / "ic_decay.csv", index=False)
     save_json({**metrics, **ic_stats}, run_dir / "test_metrics.json")
+    if transformer is not None and transformer.state_ is not None:
+        save_json(asdict(transformer.state_), run_dir / "fitted_transformation.json")
     save_meta(
         run_dir,
         kind="temporal_training",

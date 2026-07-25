@@ -33,7 +33,11 @@ from alphaforge.evaluation import (
     information_coefficient_by_date,
     probability_of_backtest_overfitting,
 )
-from alphaforge.features import build_features
+from alphaforge.features import (
+    FittedFeatureTransformer,
+    FittedTransformSpec,
+    build_features,
+)
 from alphaforge.labels.labels import build_labels
 from alphaforge.models.registry import create_model, seed_model_specs
 from alphaforge.portfolio import construct_portfolio
@@ -117,6 +121,15 @@ def _model_matrix(frame: pd.DataFrame, columns: list[str], model: Any) -> pd.Dat
     if getattr(model, "needs_sequence_index", False):
         matrix.index = pd.MultiIndex.from_frame(frame[["date", "symbol"]])
     return matrix
+
+
+def _transformed_model_matrix(
+    matrix: pd.DataFrame, frame: pd.DataFrame, model: Any
+) -> pd.DataFrame:
+    result = matrix.copy()
+    if getattr(model, "needs_sequence_index", False):
+        result.index = pd.MultiIndex.from_frame(frame[["date", "symbol"]])
+    return result
 
 
 def _validate_model_specs(model_specs: list[dict[str, Any]]) -> None:
@@ -607,6 +620,7 @@ def run_governed_signal_foundry_research(
             target=research_config.target,
             config=walk_forward_config,
             max_horizon=max_horizon,
+            transform_config=feature_config.get("fitted_transform"),
         )
         candidate_name, development_summary = _select_candidate(
             development.metrics,
@@ -625,14 +639,25 @@ def run_governed_signal_foundry_research(
         if train.empty or holdout.empty:
             raise ValueError("pre-registered final holdout has no eligible train/test rows")
         model = create_model(candidate_name, **selected_spec.get("params", {}))
-        model.fit(
-            _model_matrix(train, columns, model),
-            train[research_config.target].astype(float),
-        )
+        transform_spec = FittedTransformSpec.from_config(feature_config.get("fitted_transform"))
+        final_transform_state: dict[str, Any] | None = None
+        if transform_spec.enabled and not getattr(model, "requires_raw_features", False):
+            transformer = FittedFeatureTransformer(transform_spec)
+            transformed_train = transformer.fit_transform(train[columns], train["date"])
+            transformed_holdout = transformer.transform(holdout[columns])
+            train_matrix = _transformed_model_matrix(transformed_train, train, model)
+            holdout_matrix = _transformed_model_matrix(transformed_holdout, holdout, model)
+            if transformer.state_ is None:  # pragma: no cover - fit_transform guarantees state
+                raise RuntimeError("final-holdout transformer did not publish fitted state")
+            final_transform_state = asdict(transformer.state_)
+        else:
+            train_matrix = _model_matrix(train, columns, model)
+            holdout_matrix = _model_matrix(holdout, columns, model)
+        model.fit(train_matrix, train[research_config.target].astype(float))
         predictions = holdout[["date", "symbol", research_config.target]].rename(
             columns={research_config.target: "target"}
         )
-        predictions["prediction"] = model.predict(_model_matrix(holdout, columns, model))
+        predictions["prediction"] = model.predict(holdout_matrix)
         predictions["model"] = candidate_name
         predictions["window_id"] = "final_holdout"
 
@@ -746,6 +771,12 @@ def run_governed_signal_foundry_research(
 
         development_summary.to_csv(staging / "development_model_selection.csv", index=False)
         development.metrics.to_csv(staging / "development_windows.csv", index=False)
+        if not development.transformations.empty:
+            development.transformations.to_csv(
+                staging / "development_fitted_transformations.csv", index=False
+            )
+        if final_transform_state is not None:
+            _write_json(staging / "final_holdout_fitted_transformation.json", final_transform_state)
         predictions.to_csv(staging / "final_holdout_predictions.csv", index=False)
         primary.equity_curve.to_csv(staging / "final_holdout_equity.csv", index=False)
         primary.orders.to_csv(staging / "orders.csv", index=False)

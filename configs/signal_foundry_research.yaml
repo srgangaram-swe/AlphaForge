@@ -34,6 +34,17 @@ models:
       l2_regularization: 1.0
 
 features:
+  registry_version: "1.0.0"
+  cache_dir: null
+  fitted_transform:
+    version: "1.0.0"
+    enabled: false
+    imputation: median
+    standardize: true
+    variance_threshold: null
+    pca_components: null
+    pca_whiten: false
+    min_fit_rows: 64
   return_lags: [1, 2, 3, 5, 10, 20]
   vol_windows: [5, 20, 60]
   ma_windows: [10, 20, 50, 200]
