@@ -11,7 +11,8 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Public market data engineering with yfinance, CSV, and synthetic sources.
 - Independent validation of immutable Signalattice bundles: contract version,
   semantic identity, content hashes, temporal availability, license policy, and
-  explicit point-in-time limitations.
+  explicit point-in-time limitations, including schema 1.1 historical-universe
+  and corporate-action records with fail-closed revision visibility.
 - Leak-safe feature engineering on a canonical `(date, symbol, OHLCV)` panel.
 - A 2-state Gaussian HMM regime engine (custom Baum-Welch EM) used strictly causally:
   expanding parameter refits + filtered (never smoothed) state probabilities.
@@ -66,8 +67,8 @@ flowchart LR
 Signalattice and AlphaForge are separate repositories joined only by the
 versioned `signal-foundry-market-data` contract. AlphaForge does not trust
 producer code: it independently checks the manifest, every partition hash,
-the exact schema, temporal semantics, license policy, and adjustment state
-before research begins.
+the exact schema, temporal semantics, license policy, adjustment state, and
+schema 1.1 universe/action record families before research begins.
 
 ## Quickstart
 

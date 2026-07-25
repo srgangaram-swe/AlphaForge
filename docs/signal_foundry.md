@@ -14,22 +14,35 @@ authorization. A favorable backtest is not evidence of guaranteed profit.
 `alphaforge.data.load_signal_foundry_dataset` accepts one content-addressed
 bundle directory and fails closed unless all of these checks pass:
 
-- contract name and exact schema version `1.0.0`;
+- contract name and supported schema version `1.0.0` or `1.1.0`;
 - bundle directory name and semantic manifest SHA-256 identity;
 - safe relative paths, unique partitions, partition SHA-256 hashes, row counts,
-  aggregate date bounds, and ticker universe;
+  complete declared Parquet inventory, aggregate date bounds, and ticker
+  universe;
 - exact column order, finite positive prices, nonnegative volume, valid OHLC
   bounds, unique `(date, ticker)` keys, and nonempty identifiers;
 - timezone-normalized `effective_at`, `available_at`, and `observed_at`, with no
-  observation or availability before effective time;
+  ambiguous timestamps or invalid observation/availability ordering;
 - explicit source adjustment state, license booleans, and point-in-time
   limitations for historical revisions, universe membership, and corporate
   actions.
 
-The optional `as_of` argument enforces
-`available_at <= decision timestamp`. Provider-adjusted close data is mapped
-into AlphaForge's adjusted-OHLCV representation using the declared adjustment
-state. Unknown adjustment semantics are rejected instead of guessed.
+Schema `1.1.0` adds independently verified bitemporal universe-membership and
+corporate-action record families. The consumer checks their manifest schemas,
+paths, hashes, row counts, strict UTC timestamps, stable record identities,
+revision uniqueness, supported event types, and action-specific payloads.
+Unknown or ambiguous records fail the entire load before any frame is returned.
+Schema `1.0.0` remains readable for compatibility, but it has no independently
+inspectable auxiliary record families and cannot be used to reconstruct a
+historical universe.
+
+The optional timezone-explicit `as_of` argument enforces both
+`effective_at <= decision timestamp` and
+`available_at <= decision timestamp` across prices, membership, and action
+events. Versioned auxiliary records collapse to the latest visible revision by
+stable identity. Provider-adjusted close data is mapped into AlphaForge's
+adjusted-OHLCV representation using the declared adjustment state. Unknown
+adjustment semantics are rejected instead of guessed.
 
 The loader preserves two distinct views. The market panel retains the actual
 session dates used for labels, prices, and fills. The decision panel dates each
@@ -38,10 +51,42 @@ timestamp made it usable. Features use the decision panel; labels and execution
 use the market panel. The generic one-panel loader therefore rejects Signal
 Foundry input and directs operators to this governed workflow.
 
+## Historical universe and action controls
+
+`SignalFoundryDataset.universe_membership_as_of` reconstructs the latest
+visible state of every known instrument in a named universe. Its result retains
+explicit exits (`is_member=False`) so removals and delistings stay visible.
+`active_universe_as_of` filters that reconstructed state only after the exit
+evidence has been applied. Both operations fail closed unless the bundle uses
+schema `1.1.0` and explicitly attests complete point-in-time universe
+membership.
+
+`corporate_actions_as_of` returns the latest visible revision of each effective
+action event. These records are evidence and diagnostics only: the loader
+never applies dividends, splits, merger consideration, symbol changes, or
+delisting returns to prices. Silent application would risk double adjustment
+because each price row already declares its provider adjustment state. A later
+execution/accounting slice must define any economic treatment explicitly and
+test it against the declared price policy.
+
+`PointInTimeDiagnostics` reports the schema, producer completeness flags,
+presence of auxiliary record families, observed price-adjustment states,
+survivorship risk, corporate-action risk, and plain-language warnings. It
+preserves uncertainty rather than upgrading an empty or incomplete record
+family into evidence.
+
 Licensed bundles must remain outside Git. The repository ignores
 `data/signal-foundry/`, `data/raw/`, caches, processed panels, and all run
 artifacts. Docker context exclusions provide a second boundary. Only synthetic
 contract fixtures are committed.
+
+The free WIKI bootstrap bundle is schema `1.1.0` but honestly contains empty
+universe and corporate-action families and declares the corresponding
+point-in-time completeness flags `false`. It remains useful for validating
+pipeline mechanics and historical experiments, but historical-universe
+reconstruction rejects it and the default readiness rubric remains
+`NOT_READY`. No API credential, licensed observation, or provider response is
+stored by AlphaForge.
 
 ## Pre-registered evaluation
 

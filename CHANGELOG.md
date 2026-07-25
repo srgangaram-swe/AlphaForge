@@ -8,6 +8,9 @@ still evolve between minor releases.
 
 ### Added
 
+- Independent Signal Foundry schema 1.1 universe-membership and
+  corporate-action validation, decision-time revision views, explicit
+  entry/exit reconstruction, and point-in-time risk diagnostics.
 - Versioned experiment manifests with canonical configuration identities, full
   Git provenance, immutable dataset fingerprints, named deterministic seed
   streams, exact dependency versions, safe runtime metadata, redacted
@@ -17,6 +20,9 @@ still evolve between minor releases.
 
 ### Changed
 
+- Signal Foundry as-of loading now applies both economic-effective and
+  information-availability cutoffs to every record family while preserving
+  schema 1.0 compatibility.
 - Governed Signal Foundry run manifests now use the versioned `2.0.0` wrapper
   and separate semantic experiment identity from execution and result metadata.
 - Added strict frozen schemas and cross-field validation for every supported
