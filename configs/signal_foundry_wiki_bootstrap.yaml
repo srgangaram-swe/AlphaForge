@@ -5,7 +5,10 @@
 
 research:
   holdout_start: "2017-01-03"
-  benchmark_symbol: SPY
+  # Matches the public Signalattice WIKI sample's declared benchmark. AAPL is
+  # not a diversified market proxy; that limitation independently blocks this
+  # engineering profile from qualifying paper or live readiness.
+  benchmark_symbol: AAPL
   target: fwd_ret_5
   horizons: [1, 5, 20]
   selection_metric: rank_ic

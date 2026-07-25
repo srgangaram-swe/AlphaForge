@@ -28,6 +28,7 @@ def test_wiki_bootstrap_profile_has_a_strict_pre_registered_boundary() -> None:
     )
 
     assert config["research"]["holdout_start"] == "2017-01-03"
+    assert config["research"]["benchmark_symbol"] == "AAPL"
     assert config["readiness"]["require_complete_point_in_time"] is True
     assert config["readiness"]["minimum_holdout_days"] == 252
 

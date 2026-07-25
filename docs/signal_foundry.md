@@ -92,6 +92,8 @@ Its dedicated pre-registered policy is
 `configs/signal_foundry_wiki_bootstrap.yaml`. The 2017-01-03 final-holdout
 boundary, four-candidate trial family, execution assumptions, stress scenarios,
 and readiness thresholds are fixed before the final interval is inspected.
+It uses AAPL only because the public Signalattice sample declares AAPL as its
+available benchmark; a single constituent is not a diversified market proxy.
 This profile is not a substitute for the default current-data policy.
 
 ## Pre-registered evaluation

@@ -8,7 +8,8 @@ Important limitations:
 - The no-cost Nasdaq WIKI engineering bundle ends on 2018-03-27, is
   current-vintage, and lacks complete historical revisions, point-in-time
   universe membership, and corporate-action records. It can validate pipeline
-  mechanics but must not qualify current paper or live readiness.
+  mechanics but must not qualify current paper or live readiness. Its declared
+  AAPL benchmark is one constituent, not a diversified investable market proxy.
 - Synthetic data verifies engineering behavior but is not market evidence; its
   embedded edge is deliberately faint but still far cleaner than real markets,
   so demo Sharpe ratios overstate what identical code would earn live.
