@@ -78,6 +78,42 @@ jobs:
       - name: Tests (network tests excluded; includes C++/Python parity)
         run: uv run python -m pytest -m "not network" --cov=alphaforge --cov-branch --cov-report=term-missing --cov-fail-under=78
 
+  optional-extras:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - extra: data
+            imports: "import pyarrow, yfinance"
+          - extra: ml
+            imports: "import lightgbm, xgboost"
+          - extra: app
+            imports: "import fastapi, plotly, streamlit, uvicorn"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.9.7"
+
+      - name: Install locked ${{ matrix.extra }} extra
+        run: uv sync --locked --extra "${{ matrix.extra }}"
+
+      - name: Import optional dependency boundary
+        env:
+          OPTIONAL_IMPORTS: ${{ matrix.imports }}
+        run: uv run python -c "$OPTIONAL_IMPORTS"
+
   smoke-demo:
     runs-on: ubuntu-latest
     timeout-minutes: 15

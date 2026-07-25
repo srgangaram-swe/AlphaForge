@@ -1,7 +1,7 @@
 PYTHON ?= python
 UV ?= uv
 
-.PHONY: install install-all lock-check test lint format typecheck policy check download-data build-features train evaluate \
+.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features train evaluate \
         walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
         native bench bench-native
 
@@ -13,6 +13,9 @@ install-all:
 
 lock-check:
 	$(UV) lock --check
+
+config-check:
+	$(PYTHON) scripts/validate_configs.py
 
 test:
 	$(PYTHON) -m pytest -m "not network" --cov=alphaforge --cov-branch --cov-report=term-missing --cov-fail-under=78
@@ -31,7 +34,7 @@ typecheck:
 policy:
 	$(PYTHON) -m pre_commit run --all-files
 
-check: lock-check policy typecheck test
+check: lock-check config-check policy typecheck test
 
 download-data:
 	$(PYTHON) scripts/download_data.py --config configs/data.yaml

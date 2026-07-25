@@ -34,6 +34,8 @@ dependencies = [
     "scipy>=1.10",
     "PyYAML>=6.0",
     "matplotlib>=3.7",
+    "pydantic>=2.13,<3",
+    "seaborn>=0.13,<0.14",
 ]
 
 [project.optional-dependencies]
@@ -41,7 +43,7 @@ data = ["yfinance>=0.2.40", "pyarrow>=14.0"]
 ml = ["lightgbm>=4.0", "xgboost>=2.0"]
 torch = ["torch>=2.1"]
 native = ["pybind11>=2.11"]  # C++ execution core bindings (see cpp/ and `make native`)
-app = ["streamlit>=1.30", "fastapi>=0.109", "uvicorn>=0.27", "plotly>=5.18", "pydantic>=2.5"]
+app = ["streamlit>=1.30", "fastapi>=0.109", "uvicorn>=0.27", "plotly>=5.18"]
 dev = [
     "pytest>=7.4",
     "pytest-cov>=4.1",

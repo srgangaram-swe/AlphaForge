@@ -21,8 +21,9 @@ import os
 import platform
 import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -52,11 +53,19 @@ DEFAULT_SEED_STREAMS = (
 )
 DEFAULT_DEPENDENCIES = (
     "alphaforge",
+    "lightgbm",
+    "matplotlib",
     "numpy",
     "pandas",
     "pyarrow",
+    "pydantic",
+    "PyYAML",
     "scikit-learn",
+    "seaborn",
     "scipy",
+    "tensorflow",
+    "torch",
+    "xgboost",
 )
 SENSITIVE_ARGUMENT_FRAGMENTS = ("api-key", "apikey", "password", "secret", "token")
 
@@ -146,6 +155,30 @@ def capture_environment(
     """Capture an allowlisted, secret-safe runtime and hardware snapshot."""
     source = os.environ if environ is None else environ
     safe_environment = {key: source[key] for key in SAFE_ENVIRONMENT_KEYS if key in source}
+    accelerator: dict[str, Any] = {
+        "backend": "cpu",
+        "cuda_runtime": "not-installed",
+        "devices": [],
+    }
+    try:
+        import torch
+
+        torch_version = getattr(torch, "version", None)
+        cuda = getattr(torch, "cuda", None)
+        backends = getattr(torch, "backends", None)
+        accelerator["cuda_runtime"] = getattr(torch_version, "cuda", None) or "not-available"
+        if cuda is None:
+            accelerator["probe_status"] = "incomplete-install"
+        elif cuda.is_available():
+            accelerator["backend"] = "cuda"
+            accelerator["devices"] = [
+                cuda.get_device_name(index) for index in range(cuda.device_count())
+            ]
+        elif backends is not None and hasattr(backends, "mps") and backends.mps.is_available():
+            accelerator["backend"] = "mps"
+            accelerator["devices"] = ["Apple Metal Performance Shaders"]
+    except ImportError:
+        pass
     return {
         "python": {
             "version": platform.python_version(),
@@ -160,6 +193,7 @@ def capture_environment(
         "hardware": {
             "logical_cpu_count": os.cpu_count(),
             "processor": platform.processor(),
+            "accelerator": accelerator,
         },
         "dependencies": dependency_versions(packages),
         "environment": safe_environment,
@@ -260,6 +294,21 @@ class ExperimentManifest:
     invocation: Mapping[str, Any]
     execution: Mapping[str, str]
     artifacts: tuple[Mapping[str, Any], ...]
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> ExperimentManifest:
+        """Reconstruct a manifest from JSON-compatible data and revalidate it."""
+
+        expected = set(cls.__dataclass_fields__)
+        if set(value) != expected:
+            raise ManifestValidationError("experiment manifest fields mismatch")
+        normalized = dict(value)
+        normalized["universe"] = tuple(value["universe"])
+        normalized["models"] = tuple(value["models"])
+        normalized["artifacts"] = tuple(value["artifacts"])
+        manifest = cls(**normalized)
+        manifest.validate()
+        return manifest
 
     @staticmethod
     def _semantic_payload(
@@ -449,3 +498,60 @@ class ExperimentManifest:
         """Return a JSON-serializable mapping after revalidating invariants."""
         self.validate()
         return asdict(self)
+
+
+def write_experiment_manifest(manifest: ExperimentManifest, path: str | Path) -> Path:
+    """Atomically publish a validated experiment manifest."""
+
+    destination = Path(path)
+    if destination.name != "run_manifest.json" or destination.is_symlink():
+        raise ManifestValidationError("experiment manifest path must name run_manifest.json")
+    encoded = canonical_json(manifest.to_dict()) + b"\n"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=destination.parent,
+            prefix=".run_manifest.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_name = handle.name
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, destination)
+    except BaseException:
+        if temporary_name is not None:
+            Path(temporary_name).unlink(missing_ok=True)
+        raise
+    return destination
+
+
+def refresh_experiment_manifest(
+    run_root: str | Path,
+    *,
+    finished_at: str | None = None,
+) -> ExperimentManifest:
+    """Refresh a run's artifact inventory without changing semantic identity."""
+
+    root = Path(run_root)
+    path = root / "run_manifest.json"
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        manifest = ExperimentManifest.from_dict(document)
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError) as exc:
+        raise ManifestValidationError(f"cannot refresh invalid experiment manifest {path}") from exc
+    finish = finished_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    refreshed = replace(
+        manifest,
+        execution={
+            "started_at": str(manifest.execution["started_at"]),
+            "finished_at": finish,
+        },
+        artifacts=tuple(inventory_artifacts(root, exclude=("run_manifest.json",))),
+    )
+    refreshed.validate()
+    write_experiment_manifest(refreshed, path)
+    return refreshed

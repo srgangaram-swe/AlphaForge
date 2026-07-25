@@ -1,0 +1,100 @@
+"""Strict configuration boundary and cross-field invariant tests."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import yaml
+
+from alphaforge.config import SCHEMAS, ConfigValidationError, load_config
+
+
+def _write_yaml(path: Path, payload: object) -> Path:
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("kind", sorted(SCHEMAS))
+def test_every_committed_configuration_has_a_strict_schema(kind: str) -> None:
+    config = load_config(Path("configs") / f"{kind}.yaml", kind)
+    assert config
+
+
+@pytest.mark.parametrize(
+    ("kind", "mutation", "message"),
+    [
+        ("data", lambda cfg: cfg.update({"api_key": "must-not-appear"}), "extra"),
+        (
+            "features",
+            lambda cfg: cfg["macd"].update({"future_window": 1}),
+            "future_window",
+        ),
+        ("models", lambda cfg: cfg["walk_forward"].update({"embargo_days": 0}), "embargo"),
+        (
+            "backtest",
+            lambda cfg: cfg["execution"].update({"price_field": "close"}),
+            "price_field",
+        ),
+        ("portfolio", lambda cfg: cfg.update({"cash_buffer": 1.5}), "cash_buffer"),
+        ("risk", lambda cfg: cfg.update({"var_confidence": 0.95}), "var_confidence"),
+        (
+            "signal_foundry_research",
+            lambda cfg: cfg["readiness"].update({"unknown_gate": True}),
+            "unknown_gate",
+        ),
+    ],
+)
+def test_invalid_or_unknown_settings_fail_before_execution(
+    tmp_path: Path,
+    kind: str,
+    mutation: object,
+    message: str,
+) -> None:
+    original = yaml.safe_load(Path(f"configs/{kind}.yaml").read_text(encoding="utf-8"))
+    assert isinstance(original, dict)
+    mutation(original)  # type: ignore[operator]
+    path = _write_yaml(tmp_path / f"{kind}.yaml", original)
+
+    with pytest.raises(ConfigValidationError, match=message):
+        load_config(path, kind)
+
+
+@pytest.mark.parametrize("payload", [None, [], "not-a-mapping"])
+def test_configuration_root_must_be_a_mapping(tmp_path: Path, payload: object) -> None:
+    path = _write_yaml(tmp_path / "bad.yaml", payload)
+
+    with pytest.raises(ConfigValidationError, match="root must be a mapping"):
+        load_config(path, "data")
+
+
+def test_data_configuration_rejects_unsafe_paths_and_date_order(tmp_path: Path) -> None:
+    config = yaml.safe_load(Path("configs/data.yaml").read_text(encoding="utf-8"))
+    config["cache_dir"] = "../outside"
+    path = _write_yaml(tmp_path / "unsafe.yaml", config)
+    with pytest.raises(ConfigValidationError, match="safe relative path"):
+        load_config(path, "data")
+
+    config["cache_dir"] = "data/cache"
+    config["end"] = config["start"]
+    path = _write_yaml(tmp_path / "dates.yaml", config)
+    with pytest.raises(ConfigValidationError, match="earlier than end"):
+        load_config(path, "data")
+
+
+def test_model_parameter_names_are_not_an_untyped_escape_hatch(tmp_path: Path) -> None:
+    config = yaml.safe_load(Path("configs/models.yaml").read_text(encoding="utf-8"))
+    config["models"][0]["params"] = {"magic_accuracy": 1.0}
+    path = _write_yaml(tmp_path / "models.yaml", config)
+
+    with pytest.raises(ConfigValidationError, match="unknown parameters"):
+        load_config(path, "models")
+
+
+def test_strategy_specific_unused_settings_are_rejected(tmp_path: Path) -> None:
+    config = yaml.safe_load(Path("configs/backtest.yaml").read_text(encoding="utf-8"))
+    config["strategy_params"]["top_k"] = 5
+    path = _write_yaml(tmp_path / "backtest.yaml", config)
+
+    with pytest.raises(ConfigValidationError, match="unused by long_short"):
+        load_config(path, "backtest")

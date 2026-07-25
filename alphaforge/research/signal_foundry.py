@@ -35,7 +35,7 @@ from alphaforge.evaluation import (
 )
 from alphaforge.features import build_features
 from alphaforge.labels.labels import build_labels
-from alphaforge.models.registry import create_model
+from alphaforge.models.registry import create_model, seed_model_specs
 from alphaforge.portfolio import construct_portfolio
 from alphaforge.research.manifest import (
     ExperimentManifest,
@@ -48,6 +48,7 @@ from alphaforge.risk import drawdown_series, performance_summary, regime_perform
 from alphaforge.signals import build_signals
 from alphaforge.training import run_walk_forward
 from alphaforge.training.walk_forward import supervised_frame
+from alphaforge.utils import set_seed
 
 
 @dataclass(frozen=True)
@@ -509,6 +510,8 @@ def run_governed_signal_foundry_research(
     evidence while production runs retain honest start and finish timestamps.
     """
     _validate_model_specs(model_specs)
+    set_seed(research_config.seed)
+    model_specs = seed_model_specs(model_specs, research_config.seed)
     if research_config.benchmark_symbol not in set(dataset.panel["symbol"]):
         raise ValueError("pre-registered benchmark is absent from the verified bundle")
     if (

@@ -13,6 +13,8 @@ from alphaforge.research.manifest import (
     derive_seed_map,
     inventory_artifacts,
     redact_cli_arguments,
+    refresh_experiment_manifest,
+    write_experiment_manifest,
 )
 
 
@@ -75,6 +77,7 @@ def test_environment_capture_is_allowlisted_and_secret_safe() -> None:
     )
 
     assert snapshot["environment"] == {"OMP_NUM_THREADS": "4"}
+    assert snapshot["hardware"]["accelerator"]["backend"] in {"cpu", "cuda", "mps"}
     assert "must-not-appear" not in str(snapshot)
 
 
@@ -147,3 +150,28 @@ def test_manifest_rejects_non_utc_or_malformed_dates(tmp_path: Path) -> None:
 
     with pytest.raises(ManifestValidationError, match="ISO-8601 dates"):
         _manifest(tmp_path, date_end="2024-99-99")
+
+
+def test_manifest_publication_and_artifact_refresh_preserve_identity(tmp_path: Path) -> None:
+    original = _manifest(tmp_path)
+    path = write_experiment_manifest(original, tmp_path / "run_manifest.json")
+    (tmp_path / "later.csv").write_text("value\n1\n", encoding="utf-8")
+
+    refreshed = refresh_experiment_manifest(
+        tmp_path,
+        finished_at="2026-07-24T00:00:03Z",
+    )
+
+    assert refreshed.experiment_id == original.experiment_id
+    assert refreshed.execution["finished_at"] == "2026-07-24T00:00:03Z"
+    assert {artifact["path"] for artifact in refreshed.artifacts} == {
+        "later.csv",
+        "metrics.json",
+    }
+    assert path.read_text(encoding="utf-8").endswith("\n")
+    assert not list(tmp_path.glob(".run_manifest.*.tmp"))
+
+
+def test_manifest_publication_rejects_unsafe_destination(tmp_path: Path) -> None:
+    with pytest.raises(ManifestValidationError, match="run_manifest.json"):
+        write_experiment_manifest(_manifest(tmp_path), tmp_path / "manifest.json")

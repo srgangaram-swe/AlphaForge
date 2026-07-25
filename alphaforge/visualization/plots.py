@@ -13,6 +13,7 @@ Conventions (deliberate, not decorative):
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal, cast
 
 import matplotlib
 
@@ -20,13 +21,14 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
+from matplotlib.container import BarContainer
 
-# validated palette (light surface)
-BLUE = "#2a78d6"
-AQUA = "#1baf7a"
-YELLOW = "#eda100"
-VIOLET = "#4a3aa7"
-RED = "#e34948"
+from alphaforge.research import read_frame_artifact
+
+# Seaborn's colorblind palette is the categorical default for sprint evidence.
+sns.set_theme(context="notebook", style="whitegrid", palette="colorblind")
+BLUE, YELLOW, AQUA, RED, VIOLET, *_ = sns.color_palette("colorblind", 10)
 SURFACE = "#fcfcfb"
 GRID = "#e5e4e1"
 TEXT = "#0b0b0b"
@@ -69,24 +71,64 @@ def _save(fig: plt.Figure, path: Path) -> Path:
     return path
 
 
+def _label_bars(
+    ax: plt.Axes,
+    *,
+    fmt: str,
+    label_type: Literal["center", "edge"] = "edge",
+    color: object = TEXT_2,
+) -> None:
+    for container in ax.containers:
+        if isinstance(container, BarContainer):
+            ax.bar_label(
+                container,
+                fmt=fmt,
+                fontsize=8,
+                color=color,
+                padding=2,
+                label_type=label_type,
+            )
+
+
 def plot_training_history(history: pd.DataFrame, path: str | Path) -> Path:
     """Loss curves and validation rank IC per epoch (stacked, never dual-axis)."""
     with plt.rc_context(_RC):
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(7, 5), sharex=True)
-        ax1.plot(history["epoch"], history["train_loss"], color=BLUE, lw=2, label="train loss")
-        ax1.plot(history["epoch"], history["val_loss"], color=AQUA, lw=2, label="validation loss")
+        losses = history[["epoch", "train_loss", "val_loss"]].melt(
+            id_vars="epoch", var_name="series", value_name="loss"
+        )
+        losses["series"] = losses["series"].map(
+            {"train_loss": "Train loss", "val_loss": "Validation loss"}
+        )
+        sns.lineplot(
+            data=losses,
+            x="epoch",
+            y="loss",
+            hue="series",
+            palette={"Train loss": BLUE, "Validation loss": AQUA},
+            linewidth=2,
+            ax=ax1,
+        )
         ax1.set_title("Training loss")
         ax1.legend(loc="upper right")
         _style(ax1)
 
-        ax2.plot(history["epoch"], history["val_rank_ic"], color=BLUE, lw=2)
+        sns.lineplot(
+            data=history,
+            x="epoch",
+            y="val_rank_ic",
+            color=BLUE,
+            linewidth=2,
+            ax=ax2,
+        )
         best = history["val_rank_ic"].idxmax()
-        ax2.scatter(
-            history.loc[best, "epoch"],
-            history.loc[best, "val_rank_ic"],
+        sns.scatterplot(
+            x=[history.loc[best, "epoch"]],
+            y=[history.loc[best, "val_rank_ic"]],
             color=BLUE,
             s=30,
             zorder=3,
+            ax=ax2,
         )
         ax2.annotate(
             f"best {history.loc[best, 'val_rank_ic']:.3f}",
@@ -107,11 +149,27 @@ def plot_ic_timeseries(ic_by_date: pd.DataFrame, path: str | Path, window: int =
     """Daily rank IC with a rolling mean — is the signal stable or episodic?"""
     frame = ic_by_date.copy()
     frame["date"] = pd.to_datetime(frame["date"])
+    frame["daily rank IC"] = frame["rank_ic"]
+    frame[f"{window}d mean"] = (
+        frame["rank_ic"].rolling(window, min_periods=max(1, window // 3)).mean()
+    )
+    lines = frame.melt(
+        id_vars="date",
+        value_vars=["daily rank IC", f"{window}d mean"],
+        var_name="series",
+        value_name="rank IC",
+    )
     with plt.rc_context(_RC):
         fig, ax = plt.subplots(figsize=(8, 3.4))
-        ax.plot(frame["date"], frame["rank_ic"], color=GRID, lw=0.8, zorder=1)
-        rolling = frame["rank_ic"].rolling(window, min_periods=window // 3).mean()
-        ax.plot(frame["date"], rolling, color=BLUE, lw=2, zorder=2, label=f"{window}d mean")
+        sns.lineplot(
+            data=lines,
+            x="date",
+            y="rank IC",
+            hue="series",
+            palette={"daily rank IC": GRID, f"{window}d mean": BLUE},
+            linewidth=1.4,
+            ax=ax,
+        )
         ax.axhline(0, color=TEXT_2, lw=0.8)
         ax.set_title("Out-of-sample daily rank IC")
         ax.legend(loc="upper right")
@@ -123,16 +181,19 @@ def plot_ic_decay(decay: pd.DataFrame, path: str | Path) -> Path:
     """Mean rank IC by label horizon — how fast the edge fades."""
     with plt.rc_context(_RC):
         fig, ax = plt.subplots(figsize=(5, 3.2))
-        bars = ax.bar(
-            decay["horizon"].astype(str),
-            decay["mean_rank_ic"],
+        frame = decay.assign(horizon=decay["horizon"].astype(str))
+        sns.barplot(
+            data=frame,
+            x="horizon",
+            y="mean_rank_ic",
             color=BLUE,
-            width=0.55,
-            zorder=2,
+            errorbar=None,
+            ax=ax,
         )
-        ax.bar_label(bars, fmt="%.3f", fontsize=8, color=TEXT_2, padding=2)
+        _label_bars(ax, fmt="%.3f")
         ax.axhline(0, color=TEXT_2, lw=0.8)
         ax.set_xlabel("horizon (days)")
+        ax.set_ylabel("mean rank IC")
         ax.set_title("IC decay by forward horizon")
         _style(ax)
     return _save(fig, Path(path))
@@ -143,17 +204,25 @@ def plot_quantile_returns(quantiles: pd.DataFrame, path: str | Path) -> Path:
     so bars use the diverging blue/red pair around zero."""
     with plt.rc_context(_RC):
         fig, ax = plt.subplots(figsize=(5, 3.2))
-        colors = [BLUE if v >= 0 else RED for v in quantiles["mean_return"]]
-        bars = ax.bar(
-            quantiles["quantile"].astype(str),
-            quantiles["mean_return"],
-            color=colors,
-            width=0.55,
-            zorder=2,
+        frame = quantiles.assign(
+            quantile=quantiles["quantile"].astype(str),
+            direction=quantiles["mean_return"].ge(0).map({True: "non-negative", False: "negative"}),
         )
-        ax.bar_label(bars, fmt="%.4f", fontsize=8, color=TEXT_2, padding=2)
+        sns.barplot(
+            data=frame,
+            x="quantile",
+            y="mean_return",
+            hue="direction",
+            palette={"non-negative": BLUE, "negative": RED},
+            errorbar=None,
+            dodge=False,
+            legend=False,
+            ax=ax,
+        )
+        _label_bars(ax, fmt="%.4f")
         ax.axhline(0, color=TEXT_2, lw=0.8)
         ax.set_xlabel("prediction quantile (1 = lowest)")
+        ax.set_ylabel("mean forward return")
         ax.set_title("Realized forward return by prediction quantile")
         _style(ax)
     return _save(fig, Path(path))
@@ -161,14 +230,31 @@ def plot_quantile_returns(quantiles: pd.DataFrame, path: str | Path) -> Path:
 
 def plot_model_comparison(ic_summary: pd.DataFrame, path: str | Path) -> Path:
     """Mean rank IC per model with Newey-West t-stats as direct labels."""
-    frame = ic_summary.dropna(subset=["mean_ic"]).sort_values("mean_ic")
+    frame = ic_summary.dropna(subset=["mean_ic"]).sort_values("mean_ic").copy()
+    frame["model_label"] = frame["model"].str.replace("_", " ", regex=False)
     with plt.rc_context(_RC):
         fig, ax = plt.subplots(figsize=(7, 0.5 * len(frame) + 1.6))
-        bars = ax.barh(frame["model"], frame["mean_ic"], color=BLUE, height=0.55, zorder=2)
+        sns.barplot(
+            data=frame,
+            x="mean_ic",
+            y="model_label",
+            color=BLUE,
+            errorbar=None,
+            ax=ax,
+        )
+        bars = cast(BarContainer, ax.containers[0])
         labels = [f"t={t:.1f}" for t in frame["t_stat_nw"]]
-        ax.bar_label(bars, labels=labels, fontsize=8, color=TEXT_2, padding=4)
+        ax.bar_label(
+            bars,
+            labels=labels,
+            fontsize=8,
+            color="white",
+            padding=0,
+            label_type="center",
+        )
         ax.axvline(0, color=TEXT_2, lw=0.8)
         ax.set_xlabel("mean daily rank IC (out-of-sample)")
+        ax.set_ylabel("model")
         ax.set_title("Model comparison — walk-forward OOS")
         ax.grid(True, axis="x", zorder=0)
         for side in ("top", "right"):
@@ -179,19 +265,29 @@ def plot_model_comparison(ic_summary: pd.DataFrame, path: str | Path) -> Path:
 def plot_prediction_scatter(
     predictions: pd.DataFrame, path: str | Path, max_points: int = 20_000
 ) -> Path:
-    """Prediction vs realized forward return (hexbin, single-hue sequential)."""
+    """Prediction vs realized forward return (2D histogram, sequential hue)."""
     frame = predictions[["prediction", "target"]].dropna()
     if len(frame) > max_points:
         frame = frame.sample(max_points, random_state=42)
     with plt.rc_context(_RC):
         fig, ax = plt.subplots(figsize=(5, 4.2))
-        hb = ax.hexbin(frame["prediction"], frame["target"], gridsize=40, cmap="Blues", mincnt=1)
-        fig.colorbar(hb, ax=ax, label="observations")
+        sns.histplot(
+            data=frame,
+            x="prediction",
+            y="target",
+            bins=40,
+            cmap=sns.light_palette(BLUE, as_cmap=True),
+            cbar=True,
+            pthresh=0.01,
+            ax=ax,
+        )
         ax.axhline(0, color=TEXT_2, lw=0.8)
         ax.axvline(0, color=TEXT_2, lw=0.8)
         ax.set_xlabel("prediction")
         ax.set_ylabel("realized forward return")
-        ax.set_title("Prediction vs realized (OOS)")
+        ax.set_title(f"Prediction vs realized (OOS, n={len(frame):,})")
+        if len(fig.axes) > 1:
+            fig.axes[-1].set_ylabel("observations")
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
     return _save(fig, Path(path))
@@ -229,9 +325,9 @@ def save_evaluation_plots(run_dir: str | Path, model: str | None = None) -> list
             plot_quantile_returns(pd.read_csv(quantile_path), plots_dir / "quantile_returns.png")
         )
 
-    predictions_path = run_dir / "predictions.pkl"
+    predictions_path = run_dir / "predictions.table.json"
     if predictions_path.exists():
-        preds = pd.read_pickle(predictions_path)
+        preds = read_frame_artifact(predictions_path)
         if model is None and "model" in preds.columns and not preds.empty:
             from alphaforge.signals import select_model_predictions
 

@@ -8,6 +8,7 @@ with actionable messages only when actually requested.
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 from typing import Any
 
 from alphaforge.models.base import AlphaModel
@@ -72,3 +73,30 @@ def create_model(name: str, **params: Any) -> AlphaModel:
 
 def available_models() -> list[str]:
     return sorted(MODEL_REGISTRY)
+
+
+def seed_model_specs(model_specs: list[dict[str, Any]], root_seed: int) -> list[dict[str, Any]]:
+    """Inject the declared root seed into every applicable model backend.
+
+    The transformation is independent of candidate order and never overwrites
+    an explicitly pre-registered model seed.
+    """
+
+    if root_seed < 0:
+        raise ValueError("root_seed must be non-negative")
+    seeded = deepcopy(model_specs)
+    for spec in seeded:
+        name = str(spec.get("name", ""))
+        params = spec.setdefault("params", {})
+        if not isinstance(params, dict):
+            raise TypeError(f"model {name!r} params must be a mapping")
+        if name in {"random_forest", "gradient_boosting"}:
+            params.setdefault("random_state", root_seed)
+        elif name in {"torch_mlp", "torch_gru", "torch_tcn", "temporal_alpha"}:
+            params.setdefault("seed", root_seed)
+        elif name == "ensemble":
+            members = params.get("members")
+            if not isinstance(members, list):
+                raise TypeError("ensemble members must be a list")
+            params["members"] = seed_model_specs(members, root_seed)
+    return seeded

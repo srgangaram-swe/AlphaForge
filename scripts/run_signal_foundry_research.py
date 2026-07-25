@@ -6,10 +6,10 @@ import argparse
 import sys
 from pathlib import Path
 
+from alphaforge.config import load_signal_foundry_research_config
 from alphaforge.data import load_signal_foundry_dataset
 from alphaforge.evaluation import ReadinessThresholds
 from alphaforge.research import GovernedResearchConfig, run_governed_signal_foundry_research
-from alphaforge.utils import load_yaml
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,21 +28,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    config = load_yaml(args.config)
-    expected = {
-        "research",
-        "readiness",
-        "models",
-        "features",
-        "walk_forward",
-        "backtest",
-    }
-    unknown = set(config) - expected
-    missing = expected - set(config)
-    if unknown or missing:
-        raise ValueError(
-            f"governed config fields mismatch; missing={sorted(missing)}, unknown={sorted(unknown)}"
-        )
+    config = load_signal_foundry_research_config(args.config)
     research_values = dict(config["research"])
     research_values["horizons"] = tuple(research_values.get("horizons", (1, 5, 20)))
     result = run_governed_signal_foundry_research(

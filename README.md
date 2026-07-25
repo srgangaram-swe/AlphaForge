@@ -22,8 +22,13 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - A neural temporal alpha model (dilated causal TCN + attention pooling, composite
   Huber + cross-sectional IC loss) with a real training loop — early stopping on
   validation rank IC, checkpointing, persisted history — via `make train` (ADR 0002).
-- Evaluation plots (training curves, IC time series/decay, quantile returns,
-  model comparison) rendered into every run and embedded in the report.
+- Reproducible Seaborn evaluation plots (training curves, IC time
+  series/decay, quantile returns, model comparison) rendered with an accessible
+  palette and embedded in the report.
+- Strict frozen configuration schemas for every supported YAML entry point;
+  unknown, unused, unsafe, and cross-field-invalid settings fail before work.
+- Versioned, atomic, non-executable JSON Table Schema artifacts replace implicit
+  pickle interchange across the local research pipeline.
 - Overfitting statistics: Probabilistic and Deflated Sharpe Ratios, Probability of
   Backtest Overfitting (CSCV), and Newey-West IC t-statistics.
 - Backtests that use out-of-sample predictions only.
@@ -73,6 +78,7 @@ market-data credentials.
 
 ```bash
 make install
+uv run make config-check
 uv run make test
 uv run make demo
 ```
@@ -201,6 +207,7 @@ After `make demo`, inspect:
 
 - `runs/latest_run.txt`
 - `model_metrics.csv`
+- `panel.table.json` / `features.table.json` / `predictions.table.json`
 - `walk_forward_windows.csv`
 - `equity_curve.csv`
 - `orders.csv` / `fills.csv` / `pnl_attribution.csv`
