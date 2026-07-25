@@ -8,6 +8,11 @@ still evolve between minor releases.
 
 ### Added
 
+- Schema-1.0 financial-label contracts for regression, classification,
+  threshold, quantile, triple-barrier, volatility-scaled, and meta-label
+  targets, with deterministic identities, normalized future-event intervals,
+  holdout protection, statistical diagnostics, and reproducible synthetic
+  Seaborn evidence.
 - A versioned semantic feature registry, deterministic content-addressed
   feature cache with verified lineage, and train-fold-only fitted-transform
   state for walk-forward and governed final-holdout workflows.
