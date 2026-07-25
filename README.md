@@ -20,8 +20,11 @@ AlphaForge is an educational quantitative research and ML engineering project. I
   threshold, quantile, triple-barrier, volatility-scaled, and meta-label
   definitions, with explicit future intervals, holdout protection, dependence,
   balance, stability, and sensitivity diagnostics.
-- Walk-forward model training with an embargo at least as large as the longest label horizon.
-- Purged K-Fold and Combinatorial Purged CV (CPCV) splitters for overlap-safe evaluation.
+- Explicit train/validation/test/final-holdout plans with rolling or expanding
+  histories, session gaps, exact label-interval purging, immutable fold
+  identities, and inspectable Seaborn fold evidence.
+- Purged K-Fold and Combinatorial Purged CV (CPCV) splitters with exact
+  heterogeneous event intervals for overlap-safe evaluation.
 - Baselines, linear models, tree models, optional torch models, and an IC-weighted ensemble.
 - A neural temporal alpha model (dilated causal TCN + attention pooling, composite
   Huber + cross-sectional IC loss) with a real training loop — early stopping on
@@ -95,6 +98,7 @@ Useful commands:
 make download-data      # yfinance / CSV / synthetic per configs/data.yaml
 make build-features     # feature and label panels
 make label-evidence OUTPUT=/tmp/alphaforge-label-evidence
+make temporal-evidence OUTPUT=/tmp/alphaforge-temporal-evidence
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
 make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
@@ -152,9 +156,13 @@ make bench-native  # pure C++ benchmark with latency percentiles
 Backtest results are only as good as the validation that produced them.
 AlphaForge ships the modern anti-overfitting toolkit and wires it into every run:
 
+- **Temporal validation plans** ([contract and mathematics](docs/temporal_validation.md)):
+  explicit train, validation, test, purge, embargo, overlap, and inaccessible
+  final-holdout roles; interval crossings fail closed on irregular calendars.
 - **Purged K-Fold & CPCV** (`alphaforge/training/purged_cv.py`): overlapping
-  labels demand purging around test blocks plus an embargo; CPCV evaluates all
-  C(n, k) test-group combinations to produce many OOS paths instead of one.
+  labels demand exact event-interval purging around every contiguous test block
+  plus an embargo; CPCV evaluates all C(n, k) test-group combinations to
+  produce many OOS paths instead of one.
 - **Deflated Sharpe Ratio** (`alphaforge/evaluation/overfitting.py`): P(true
   Sharpe > 0) after correcting for multiple testing (best-of-N selection),
   sample length, skew, and fat tails. Reported in every backtest summary with
@@ -187,7 +195,8 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - `alphaforge/labels`: versioned future-event labels and statistical diagnostics.
 - `alphaforge/models`: baselines, sklearn wrappers, torch wrappers, IC-weighted ensemble,
   Gaussian HMM regime model, registry.
-- `alphaforge/training`: walk-forward splitting, purged K-Fold, CPCV, OOS prediction panels.
+- `alphaforge/training`: interval-aware temporal plans, walk-forward splitting,
+  purged K-Fold, CPCV, and OOS prediction panels.
 - `alphaforge/evaluation`: IC analytics, PSR/DSR, PBO, Newey-West inference.
 - `alphaforge/signals`: rank, long-short, top-k, threshold, confidence-weighted,
   and regime-filtered signals.

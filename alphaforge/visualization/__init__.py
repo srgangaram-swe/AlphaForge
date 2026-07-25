@@ -14,6 +14,7 @@ from alphaforge.visualization.plots import (
     plot_training_history,
     save_evaluation_plots,
 )
+from alphaforge.visualization.temporal_plots import plot_temporal_folds
 
 __all__ = [
     "plot_label_class_balance",
@@ -26,6 +27,7 @@ __all__ = [
     "plot_prediction_scatter",
     "plot_quantile_returns",
     "plot_training_history",
+    "plot_temporal_folds",
     "save_label_diagnostic_plots",
     "save_evaluation_plots",
 ]
