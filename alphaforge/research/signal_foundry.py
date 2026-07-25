@@ -485,6 +485,34 @@ def _missing_price_halts(
     return False
 
 
+def _capacity_config(backtest_config: dict[str, Any]) -> tuple[CapacityConfig, float]:
+    """Translate the strict backtest capacity policy into evaluator inputs."""
+    settings = dict(backtest_config.get("capacity", {}))
+    required = {"aum_multiples", "max_participation_rate", "minimum_fill_ratio"}
+    supported = required | {"enabled", "impact_exponent", "variable_cost_fraction"}
+    missing = required - set(settings)
+    unknown = set(settings) - supported
+    if missing or unknown:
+        raise ValueError(
+            "capacity fields mismatch; " f"missing={sorted(missing)}, unknown={sorted(unknown)}"
+        )
+    if settings.get("enabled", True) is not True:
+        raise ValueError("governed research requires capacity evaluation to be enabled")
+    reference_aum = float(backtest_config.get("initial_capital", 1_000_000.0))
+    aum_values = tuple(reference_aum * float(multiple) for multiple in settings["aum_multiples"])
+    return (
+        CapacityConfig(
+            reference_aum=reference_aum,
+            aum_values=aum_values,
+            max_participation_rate=float(settings["max_participation_rate"]),
+            impact_exponent=float(settings.get("impact_exponent", 0.5)),
+            variable_cost_fraction=float(settings.get("variable_cost_fraction", 0.5)),
+            columns=CapacityColumns.for_fill_records(),
+        ),
+        float(settings["minimum_fill_ratio"]),
+    )
+
+
 def _write_json(path: Path, value: Any) -> None:
     path.write_bytes(_canonical_json(value) + b"\n")
 
@@ -710,30 +738,9 @@ def run_governed_signal_foundry_research(
             benchmark_symbol=research_config.benchmark_symbol,
             backtest_config=backtest_config,
         )
-        capacity_settings = dict(backtest_config.get("capacity", {}))
-        expected_capacity = {"aum_multiples", "max_participation_rate", "minimum_fill_ratio"}
-        if set(capacity_settings) != expected_capacity:
-            raise ValueError(
-                "capacity fields mismatch; "
-                f"missing={sorted(expected_capacity - set(capacity_settings))}, "
-                f"unknown={sorted(set(capacity_settings) - expected_capacity)}"
-            )
-        aum_values = tuple(
-            float(backtest_config.get("initial_capital", 1_000_000.0)) * float(multiple)
-            for multiple in capacity_settings["aum_multiples"]
-        )
-        capacity = estimate_capacity(
-            primary.fills,
-            CapacityConfig(
-                reference_aum=float(backtest_config.get("initial_capital", 1_000_000.0)),
-                aum_values=aum_values,
-                max_participation_rate=float(capacity_settings["max_participation_rate"]),
-                columns=CapacityColumns.for_fill_records(),
-            ),
-        )
-        capacity_passed = bool(
-            capacity.curve["fill_ratio"].min() >= float(capacity_settings["minimum_fill_ratio"])
-        )
+        capacity_config, minimum_fill_ratio = _capacity_config(backtest_config)
+        capacity = estimate_capacity(primary.fills, capacity_config)
+        capacity_passed = bool(capacity.curve["fill_ratio"].min() >= minimum_fill_ratio)
         primary_summary = performance_summary(primary.equity_curve)
         gross_curve = primary.equity_curve.copy()
         first_net_return = float(gross_curve["return"].iloc[0])

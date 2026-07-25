@@ -10,9 +10,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from alphaforge.config import load_signal_foundry_research_config
 from alphaforge.data import SignalFoundryDataset, SyntheticMarketConfig, generate_synthetic_market
 from alphaforge.evaluation import NOT_READY, ReadinessThresholds
 from alphaforge.research import GovernedResearchConfig, run_governed_signal_foundry_research
+from alphaforge.research.signal_foundry import _capacity_config
 
 
 def _dataset(tmp_path: Path) -> SignalFoundryDataset:
@@ -232,3 +234,14 @@ def test_governed_holdout_records_development_only_fitted_state(tmp_path: Path) 
     assert pd.Timestamp(holdout_state["fit_end"]) <= pd.Timestamp(result.dossier["development_end"])
     assert pd.Timestamp(holdout_state["fit_end"]) < pd.Timestamp(result.dossier["holdout_start"])
     assert len(holdout_state["state_id"]) == 64
+
+
+def test_committed_wiki_profile_maps_the_complete_capacity_contract() -> None:
+    profile = load_signal_foundry_research_config("configs/signal_foundry_wiki_bootstrap.yaml")
+
+    capacity, minimum_fill_ratio = _capacity_config(dict(profile["backtest"]))
+
+    assert capacity.reference_aum == 1_000_000.0
+    assert capacity.impact_exponent == 0.5
+    assert capacity.variable_cost_fraction == 0.5
+    assert minimum_fill_ratio == 0.95
