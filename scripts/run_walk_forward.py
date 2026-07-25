@@ -3,7 +3,15 @@ from __future__ import annotations
 import argparse
 
 import pandas as pd
-from _common import configure_fast_demo, load_configs, make_run_dir, save_meta, write_latest
+from _common import (
+    configure_fast_demo,
+    load_configs,
+    make_run_dir,
+    record_pipeline_manifest,
+    save_meta,
+    utc_timestamp,
+    write_latest,
+)
 
 from alphaforge.data import data_quality_report, load_prices
 from alphaforge.evaluation import (
@@ -15,9 +23,11 @@ from alphaforge.evaluation import (
 )
 from alphaforge.features import build_features
 from alphaforge.labels.labels import build_labels
+from alphaforge.models.registry import seed_model_specs
+from alphaforge.research import write_frame_artifact
 from alphaforge.signals import select_model_predictions
 from alphaforge.training import run_walk_forward
-from alphaforge.utils import save_json
+from alphaforge.utils import save_json, set_seed
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,11 +41,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--fast", action="store_true", help="Use a small CI-friendly synthetic experiment."
     )
-    parser.add_argument("--runs-dir", default="runs")
+    parser.add_argument("--runs-dir", help="Override the validated models-config run root.")
     return parser.parse_args()
 
 
 def main() -> None:
+    started_at = utc_timestamp()
     args = parse_args()
     model_cfg, data_cfg, feature_cfg = load_configs(
         args.config, args.data_config, args.feature_config
@@ -44,8 +55,11 @@ def main() -> None:
         data_cfg["source"] = "synthetic"
     if args.fast:
         configure_fast_demo(model_cfg, data_cfg)
+    root_seed = int(model_cfg["seed"])
+    set_seed(root_seed)
+    model_cfg["models"] = seed_model_specs(model_cfg["models"], root_seed)
 
-    run_dir = make_run_dir(model_cfg.get("runs_dir", args.runs_dir), prefix="wf")
+    run_dir = make_run_dir(args.runs_dir or model_cfg["runs_dir"], prefix="wf")
     panel, benchmark = load_prices(data_cfg)
     quality = data_quality_report(panel)
     features = build_features(panel, benchmark_symbol=benchmark, config=feature_cfg)
@@ -61,10 +75,10 @@ def main() -> None:
         max_horizon=max(horizons),
     )
 
-    panel.to_pickle(run_dir / "panel.pkl")
-    features.to_pickle(run_dir / "features.pkl")
-    labels.to_pickle(run_dir / "labels.pkl")
-    result.predictions.to_pickle(run_dir / "predictions.pkl")
+    write_frame_artifact(panel, run_dir / "panel.table.json")
+    write_frame_artifact(features, run_dir / "features.table.json")
+    write_frame_artifact(labels, run_dir / "labels.table.json")
+    write_frame_artifact(result.predictions, run_dir / "predictions.table.json")
     quality.to_csv(run_dir / "data_quality.csv", index=False)
     result.metrics.to_csv(run_dir / "model_metrics.csv", index=False)
     result.windows.to_csv(run_dir / "walk_forward_windows.csv", index=False)
@@ -111,8 +125,17 @@ def main() -> None:
         model_config=model_cfg,
         feature_config=feature_cfg,
     )
+    manifest = record_pipeline_manifest(
+        run_dir=run_dir,
+        panel=panel,
+        data_config=data_cfg,
+        model_config=model_cfg,
+        feature_config=feature_cfg,
+        started_at=started_at,
+    )
     write_latest(run_dir)
     print(f"walk-forward run: {run_dir}")
+    print(f"experiment id: {manifest.experiment_id}")
     print(f"oos predictions: {len(result.predictions):,}")
     print(f"models: {sorted(result.predictions['model'].unique())}")
 

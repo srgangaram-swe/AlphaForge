@@ -12,8 +12,10 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
-from importlib.metadata import PackageNotFoundError, version
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,12 +35,20 @@ from alphaforge.evaluation import (
 )
 from alphaforge.features import build_features
 from alphaforge.labels.labels import build_labels
-from alphaforge.models.registry import create_model
+from alphaforge.models.registry import create_model, seed_model_specs
 from alphaforge.portfolio import construct_portfolio
+from alphaforge.research.manifest import (
+    ExperimentManifest,
+    capture_environment,
+    capture_git_context,
+    inventory_artifacts,
+    redact_cli_arguments,
+)
 from alphaforge.risk import drawdown_series, performance_summary, regime_performance
 from alphaforge.signals import build_signals
 from alphaforge.training import run_walk_forward
 from alphaforge.training.walk_forward import supervised_frame
+from alphaforge.utils import set_seed
 
 
 @dataclass(frozen=True)
@@ -86,14 +96,6 @@ def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _sha256_file(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
 def _git_sha() -> str:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -108,25 +110,6 @@ def _git_sha() -> str:
     if len(value) != 40:
         raise RuntimeError("governed run requires a full Git SHA")
     return value
-
-
-def _dependency_versions() -> dict[str, str]:
-    """Fingerprint the numerical stack that can affect governed evidence."""
-    packages = (
-        "alphaforge",
-        "numpy",
-        "pandas",
-        "pyarrow",
-        "scikit-learn",
-        "scipy",
-    )
-    resolved: dict[str, str] = {}
-    for package in packages:
-        try:
-            resolved[package] = version(package)
-        except PackageNotFoundError:
-            resolved[package] = "not-installed"
-    return resolved
 
 
 def _model_matrix(frame: pd.DataFrame, columns: list[str], model: Any) -> pd.DataFrame:
@@ -518,9 +501,17 @@ def run_governed_signal_foundry_research(
     readiness_thresholds: ReadinessThresholds,
     output_root: str | Path = "runs/signal-foundry",
     code_sha: str | None = None,
+    invocation: Mapping[str, Any] | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> GovernedResearchResult:
-    """Execute one immutable, governed development/final-holdout evaluation."""
+    """Execute one immutable, governed development/final-holdout evaluation.
+
+    ``clock`` is injectable so reference tests can prove deterministic semantic
+    evidence while production runs retain honest start and finish timestamps.
+    """
     _validate_model_specs(model_specs)
+    set_seed(research_config.seed)
+    model_specs = seed_model_specs(model_specs, research_config.seed)
     if research_config.benchmark_symbol not in set(dataset.panel["symbol"]):
         raise ValueError("pre-registered benchmark is absent from the verified bundle")
     if (
@@ -529,20 +520,49 @@ def run_governed_signal_foundry_research(
     ):
         raise ValueError("bundle license policy is inconsistent")
 
-    resolved_sha = code_sha or _git_sha()
-    identity = {
-        "workflow_version": "1.0.0",
+    now = clock or (lambda: datetime.now(UTC))
+    started_at = now().astimezone(UTC).isoformat().replace("+00:00", "Z")
+    git_context = capture_git_context()
+    git_context["sha"] = code_sha or _git_sha()
+    runtime_environment = capture_environment()
+    invocation_record = dict(invocation or {})
+    invocation_record.setdefault("entrypoint", Path(sys.argv[0]).name)
+    invocation_record["arguments"] = redact_cli_arguments(
+        [str(argument) for argument in invocation_record.get("arguments", sys.argv[1:])]
+    )
+    dataset_record = {
         "bundle_id": dataset.bundle_id,
-        "code_sha": resolved_sha,
-        "dependencies": _dependency_versions(),
-        "research": asdict(research_config),
-        "readiness": asdict(readiness_thresholds),
-        "models": model_specs,
-        "features": feature_config,
-        "walk_forward": walk_forward_config,
-        "backtest": backtest_config,
+        "schema_version": dataset.manifest.get("schema_version", "unknown"),
+        "license": dataset.manifest["license"],
+        "point_in_time_limits": dataset.manifest["point_in_time_limits"],
     }
-    run_id = _sha256_bytes(_canonical_json(identity))
+    universe = sorted(dataset.panel["symbol"].unique().tolist())
+    date_range = {
+        "start": str(pd.Timestamp(dataset.panel["date"].min()).date()),
+        "end": str(pd.Timestamp(dataset.panel["date"].max()).date()),
+    }
+    label_record = asdict(research_config)
+    validation_record = {
+        "walk_forward": walk_forward_config,
+        "readiness": asdict(readiness_thresholds),
+    }
+    planned_manifest = ExperimentManifest.build(
+        code=git_context,
+        dataset=dataset_record,
+        universe=universe,
+        date_range=date_range,
+        features=feature_config,
+        label=label_record,
+        models=model_specs,
+        validation=validation_record,
+        transaction_costs=backtest_config,
+        root_seed=research_config.seed,
+        environment=runtime_environment,
+        invocation=invocation_record,
+        execution={"started_at": started_at, "finished_at": started_at},
+        artifacts=(),
+    )
+    run_id = planned_manifest.experiment_id
     root = Path(output_root)
     destination = root / run_id
     if destination.exists():
@@ -741,27 +761,38 @@ def run_governed_signal_foundry_research(
         _write_json(staging / "dossier.json", dossier)
         _write_markdown_dossier(staging / "dossier.md", dossier)
 
-        artifacts = [
-            {
-                "path": path.name,
-                "sha256": _sha256_file(path),
-                "bytes": path.stat().st_size,
-            }
-            for path in sorted(staging.iterdir())
-            if path.is_file()
-        ]
+        artifacts = inventory_artifacts(staging)
+        finished_at = now().astimezone(UTC).isoformat().replace("+00:00", "Z")
+        experiment_manifest = ExperimentManifest.build(
+            code=git_context,
+            dataset=dataset_record,
+            universe=universe,
+            date_range=date_range,
+            features=feature_config,
+            label=label_record,
+            models=model_specs,
+            validation=validation_record,
+            transaction_costs=backtest_config,
+            root_seed=research_config.seed,
+            environment=runtime_environment,
+            invocation=invocation_record,
+            execution={"started_at": started_at, "finished_at": finished_at},
+            artifacts=artifacts,
+        )
+        if experiment_manifest.experiment_id != run_id:
+            raise RuntimeError("experiment identity changed while publishing evidence")
         _write_json(
             staging / "run_manifest.json",
             {
-                **identity,
-                "run_id": run_id,
-                "candidate_model": candidate_name,
-                "development_end": str(development_end.date()),
-                "holdout_start": research_config.holdout_start,
-                "trial_ledger_head": ledger[-1]["record_hash"],
-                "license": dataset.manifest["license"],
-                "point_in_time_limits": dataset.manifest["point_in_time_limits"],
-                "artifacts": artifacts,
+                "run_manifest_version": "2.0.0",
+                "experiment": experiment_manifest.to_dict(),
+                "result": {
+                    "run_id": run_id,
+                    "candidate_model": candidate_name,
+                    "development_end": str(development_end.date()),
+                    "holdout_start": research_config.holdout_start,
+                    "trial_ledger_head": ledger[-1]["record_hash"],
+                },
             },
         )
         staging.replace(destination)

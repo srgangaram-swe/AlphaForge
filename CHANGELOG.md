@@ -6,6 +6,28 @@ still evolve between minor releases.
 
 ## [Unreleased]
 
+### Added
+
+- Versioned experiment manifests with canonical configuration identities, full
+  Git provenance, immutable dataset fingerprints, named deterministic seed
+  streams, exact dependency versions, safe runtime metadata, redacted
+  invocation arguments, and hashed artifact inventories.
+- A committed universal `uv.lock` plus locked CI and container installation for
+  reproducible dependency resolution across supported Python versions.
+
+### Changed
+
+- Governed Signal Foundry run manifests now use the versioned `2.0.0` wrapper
+  and separate semantic experiment identity from execution and result metadata.
+- Added strict frozen schemas and cross-field validation for every supported
+  YAML configuration, including model-parameter allowlists and a repository
+  configuration gate.
+- Replaced executable pickle pipeline interchange with atomic, resource-bounded
+  versioned JSON Table Schema artifacts.
+- Migrated evaluation graphics to Seaborn's plotting and theme APIs with a
+  colorblind palette and explicit sprint visual-evidence guidance.
+- Added locked CI import coverage for the data, ML, and application extras.
+
 ## [0.2.1] - 2026-07-23
 
 ### Added

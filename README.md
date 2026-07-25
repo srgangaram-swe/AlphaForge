@@ -22,8 +22,13 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - A neural temporal alpha model (dilated causal TCN + attention pooling, composite
   Huber + cross-sectional IC loss) with a real training loop — early stopping on
   validation rank IC, checkpointing, persisted history — via `make train` (ADR 0002).
-- Evaluation plots (training curves, IC time series/decay, quantile returns,
-  model comparison) rendered into every run and embedded in the report.
+- Reproducible Seaborn evaluation plots (training curves, IC time
+  series/decay, quantile returns, model comparison) rendered with an accessible
+  palette and embedded in the report.
+- Strict frozen configuration schemas for every supported YAML entry point;
+  unknown, unused, unsafe, and cross-field-invalid settings fail before work.
+- Versioned, atomic, non-executable JSON Table Schema artifacts replace implicit
+  pickle interchange across the local research pipeline.
 - Overfitting statistics: Probabilistic and Deflated Sharpe Ratios, Probability of
   Backtest Overfitting (CSCV), and Newey-West IC t-statistics.
 - Backtests that use out-of-sample predictions only.
@@ -66,13 +71,16 @@ before research begins.
 
 ## Quickstart
 
-Requires Python 3.12–3.14. The synthetic demo is offline and does not require
+Requires Python 3.12–3.14 and
+[uv](https://docs.astral.sh/uv/). The committed lockfile is the supported
+dependency resolution; the synthetic demo is offline and does not require
 market-data credentials.
 
 ```bash
 make install
-make test
-make demo
+uv run make config-check
+uv run make test
+uv run make demo
 ```
 
 The demo is fully offline. It generates synthetic market data, trains a small walk-forward experiment, runs an out-of-sample backtest, and writes a markdown report under `runs/`.
@@ -97,6 +105,10 @@ rubric in `configs/signal_foundry_research.yaml` separates development-only
 model selection from a purged final holdout. Its result can authorize only
 zero-capital shadow evaluation; it cannot authorize broker access, orders, or
 capital deployment. See [the Signal Foundry operator guide](docs/signal_foundry.md).
+Every governed run also writes a versioned, content-addressed experiment
+manifest. See [Reproducibility and experiment provenance](docs/reproducibility.md)
+for the identity, seed, environment, artifact, and credential-redaction
+contracts.
 
 ## Low-Latency Execution Core (C++)
 
@@ -195,6 +207,7 @@ After `make demo`, inspect:
 
 - `runs/latest_run.txt`
 - `model_metrics.csv`
+- `panel.table.json` / `features.table.json` / `predictions.table.json`
 - `walk_forward_windows.csv`
 - `equity_curve.csv`
 - `orders.csv` / `fills.csv` / `pnl_attribution.csv`

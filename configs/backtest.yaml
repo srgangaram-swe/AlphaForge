@@ -2,7 +2,6 @@
 strategy: long_short           # long_only_topk | long_short | rank_weighted | threshold
 strategy_params:
   quantile: 0.2                # top/bottom 20% per side (long_short)
-  top_k: 5                     # used by long_only_topk
 
 rebalance_frequency: 5         # select every fifth close-time target for rebalancing
 execution_lag: 1               # close(t) decision fills no earlier than open(t+1)

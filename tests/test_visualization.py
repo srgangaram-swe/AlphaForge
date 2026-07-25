@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from alphaforge.research import write_frame_artifact
 from alphaforge.visualization import save_evaluation_plots
 from alphaforge.visualization.plots import plot_quantile_returns, plot_training_history
 
@@ -66,7 +67,7 @@ def _fake_run_dir(tmp_path):
                     "model": "temporal_alpha",
                 }
             )
-    pd.DataFrame(rows).to_pickle(tmp_path / "predictions.pkl")
+    write_frame_artifact(pd.DataFrame(rows), tmp_path / "predictions.table.json")
     return tmp_path
 
 

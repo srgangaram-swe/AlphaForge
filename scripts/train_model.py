@@ -23,7 +23,13 @@ from __future__ import annotations
 import argparse
 
 import pandas as pd
-from _common import load_configs, make_run_dir, save_meta
+from _common import (
+    load_configs,
+    make_run_dir,
+    record_pipeline_manifest,
+    save_meta,
+    utc_timestamp,
+)
 
 from alphaforge.data import load_prices
 from alphaforge.evaluation import (
@@ -35,27 +41,42 @@ from alphaforge.evaluation import (
 )
 from alphaforge.features import build_features
 from alphaforge.labels.labels import build_labels
+from alphaforge.models.registry import seed_model_specs
+from alphaforge.research import write_frame_artifact
 from alphaforge.training.walk_forward import ID_COLUMNS, supervised_frame
-from alphaforge.utils import save_json
+from alphaforge.utils import save_json, set_seed
 from alphaforge.visualization import save_evaluation_plots
 
 
 def parse_args() -> argparse.Namespace:
+    def positive_int(value: str) -> int:
+        parsed = int(value)
+        if parsed < 1:
+            raise argparse.ArgumentTypeError("must be positive")
+        return parsed
+
+    def open_unit_float(value: str) -> float:
+        parsed = float(value)
+        if not 0.0 < parsed < 1.0:
+            raise argparse.ArgumentTypeError("must be in (0, 1)")
+        return parsed
+
     parser = argparse.ArgumentParser(description="Train the temporal alpha model end to end.")
     parser.add_argument("--config", default="configs/models.yaml")
     parser.add_argument("--data-config", default="configs/data.yaml")
     parser.add_argument("--feature-config", default="configs/features.yaml")
     parser.add_argument("--synthetic", action="store_true", help="Force the synthetic source.")
     parser.add_argument("--target", help="Label column (default from config).")
-    parser.add_argument("--epochs", type=int, help="Override max_epochs.")
-    parser.add_argument("--test-fraction", type=float, default=0.15)
-    parser.add_argument("--runs-dir", default="runs")
+    parser.add_argument("--epochs", type=positive_int, help="Override max_epochs.")
+    parser.add_argument("--test-fraction", type=open_unit_float, default=0.15)
+    parser.add_argument("--runs-dir", help="Override the validated models-config run root.")
     return parser.parse_args()
 
 
 def main() -> None:
     from alphaforge.models.temporal import TemporalAlphaModel
 
+    started_at = utc_timestamp()
     args = parse_args()
     model_cfg, data_cfg, feature_cfg = load_configs(
         args.config, args.data_config, args.feature_config
@@ -68,8 +89,13 @@ def main() -> None:
     temporal_params = dict(model_cfg.get("temporal", {}))
     if args.epochs is not None:
         temporal_params["max_epochs"] = args.epochs
+    root_seed = int(model_cfg["seed"])
+    set_seed(root_seed)
+    model_cfg["models"] = seed_model_specs(model_cfg["models"], root_seed)
+    model_cfg["target"] = target
+    model_cfg["temporal"] = temporal_params
 
-    run_dir = make_run_dir(args.runs_dir, prefix="train")
+    run_dir = make_run_dir(args.runs_dir or model_cfg["runs_dir"], prefix="train")
     panel, benchmark = load_prices(data_cfg)
     features = build_features(panel, benchmark_symbol=benchmark, config=feature_cfg)
     labels = build_labels(panel, benchmark_symbol=benchmark, horizons=horizons)
@@ -122,8 +148,9 @@ def main() -> None:
 
     # artifacts
     model.save(run_dir / "checkpoint.pt")
+    write_frame_artifact(panel, run_dir / "panel.table.json")
     history.to_csv(run_dir / "training_history.csv", index=False)
-    predictions.to_pickle(run_dir / "predictions.pkl")
+    write_frame_artifact(predictions, run_dir / "predictions.table.json")
     pd.DataFrame([{"model": "temporal_alpha", **ic_stats}]).to_csv(
         run_dir / "ic_summary.csv", index=False
     )
@@ -142,8 +169,17 @@ def main() -> None:
         data_config=data_cfg,
     )
     plots = save_evaluation_plots(run_dir, model="temporal_alpha")
+    manifest = record_pipeline_manifest(
+        run_dir=run_dir,
+        panel=panel,
+        data_config=data_cfg,
+        model_config=model_cfg,
+        feature_config=feature_cfg,
+        started_at=started_at,
+    )
 
     print(f"run dir: {run_dir}")
+    print(f"experiment id: {manifest.experiment_id}")
     print(
         f"test rank IC {ic_stats['mean_ic']:.4f} (NW t={ic_stats['t_stat_nw']:.2f}), "
         f"directional accuracy {metrics['directional_accuracy']:.3f}"

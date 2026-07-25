@@ -6,8 +6,9 @@ from pathlib import Path
 import pandas as pd
 from _common import latest_run_dir
 
+from alphaforge.config import load_backtest_config
 from alphaforge.paper import simulate_paper_trading
-from alphaforge.utils import load_yaml
+from alphaforge.research import read_frame_artifact, refresh_experiment_manifest
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,9 +21,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    cfg = load_yaml(args.config)
+    cfg = load_backtest_config(args.config)
     run_dir = Path(args.run_dir) if args.run_dir else latest_run_dir()
-    panel = pd.read_pickle(run_dir / "panel.pkl")
+    panel = read_frame_artifact(run_dir / "panel.table.json")
     weights_path = run_dir / "target_weights.csv"
     if not weights_path.exists():
         raise FileNotFoundError("target_weights.csv not found; run scripts/run_backtest.py first")
@@ -38,6 +39,7 @@ def main() -> None:
     )
     orders.to_csv(run_dir / "paper_orders.csv", index=False)
     state.to_csv(run_dir / "paper_state.csv", index=False)
+    refresh_experiment_manifest(run_dir)
     print("SIMULATED PAPER TRADING ONLY - no real orders were placed")
     print(f"orders: {len(orders):,}; output={run_dir}")
 
