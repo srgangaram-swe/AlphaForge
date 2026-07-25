@@ -5,8 +5,10 @@ AlphaForge is a modular research pipeline:
 ```mermaid
 flowchart TD
     raw[Raw market data] --> validate[Schema validation and quality report]
-    validate --> features[Causal feature engineering + HMM regime]
-    features --> labels[Forward labels]
+    validate --> registry[Versioned feature registry + lineage]
+    registry --> features[Causal feature engineering + HMM regime]
+    features --> cache[Validated content-addressed feature cache]
+    cache --> labels[Forward labels]
     labels --> splits[Walk-forward / Purged K-Fold / CPCV splits]
     splits --> models[Model training incl. IC-weighted ensemble]
     models --> preds[Out-of-sample prediction panel]
@@ -44,5 +46,10 @@ Two implementation layers sit beside the Python pipeline:
 - **Validation science** (`alphaforge/training/purged_cv.py`,
   `alphaforge/evaluation/overfitting.py`): purged/combinatorial splitters and
   the PSR/DSR/PBO statistics attached to every run report.
+- **Feature trust boundary** (`alphaforge/features/registry.py`,
+  `alphaforge/features/cache.py`, `alphaforge/features/transform.py`): exact
+  semantic versions and schemas, content-bound lineage, verified immutable
+  cache entries, and learned preprocessing fitted separately inside each
+  temporal training fold.
 - **Capacity evaluation** (`alphaforge/evaluation/capacity.py`): auditable AUM,
   participation, fill-ratio, and cost sensitivities using supplied lagged ADV.

@@ -7,9 +7,14 @@ the tradable rows.
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
+from alphaforge.features.cache import FeatureCache, FeatureSet, build_feature_lineage
+from alphaforge.features.registry import (
+    FeatureContractError,
+    build_default_registry,
+    validate_feature_frame,
+)
 from alphaforge.features.technical import (
     compute_benchmark_relative,
     compute_market_regime,
@@ -25,8 +30,21 @@ def build_features(
     benchmark_symbol: str,
     config: dict | None = None,
 ) -> pd.DataFrame:
-    """Build the full leak-safe feature matrix from a canonical OHLCV panel."""
+    """Build and contract-validate the causal feature matrix."""
     cfg = config or {}
+    registry = build_default_registry(cfg)
+    features = _build_features(panel, benchmark_symbol, cfg)
+    validate_feature_frame(features, registry)
+    return features
+
+
+def _build_features(
+    panel: pd.DataFrame,
+    benchmark_symbol: str,
+    cfg: dict,
+) -> pd.DataFrame:
+    """Execute feature mathematics after registry construction succeeds."""
+
     panel = panel.sort_values(["symbol", "date"]).reset_index(drop=True)
 
     bench_bars = panel[panel["symbol"] == benchmark_symbol]
@@ -70,8 +88,50 @@ def build_features(
     if cfg.get("cross_sectional", True):
         features = _add_cross_sectional(features)
 
-    features.replace([np.inf, -np.inf], np.nan, inplace=True)
+    features["date"] = pd.to_datetime(features["date"]).astype("datetime64[ns]")
     return features.sort_values(ID_COLUMNS).reset_index(drop=True)
+
+
+def materialize_feature_set(
+    panel: pd.DataFrame,
+    benchmark_symbol: str,
+    config: dict | None = None,
+    *,
+    dataset_id: str,
+    code_version: str,
+    cache: FeatureCache | None = None,
+) -> FeatureSet:
+    """Materialize registered features with full lineage and optional caching.
+
+    The cache key binds the declared dataset reference, panel content, code,
+    semantic feature parameters, date interval, universe, and registry. Cache
+    misses execute the same validated feature path as :func:`build_features`.
+    """
+
+    cfg = config or {}
+    registry = build_default_registry(cfg)
+    unique_dates = pd.Index(pd.to_datetime(panel["date"], errors="raise").unique())
+    required = registry.required_warmup_sessions + 1
+    if len(unique_dates) < required:
+        raise FeatureContractError(
+            f"insufficient feature warm-up history: {len(unique_dates)} < {required}"
+        )
+    lineage = build_feature_lineage(
+        panel,
+        registry,
+        cfg,
+        dataset_id=dataset_id,
+        code_version=code_version,
+    )
+    if cache is not None:
+        cached = cache.load(lineage, registry)
+        if cached is not None:
+            return FeatureSet(cached, registry, lineage, lineage.cache_key, True)
+    frame = _build_features(panel, benchmark_symbol, cfg)
+    validate_feature_frame(frame, registry)
+    if cache is not None:
+        cache.store(frame, lineage, registry)
+    return FeatureSet(frame, registry, lineage, lineage.cache_key, False)
 
 
 def _add_cross_sectional(features: pd.DataFrame) -> pd.DataFrame:

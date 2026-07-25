@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 import pandas as pd
 
 from alphaforge.evaluation import regression_metrics
-from alphaforge.features import feature_columns
+from alphaforge.features import FittedFeatureTransformer, FittedTransformSpec, feature_columns
 from alphaforge.models.registry import create_model
 
 ID_COLUMNS = ["date", "symbol"]
@@ -41,6 +41,7 @@ class WalkForwardResult:
     metrics: pd.DataFrame
     feature_importance: pd.DataFrame
     windows: pd.DataFrame
+    transformations: pd.DataFrame
 
 
 def _coerce_config(config: WalkForwardConfig | dict | None) -> WalkForwardConfig:
@@ -125,6 +126,15 @@ def _model_matrix(frame: pd.DataFrame, columns: list[str], model) -> pd.DataFram
     return X
 
 
+def _index_model_matrix(matrix: pd.DataFrame, frame: pd.DataFrame, model) -> pd.DataFrame:
+    """Attach temporal identifiers without changing transformed values."""
+
+    result = matrix.copy()
+    if getattr(model, "needs_sequence_index", False):
+        result.index = pd.MultiIndex.from_frame(frame[ID_COLUMNS])
+    return result
+
+
 def run_walk_forward(
     features: pd.DataFrame,
     labels: pd.DataFrame,
@@ -132,9 +142,19 @@ def run_walk_forward(
     target: str,
     config: WalkForwardConfig | dict | None = None,
     max_horizon: int | None = None,
+    transform_config: FittedTransformSpec | dict | None = None,
 ) -> WalkForwardResult:
-    """Train each model per window and return OOS-only predictions."""
+    """Train each model per window and return OOS-only predictions.
+
+    Enabled fitted transformations are learned once from each window's
+    training rows and then applied unchanged to its test rows.
+    """
     cfg = _coerce_config(config)
+    transform_spec = (
+        transform_config
+        if isinstance(transform_config, FittedTransformSpec)
+        else FittedTransformSpec.from_config(transform_config)
+    )
     data, x_cols = supervised_frame(features, labels, target)
     windows = make_walk_forward_splits(data["date"], cfg, max_horizon=max_horizon)
     if not windows:
@@ -144,6 +164,7 @@ def run_walk_forward(
     metric_rows: list[dict] = []
     importance_frames: list[pd.DataFrame] = []
     window_rows: list[dict] = []
+    transformation_rows: list[dict] = []
 
     specs = model_specs or [{"name": "zero_baseline", "params": {}}]
     for window in windows:
@@ -159,12 +180,30 @@ def run_walk_forward(
         wrow["test_rows"] = int(len(test))
         window_rows.append(wrow)
 
+        transformed_train: pd.DataFrame | None = None
+        transformed_test: pd.DataFrame | None = None
+        if transform_spec.enabled:
+            transformer = FittedFeatureTransformer(transform_spec)
+            transformed_train = transformer.fit_transform(train[x_cols], train["date"])
+            transformed_test = transformer.transform(test[x_cols])
+            if transformer.state_ is None:  # pragma: no cover - fit_transform guarantees state
+                raise RuntimeError("fitted transformer did not publish state")
+            transformation_rows.append(
+                {"window_id": window.window_id, **asdict(transformer.state_)}
+            )
+
         for spec in specs:
             name = spec["name"]
             params = spec.get("params", {})
             model = create_model(name, **params)
-            X_train = _model_matrix(train, x_cols, model)
-            X_test = _model_matrix(test, x_cols, model)
+            if transform_spec.enabled and not getattr(model, "requires_raw_features", False):
+                if transformed_train is None or transformed_test is None:  # pragma: no cover
+                    raise RuntimeError("enabled fitted transformation is unavailable")
+                X_train = _index_model_matrix(transformed_train, train, model)
+                X_test = _index_model_matrix(transformed_test, test, model)
+            else:
+                X_train = _model_matrix(train, x_cols, model)
+                X_test = _model_matrix(test, x_cols, model)
             y_train = train[target].astype(float)
             y_test = test[target].astype(float)
 
@@ -198,4 +237,11 @@ def run_walk_forward(
         pd.concat(importance_frames, ignore_index=True) if importance_frames else pd.DataFrame()
     )
     windows_frame = pd.DataFrame(window_rows)
-    return WalkForwardResult(predictions, metrics, feature_importance, windows_frame)
+    transformations = pd.DataFrame(transformation_rows)
+    return WalkForwardResult(
+        predictions,
+        metrics,
+        feature_importance,
+        windows_frame,
+        transformations,
+    )

@@ -20,6 +20,9 @@ class AlphaModel(ABC):
     # sequence models set this True so the training driver attaches a
     # (date, symbol) MultiIndex to X before fit/predict
     needs_sequence_index: bool = False
+    # Rule-based baselines can require original semantic column names and
+    # therefore opt out of configurable learned transformations.
+    requires_raw_features: bool = False
 
     @abstractmethod
     def fit(self, X: pd.DataFrame, y: pd.Series) -> AlphaModel: ...

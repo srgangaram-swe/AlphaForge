@@ -44,15 +44,22 @@ def _dataset(tmp_path: Path) -> SignalFoundryDataset:
     )
 
 
-def _run(tmp_path: Path):
+def _run(tmp_path: Path, *, fitted_transform: bool = False):
     dataset = _dataset(tmp_path)
     dates = sorted(dataset.panel["date"].unique())
     return run_governed_signal_foundry_research(
         dataset=dataset,
-        model_specs=[
-            {"name": "momentum_baseline", "params": {"feature": "momentum_20", "scale": 0.05}},
-            {"name": "ridge", "params": {"alpha": 10.0}},
-        ],
+        model_specs=(
+            [{"name": "ridge", "params": {"alpha": 10.0}}]
+            if fitted_transform
+            else [
+                {
+                    "name": "momentum_baseline",
+                    "params": {"feature": "momentum_20", "scale": 0.05},
+                },
+                {"name": "ridge", "params": {"alpha": 10.0}},
+            ]
+        ),
         feature_config={
             "return_lags": [1, 5],
             "vol_windows": [5, 20],
@@ -71,6 +78,16 @@ def _run(tmp_path: Path):
             "regime_trend_slow": 20,
             "hmm_regime": False,
             "cross_sectional": True,
+            "fitted_transform": {
+                "version": "1.0.0",
+                "enabled": fitted_transform,
+                "imputation": "median",
+                "standardize": True,
+                "variance_threshold": None,
+                "pca_components": 0.95 if fitted_transform else None,
+                "pca_whiten": False,
+                "min_fit_rows": 64,
+            },
         },
         walk_forward_config={
             "scheme": "expanding",
@@ -192,3 +209,16 @@ def test_clean_output_roots_produce_byte_identical_evidence(tmp_path: Path) -> N
         for path in second.run_dir.iterdir()
     }
     assert first_hashes == second_hashes
+
+
+def test_governed_holdout_records_development_only_fitted_state(tmp_path: Path) -> None:
+    result = _run(tmp_path, fitted_transform=True)
+
+    development_path = result.run_dir / "development_fitted_transformations.csv"
+    holdout_path = result.run_dir / "final_holdout_fitted_transformation.json"
+    assert development_path.is_file()
+    assert holdout_path.is_file()
+    holdout_state = json.loads(holdout_path.read_text(encoding="utf-8"))
+    assert pd.Timestamp(holdout_state["fit_end"]) <= pd.Timestamp(result.dossier["development_end"])
+    assert pd.Timestamp(holdout_state["fit_end"]) < pd.Timestamp(result.dossier["holdout_start"])
+    assert len(holdout_state["state_id"]) == 64

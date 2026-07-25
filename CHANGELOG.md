@@ -8,6 +8,9 @@ still evolve between minor releases.
 
 ### Added
 
+- A versioned semantic feature registry, deterministic content-addressed
+  feature cache with verified lineage, and train-fold-only fitted-transform
+  state for walk-forward and governed final-holdout workflows.
 - Independent Signal Foundry schema 1.1 universe-membership and
   corporate-action validation, decision-time revision views, explicit
   entry/exit reconstruction, and point-in-time risk diagnostics.

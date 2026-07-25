@@ -73,6 +73,7 @@ def main() -> None:
         target=model_cfg.get("target", f"fwd_ret_{horizons[0]}"),
         config=model_cfg.get("walk_forward", {}),
         max_horizon=max(horizons),
+        transform_config=feature_cfg.get("fitted_transform"),
     )
 
     write_frame_artifact(panel, run_dir / "panel.table.json")
@@ -82,6 +83,8 @@ def main() -> None:
     quality.to_csv(run_dir / "data_quality.csv", index=False)
     result.metrics.to_csv(run_dir / "model_metrics.csv", index=False)
     result.windows.to_csv(run_dir / "walk_forward_windows.csv", index=False)
+    if not result.transformations.empty:
+        result.transformations.to_csv(run_dir / "fitted_transformations.csv", index=False)
     if not result.feature_importance.empty:
         result.feature_importance.to_csv(run_dir / "feature_importance.csv", index=False)
 

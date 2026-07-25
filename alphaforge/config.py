@@ -111,7 +111,29 @@ class MacdConfig(StrictConfig):
         return self
 
 
+class FittedTransformConfig(StrictConfig):
+    """Configuration for preprocessing learned exclusively from a training fold."""
+
+    version: Literal["1.0.0"] = "1.0.0"
+    enabled: bool = False
+    imputation: Literal["median", "mean"] = "median"
+    standardize: bool = True
+    variance_threshold: NonNegativeFloat | None = None
+    pca_components: PositiveInt | OpenUnitFloat | None = None
+    pca_whiten: bool = False
+    min_fit_rows: PositiveInt = 64
+
+    @model_validator(mode="after")
+    def validate_transform(self) -> FittedTransformConfig:
+        if self.pca_whiten and self.pca_components is None:
+            raise ValueError("pca_whiten requires pca_components")
+        return self
+
+
 class FeatureConfig(StrictConfig):
+    registry_version: Literal["1.0.0"] = "1.0.0"
+    cache_dir: str | None = None
+    fitted_transform: FittedTransformConfig = Field(default_factory=FittedTransformConfig)
     return_lags: list[int]
     vol_windows: list[int]
     ma_windows: list[int]
@@ -138,7 +160,7 @@ class FeatureConfig(StrictConfig):
     def validate_window_lists(cls, values: list[int], info: Any) -> list[int]:
         return _ordered_unique(values, field_name=info.field_name)
 
-    @field_validator("output_dir")
+    @field_validator("cache_dir", "output_dir")
     @classmethod
     def validate_output_dir(cls, value: str | None) -> str | None:
         return None if value is None else _safe_relative_path(value)
