@@ -1,7 +1,8 @@
 PYTHON ?= python
 UV ?= uv
+SIGNAL_FOUNDRY_CONFIG ?= configs/signal_foundry_research.yaml
 
-.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence temporal-evidence train evaluate \
+.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence temporal-evidence signal-foundry-evidence train evaluate \
         walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
         native bench bench-native
 
@@ -67,7 +68,18 @@ backtest:
 # Usage: make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
 signal-foundry:
 	@test -n "$(BUNDLE)" || (echo "BUNDLE must name a verified Signal Foundry bundle" >&2; exit 2)
-	$(PYTHON) scripts/run_signal_foundry_research.py "$(BUNDLE)"
+	$(PYTHON) scripts/run_signal_foundry_research.py "$(BUNDLE)" --config "$(SIGNAL_FOUNDRY_CONFIG)"
+
+# Usage: make signal-foundry-evidence RUN=/absolute/run BUNDLE=/absolute/bundle OUTPUT=/new/path
+signal-foundry-evidence:
+	@test -n "$(RUN)" || (echo "RUN must name an immutable governed run" >&2; exit 2)
+	@test -n "$(BUNDLE)" || (echo "BUNDLE must name its verified source bundle" >&2; exit 2)
+	@test -n "$(OUTPUT)" || (echo "OUTPUT must name a new evidence directory" >&2; exit 2)
+	$(PYTHON) scripts/publish_signal_foundry_evidence.py \
+		--run-dir "$(RUN)" \
+		--bundle-dir "$(BUNDLE)" \
+		--config "$(SIGNAL_FOUNDRY_CONFIG)" \
+		--output-dir "$(OUTPUT)"
 
 paper:
 	$(PYTHON) scripts/simulate_paper_trading.py --config configs/backtest.yaml

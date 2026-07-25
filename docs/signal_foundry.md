@@ -88,6 +88,12 @@ reconstruction rejects it and the default readiness rubric remains
 `NOT_READY`. No API credential, licensed observation, or provider response is
 stored by AlphaForge.
 
+Its dedicated pre-registered policy is
+`configs/signal_foundry_wiki_bootstrap.yaml`. The 2017-01-03 final-holdout
+boundary, four-candidate trial family, execution assumptions, stress scenarios,
+and readiness thresholds are fixed before the final interval is inspected.
+This profile is not a substitute for the default current-data policy.
+
 ## Pre-registered evaluation
 
 The default policy lives in
@@ -119,10 +125,12 @@ The workflow:
    session of latency, halved participation, perturbed selection breadth, and
    explicit borrow/funding drag, then compares against a deterministic
    permuted-signal placebo;
-8. produces circular moving-block uncertainty intervals, year/regime
+8. proves idempotency, stale-data, risk-limit, and one-way kill-switch behavior
+   through deterministic offline proposed decisions with no broker interface;
+9. produces circular moving-block uncertainty intervals, year/regime
    stability, drawdown duration, missing-price halt evidence, and auditable AUM
    capacity sensitivities; and
-9. publishes the run atomically with hashes and a machine-readable dossier.
+10. publishes the run atomically with hashes and a machine-readable dossier.
 
 Existing run identities cannot be overwritten or repeated. A failed run
 removes its staging directory; a stale staging directory fails closed for
@@ -142,6 +150,31 @@ make signal-foundry \
 The command prints the run identity, selected candidate, decision, and dossier
 path. It never prints or needs the Nasdaq Data Link API key; acquisition occurs
 in Signalattice.
+
+For the verified cached WIKI bundle, opt into the engineering profile
+explicitly:
+
+```bash
+make signal-foundry \
+  BUNDLE=/absolute/path/to/<wiki-bundle-id> \
+  SIGNAL_FOUNDRY_CONFIG=configs/signal_foundry_wiki_bootstrap.yaml
+```
+
+After the ignored local run finishes, publish only the aggregate allowlist:
+
+```bash
+make signal-foundry-evidence \
+  RUN=/absolute/path/to/runs/signal-foundry/<run-id> \
+  BUNDLE=/absolute/path/to/<wiki-bundle-id> \
+  SIGNAL_FOUNDRY_CONFIG=configs/signal_foundry_wiki_bootstrap.yaml \
+  OUTPUT=/absolute/path/to/new-public-evidence
+```
+
+The publisher verifies bundle/run identity and the producer license policy,
+then emits aggregate gate, scenario, and capacity tables plus reproducible
+Seaborn plots. It never copies ticker identities, observations, predictions,
+orders, fills, positions, or date-level returns. Existing destinations and
+symlinked inputs fail closed.
 
 ## Readiness decision
 
@@ -172,6 +205,11 @@ identities, data freshness, gross/net/position/turnover/notional bounds,
 drawdown and daily-loss limits, and a one-way manual kill switch. Any breach
 produces a machine-readable halt reason. Invalid or non-finite input raises
 before policy evaluation.
+
+Every governed dossier includes a deterministic `paper_control_evidence.json`
+audit. The audit proves one bounded proposal is allowed while duplicate,
+stale-data, exposure-limit, and manual-kill-switch paths halt. It explicitly
+records that no broker adapter exists and no executable order was emitted.
 
 Moving beyond zero-capital shadow evaluation requires a separate milestone,
 threat model, broker-specific contract, reconciliation and recovery design,

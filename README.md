@@ -102,6 +102,7 @@ make temporal-evidence OUTPUT=/tmp/alphaforge-temporal-evidence
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
 make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
+make signal-foundry-evidence RUN=/absolute/run BUNDLE=/absolute/bundle OUTPUT=/new/path
 make paper              # simulated paper-trading replay only
 make report             # markdown report
 make dashboard          # Streamlit dashboard
@@ -114,10 +115,16 @@ rubric in `configs/signal_foundry_research.yaml` separates development-only
 model selection from a purged final holdout. Its result can authorize only
 zero-capital shadow evaluation; it cannot authorize broker access, orders, or
 capital deployment. See [the Signal Foundry operator guide](docs/signal_foundry.md).
+The separate `configs/signal_foundry_wiki_bootstrap.yaml` profile fixes a
+2017-01-03 holdout before evaluating the stale WIKI engineering bundle. Its
+incomplete point-in-time declarations must produce `NOT_READY`.
 Every governed run also writes a versioned, content-addressed experiment
 manifest. See [Reproducibility and experiment provenance](docs/reproducibility.md)
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
+
+Supply-chain and release controls are documented in
+[Release and security governance](docs/release_security.md).
 
 ## Low-Latency Execution Core (C++)
 

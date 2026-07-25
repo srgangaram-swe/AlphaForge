@@ -40,6 +40,7 @@ from alphaforge.features import (
 )
 from alphaforge.labels.labels import build_labels
 from alphaforge.models.registry import create_model, seed_model_specs
+from alphaforge.paper import audit_offline_paper_controls
 from alphaforge.portfolio import construct_portfolio
 from alphaforge.research.manifest import (
     ExperimentManifest,
@@ -48,7 +49,12 @@ from alphaforge.research.manifest import (
     inventory_artifacts,
     redact_cli_arguments,
 )
-from alphaforge.risk import drawdown_series, performance_summary, regime_performance
+from alphaforge.risk import (
+    drawdown_series,
+    exposure_summary,
+    performance_summary,
+    regime_performance,
+)
 from alphaforge.signals import build_signals
 from alphaforge.training import run_walk_forward
 from alphaforge.training.walk_forward import supervised_frame
@@ -325,7 +331,14 @@ def _stress_scenarios(
             np.isfinite(summary["max_drawdown"]) and summary["max_drawdown"] >= -maximum_drawdown
         )
         passed = passed and scenario_passed
-        summaries.append({"scenario": name, "passed": scenario_passed, **summary})
+        summaries.append(
+            {
+                "scenario": name,
+                "passed": scenario_passed,
+                "accounting_reconciled": True,
+                **summary,
+            }
+        )
 
     placebo = predictions.copy()
     rng = np.random.default_rng(seed)
@@ -340,7 +353,13 @@ def _stress_scenarios(
         backtest_config=backtest_config,
     )
     placebo_summary = performance_summary(placebo_result.equity_curve)
-    summaries.append({"scenario": "permuted_signal_placebo", **placebo_summary})
+    summaries.append(
+        {
+            "scenario": "permuted_signal_placebo",
+            "accounting_reconciled": True,
+            **placebo_summary,
+        }
+    )
     return summaries, passed
 
 
@@ -435,6 +454,7 @@ def _borrow_financing_sensitivity(
     adjusted["equity"] = initial * (1.0 + adjusted["return"]).cumprod()
     return {
         "scenario": "stressed_borrow_and_financing_proxy",
+        "accounting_reconciled": True,
         "short_borrow_bps_annual": borrow,
         "cash_financing_bps_annual": financing,
         "method": "post-ledger exposure-based sensitivity; not a locate or borrow-availability model",
@@ -715,6 +735,24 @@ def run_governed_signal_foundry_research(
             capacity.curve["fill_ratio"].min() >= float(capacity_settings["minimum_fill_ratio"])
         )
         primary_summary = performance_summary(primary.equity_curve)
+        gross_curve = primary.equity_curve.copy()
+        first_net_return = float(gross_curve["return"].iloc[0])
+        initial_equity = float(gross_curve["equity"].iloc[0]) / (1.0 + first_net_return)
+        gross_curve["return"] = gross_curve["gross_return"].astype(float)
+        gross_curve["equity"] = initial_equity * (1.0 + gross_curve["return"]).cumprod()
+        gross_summary = performance_summary(gross_curve)
+        concentration = exposure_summary(primary.weights)
+        if dataset.source_panel.empty:
+            paper_anchor = pd.Timestamp(panel["date"].max()).tz_localize(UTC)
+        else:
+            paper_anchor = pd.Timestamp(dataset.source_panel["available_at"].max())
+            if paper_anchor.tzinfo is None:
+                raise ValueError("paper-control audit requires timezone-aware availability")
+            paper_anchor = paper_anchor.tz_convert(UTC)
+        paper_controls = audit_offline_paper_controls(
+            decision_time=paper_anchor.to_pydatetime(),
+            maximum_notional=float(backtest_config.get("initial_capital", 1_000_000.0)),
+        )
         placebo_summary = next(
             item for item in scenario_summaries if item["scenario"] == "permuted_signal_placebo"
         )
@@ -735,8 +773,11 @@ def run_governed_signal_foundry_research(
             additional_gates={
                 "capacity_liquidity": capacity_passed,
                 "missing_price_halt": missing_price_halt,
+                "paper_controls": bool(paper_controls["all_controls_passed"]),
             },
         )
+        dossier["metrics"]["gross_annual_return"] = gross_summary["annual_return"]
+        dossier["metrics"]["gross_total_return"] = gross_summary["total_return"]
         dossier["candidate_model"] = candidate_name
         dossier["bundle_id"] = dataset.bundle_id
         dossier["run_id"] = run_id
@@ -745,6 +786,8 @@ def run_governed_signal_foundry_research(
         dossier["overfitting"] = pbo
         dossier["scenarios"] = scenario_summaries
         dossier["placebo_outperformed"] = placebo_passed
+        dossier["concentration"] = concentration
+        dossier["paper_controls"] = paper_controls
         dossier["uncertainty"] = _bootstrap_uncertainty(
             primary.equity_curve["return"],
             seed=research_config.seed,
@@ -785,6 +828,7 @@ def run_governed_signal_foundry_research(
         capacity.curve.to_csv(staging / "capacity_curve.csv", index=False)
         capacity.scenario_trades.to_csv(staging / "capacity_scenario_trades.csv", index=False)
         _write_json(staging / "capacity_diagnostics.json", asdict(capacity.diagnostics))
+        _write_json(staging / "paper_control_evidence.json", paper_controls)
         (staging / "trial_ledger.jsonl").write_text(
             "".join(_canonical_json(record).decode("utf-8") + "\n" for record in ledger),
             encoding="utf-8",

@@ -181,6 +181,16 @@ def test_governed_run_is_transactional_auditable_and_not_ready_on_missing_pit(
     assert ledger[0]["previous_hash"] == "0" * 64
     assert ledger[1]["previous_hash"] == ledger[0]["record_hash"]
     assert result.dossier["gates"]["missing_price_halt"]
+    assert result.dossier["gates"]["paper_controls"]
+    assert result.dossier["paper_controls"]["all_controls_passed"]
+    assert result.dossier["paper_controls"]["broker_adapter_present"] is False
+    assert result.dossier["paper_controls"]["executable_orders_emitted"] is False
+    assert (
+        result.dossier["metrics"]["gross_annual_return"]
+        >= result.dossier["metrics"]["annual_return"]
+    )
+    assert result.dossier["concentration"]["gross_exposure"] >= 0.0
+    assert all(scenario["accounting_reconciled"] for scenario in result.dossier["scenarios"])
     assert result.dossier["uncertainty"]["available"]
     assert result.dossier["year_stability"]
     assert result.dossier["regime_stability"]

@@ -21,6 +21,17 @@ def test_every_committed_configuration_has_a_strict_schema(kind: str) -> None:
     assert config
 
 
+def test_wiki_bootstrap_profile_has_a_strict_pre_registered_boundary() -> None:
+    config = load_config(
+        Path("configs/signal_foundry_wiki_bootstrap.yaml"),
+        "signal_foundry_research",
+    )
+
+    assert config["research"]["holdout_start"] == "2017-01-03"
+    assert config["readiness"]["require_complete_point_in_time"] is True
+    assert config["readiness"]["minimum_holdout_days"] == 252
+
+
 @pytest.mark.parametrize(
     ("kind", "mutation", "message"),
     [
