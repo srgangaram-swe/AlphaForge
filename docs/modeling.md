@@ -33,10 +33,14 @@ test rows.
 
 - **Walk-forward** (primary): expanding or rolling windows with an embargo
   at least as long as the longest label horizon.
+- **Interval-aware development plan**: explicit train, validation, test,
+  purge, embargo, overlap, and final-holdout roles. Exact label-event ends must
+  precede the next protected boundary; crossing samples are excluded. See
+  [Temporal validation contract](temporal_validation.md).
 - **Purged K-Fold / CPCV** (`alphaforge/training/purged_cv.py`): purging
-  removes train dates whose label intervals overlap a test block; the embargo
-  kills serial-correlation leakage from trailing-window features. CPCV
-  evaluates every C(n, k) test-group combination, producing many OOS paths.
+  removes train dates whose exact label intervals overlap each contiguous test
+  block; the embargo limits trailing-window dependence. CPCV evaluates every
+  C(n, k) test-group combination, producing many OOS paths.
 
 ## Overfitting statistics (alphaforge/evaluation/overfitting.py)
 

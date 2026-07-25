@@ -1,7 +1,7 @@
 PYTHON ?= python
 UV ?= uv
 
-.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence train evaluate \
+.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence temporal-evidence train evaluate \
         walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
         native bench bench-native
 
@@ -46,6 +46,11 @@ build-features:
 label-evidence:
 	@test -n "$(OUTPUT)" || (echo "OUTPUT must name a new evidence directory" >&2; exit 2)
 	$(PYTHON) scripts/generate_label_evidence.py --output-dir "$(OUTPUT)"
+
+# Usage: make temporal-evidence OUTPUT=/absolute/path/to/new/evidence-directory
+temporal-evidence:
+	@test -n "$(OUTPUT)" || (echo "OUTPUT must name a new evidence directory" >&2; exit 2)
+	$(PYTHON) scripts/generate_temporal_validation_evidence.py --output-dir "$(OUTPUT)"
 
 train:
 	$(PYTHON) scripts/train_model.py --config configs/models.yaml

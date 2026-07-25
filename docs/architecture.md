@@ -44,8 +44,10 @@ Two implementation layers sit beside the Python pipeline:
   cash, and fail-closed P&L reconciliation. The timing decision is recorded in
   [ADR 0001](adr/0001-temporal-integrity.md).
 - **Validation science** (`alphaforge/training/purged_cv.py`,
-  `alphaforge/evaluation/overfitting.py`): purged/combinatorial splitters and
-  the PSR/DSR/PBO statistics attached to every run report.
+  `alphaforge/training/temporal_validation.py`,
+  `alphaforge/evaluation/overfitting.py`): explicit development and inaccessible
+  holdout roles, exact interval-aware purged/combinatorial splitters, immutable
+  fold identities, and the PSR/DSR/PBO statistics attached to run evidence.
 - **Feature trust boundary** (`alphaforge/features/registry.py`,
   `alphaforge/features/cache.py`, `alphaforge/features/transform.py`): exact
   semantic versions and schemas, content-bound lineage, verified immutable
