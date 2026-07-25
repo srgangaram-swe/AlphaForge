@@ -17,8 +17,18 @@ from alphaforge.research import read_frame_artifact
 
 try:
     from fastapi import FastAPI, HTTPException
+    from pydantic import BaseModel, Field
 except ImportError as exc:  # pragma: no cover
     raise RuntimeError("Install app extras with: pip install -e '.[app]'") from exc
+
+from alphaforge.service import (
+    BacktestRequest,
+    BacktestServiceError,
+    available_baselines,
+    available_strategy_models,
+    discover_bundles,
+    run_backtest_service,
+)
 
 DISCLAIMER = "Educational research output. Simulated results only. Not financial advice."
 
@@ -145,3 +155,59 @@ def metrics() -> dict[str, Any]:
         "ic_decay": _read_csv("ic_decay.csv"),
         "quantile_returns": _read_csv("quantile_returns.csv"),
     }
+
+
+# --- Interactive backtesting (SF-S2-MR10b): configure and run on demand -------
+
+
+class BacktestSpec(BaseModel):
+    """Request body for an on-demand backtest (mirrors the service contract)."""
+
+    data_source: str = "synthetic"
+    bundle_dir: str | None = None
+    n_symbols: int = Field(default=8, ge=2, le=100)
+    n_days: int = Field(default=600, ge=120, le=5000)
+    benchmark_symbol: str = "BENCH"
+    model: str = "random_forest"
+    model_params: dict[str, Any] = Field(default_factory=dict)
+    baselines: list[str] = Field(
+        default_factory=lambda: ["zero_baseline", "historical_mean", "momentum_baseline"]
+    )
+    horizon: int = Field(default=1, ge=1, le=60)
+    strategy: str = "long_short"
+    cost_bps: float = Field(default=1.0, ge=0.0, le=100.0)
+    seed: int = Field(default=42, ge=0)
+    min_train_days: int = Field(default=252, ge=20)
+    test_days: int = Field(default=63, ge=1)
+    step_days: int = Field(default=63, ge=1)
+    embargo_days: int = Field(default=10, ge=0)
+
+
+@app.get("/catalog")
+def catalog() -> dict[str, Any]:
+    """Available models, baselines, strategies, and discoverable data bundles."""
+    return {
+        "models": available_strategy_models(),
+        "baselines": available_baselines(),
+        "strategies": ["long_short", "long_only_topk", "rank_weighted", "confidence"],
+        "data_sources": ["synthetic", "signal_foundry"],
+        "bundles": discover_bundles(),
+        "disclaimer": DISCLAIMER,
+    }
+
+
+@app.post("/backtests")
+def create_backtest(spec: BacktestSpec) -> dict[str, Any]:
+    """Run a leakage-safe walk-forward backtest for a model and its baselines.
+
+    Simulated research over the deterministic synthetic market (default) or a
+    Signal Foundry bundle produced by Signalattice — not live or executable.
+    """
+    try:
+        request = BacktestRequest(**spec.model_dump())
+        result = run_backtest_service(request)
+    except BacktestServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return result.to_dict()
