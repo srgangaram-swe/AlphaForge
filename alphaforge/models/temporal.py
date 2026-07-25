@@ -402,6 +402,9 @@ class TemporalAlphaModel(AlphaModel):
         model.n_outputs_ = payload["n_outputs"]
         model.net = _TemporalAlphaNet(len(model.columns_), model.cfg, model.n_outputs_)
         model.net.load_state_dict(payload["state_dict"])
+        # A restored model is fitted under the shared AlphaModel contract.
+        model._feature_names = tuple(str(c) for c in model.columns_)
+        model._is_fitted = True
         return model
 
     def _scale_x(self, values: np.ndarray) -> np.ndarray:

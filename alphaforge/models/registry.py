@@ -11,7 +11,16 @@ from collections.abc import Callable
 from typing import Any
 
 from alphaforge.models.base import AlphaModel
-from alphaforge.models.baselines import HistoricalMeanBaseline, MomentumBaseline, ZeroBaseline
+from alphaforge.models.baselines import (
+    BuyAndHoldBaseline,
+    EqualProbabilityClassifier,
+    EqualWeightBaseline,
+    HistoricalMeanBaseline,
+    LagBaseline,
+    MomentumBaseline,
+    MovingAverageBaseline,
+    ZeroBaseline,
+)
 from alphaforge.models.ensemble import EnsembleModel
 from alphaforge.models.sklearn_models import (
     make_elastic_net,
@@ -47,7 +56,12 @@ def _make_ensemble(members: list[dict], **kwargs: Any) -> EnsembleModel:
 MODEL_REGISTRY: dict[str, Callable[..., AlphaModel]] = {
     "zero_baseline": ZeroBaseline,
     "historical_mean": HistoricalMeanBaseline,
+    "lag_baseline": LagBaseline,
+    "moving_average_baseline": MovingAverageBaseline,
     "momentum_baseline": MomentumBaseline,
+    "equal_probability": EqualProbabilityClassifier,
+    "buy_and_hold": BuyAndHoldBaseline,
+    "equal_weight": EqualWeightBaseline,
     "linear": make_linear,
     "ridge": make_ridge,
     "lasso": make_lasso,
