@@ -1,7 +1,7 @@
 PYTHON ?= python
 UV ?= uv
 
-.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features train evaluate \
+.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence train evaluate \
         walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
         native bench bench-native
 
@@ -40,7 +40,12 @@ download-data:
 	$(PYTHON) scripts/download_data.py --config configs/data.yaml
 
 build-features:
-	$(PYTHON) scripts/build_features.py --config configs/features.yaml
+	$(PYTHON) scripts/build_features.py --config configs/features.yaml --labels-config configs/labels.yaml
+
+# Usage: make label-evidence OUTPUT=/absolute/path/to/new/evidence-directory
+label-evidence:
+	@test -n "$(OUTPUT)" || (echo "OUTPUT must name a new evidence directory" >&2; exit 2)
+	$(PYTHON) scripts/generate_label_evidence.py --output-dir "$(OUTPUT)"
 
 train:
 	$(PYTHON) scripts/train_model.py --config configs/models.yaml

@@ -23,5 +23,9 @@ Important limitations:
 - No broker integration places live orders.
 - Model results can overfit even with walk-forward validation, purging, and
   deflated statistics.
+- Label diagnostics quantify overlap, autocorrelation, class balance, temporal
+  drift, and parameter sensitivity but do not prove that a target is
+  predictable. Daily-close triple barriers cannot establish intraday hit
+  ordering, and synthetic label evidence is not market evidence.
 - Real deployment would require stronger data licensing, monitoring, capital
   controls, compliance review, and independent validation.

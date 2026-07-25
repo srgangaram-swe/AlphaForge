@@ -8,7 +8,7 @@ flowchart TD
     validate --> registry[Versioned feature registry + lineage]
     registry --> features[Causal feature engineering + HMM regime]
     features --> cache[Validated content-addressed feature cache]
-    cache --> labels[Forward labels]
+    cache --> labels[Versioned label contracts + normalized event intervals]
     labels --> splits[Walk-forward / Purged K-Fold / CPCV splits]
     splits --> models[Model training incl. IC-weighted ensemble]
     models --> preds[Out-of-sample prediction panel]
@@ -51,5 +51,10 @@ Two implementation layers sit beside the Python pipeline:
   semantic versions and schemas, content-bound lineage, verified immutable
   cache entries, and learned preprocessing fitted separately inside each
   temporal training fold.
+- **Label trust boundary** (`alphaforge/labels/contracts.py`,
+  `alphaforge/labels/diagnostics.py`): immutable semantic identities, explicit
+  `(t,t+h]` future intervals, protected-boundary rejection, strict price/side
+  availability, and dependence/balance/stability/sensitivity evidence. See
+  [Financial label contracts and diagnostics](label_design.md).
 - **Capacity evaluation** (`alphaforge/evaluation/capacity.py`): auditable AUM,
   participation, fill-ratio, and cost sensitivities using supplied lagged ADV.

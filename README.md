@@ -16,7 +16,10 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Leak-safe feature engineering on a canonical `(date, symbol, OHLCV)` panel.
 - A 2-state Gaussian HMM regime engine (custom Baum-Welch EM) used strictly causally:
   expanding parameter refits + filtered (never smoothed) state probabilities.
-- Multi-horizon labels such as forward returns, direction, ranks, and excess returns.
+- Versioned financial-label contracts spanning regression, classification,
+  threshold, quantile, triple-barrier, volatility-scaled, and meta-label
+  definitions, with explicit future intervals, holdout protection, dependence,
+  balance, stability, and sensitivity diagnostics.
 - Walk-forward model training with an embargo at least as large as the longest label horizon.
 - Purged K-Fold and Combinatorial Purged CV (CPCV) splitters for overlap-safe evaluation.
 - Baselines, linear models, tree models, optional torch models, and an IC-weighted ensemble.
@@ -54,7 +57,7 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 flowchart LR
     A[Signalattice bundle / public / synthetic] --> B[Validation and quality report]
     B --> C[Leak-safe feature engineering]
-    C --> D[Multi-horizon forward labels]
+    C --> D[Versioned future-event label contracts]
     D --> E[Walk-forward splits with embargo]
     E --> F[Model training and OOS predictions]
     F --> G[Signal construction]
@@ -91,6 +94,7 @@ Useful commands:
 ```bash
 make download-data      # yfinance / CSV / synthetic per configs/data.yaml
 make build-features     # feature and label panels
+make label-evidence OUTPUT=/tmp/alphaforge-label-evidence
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
 make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
@@ -180,7 +184,7 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 
 - `alphaforge/data`: loaders, schema validation, quality reports, synthetic data.
 - `alphaforge/features`: technical, cross-sectional, benchmark-relative, and regime features.
-- `alphaforge/labels`: multi-horizon forward labels.
+- `alphaforge/labels`: versioned future-event labels and statistical diagnostics.
 - `alphaforge/models`: baselines, sklearn wrappers, torch wrappers, IC-weighted ensemble,
   Gaussian HMM regime model, registry.
 - `alphaforge/training`: walk-forward splitting, purged K-Fold, CPCV, OOS prediction panels.

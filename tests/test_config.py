@@ -30,6 +30,11 @@ def test_every_committed_configuration_has_a_strict_schema(kind: str) -> None:
             lambda cfg: cfg["macd"].update({"future_window": 1}),
             "future_window",
         ),
+        (
+            "labels",
+            lambda cfg: cfg["labels"][0].update({"future_window": 1}),
+            "future_window",
+        ),
         ("models", lambda cfg: cfg["walk_forward"].update({"embargo_days": 0}), "embargo"),
         (
             "backtest",
@@ -89,6 +94,21 @@ def test_model_parameter_names_are_not_an_untyped_escape_hatch(tmp_path: Path) -
 
     with pytest.raises(ConfigValidationError, match="unknown parameters"):
         load_config(path, "models")
+
+
+def test_label_configuration_rejects_invalid_semantics(tmp_path: Path) -> None:
+    config = yaml.safe_load(Path("configs/labels.yaml").read_text(encoding="utf-8"))
+    barrier = next(label for label in config["labels"] if label["kind"] == "triple_barrier")
+    barrier["upper_barrier"] = 0.0
+    path = _write_yaml(tmp_path / "labels.yaml", config)
+    with pytest.raises(ConfigValidationError, match="upper_barrier"):
+        load_config(path, "labels")
+
+    config = yaml.safe_load(Path("configs/labels.yaml").read_text(encoding="utf-8"))
+    config["protected_boundaries"] = ["2025-01-01", "2024-01-01"]
+    path = _write_yaml(tmp_path / "labels.yaml", config)
+    with pytest.raises(ConfigValidationError, match="strictly increasing"):
+        load_config(path, "labels")
 
 
 def test_strategy_specific_unused_settings_are_rejected(tmp_path: Path) -> None:

@@ -85,7 +85,7 @@ separate from the deterministic offline suite.
 Every supported YAML surface has a dedicated frozen Pydantic schema under
 `alphaforge.config`. Unknown keys, untyped model parameters, unsafe configured
 paths, invalid ranges, and cross-field contradictions fail before network,
-artifact, or model work begins. `make config-check` validates all seven
+artifact, or model work begins. `make config-check` validates all eight
 committed configurations. The generic permissive YAML loader has been retired;
 adding a new YAML surface requires a named schema and negative tests.
 
@@ -115,3 +115,10 @@ report, and labeled honestly as synthetic, historical backtest, paper, or live
 evidence. Restricted market observations remain local; only licensed-safe
 aggregates, synthetic fixtures, and their reproducible generation instructions
 may be committed.
+
+The label reference workflow uses `make label-evidence OUTPUT=<new-directory>`.
+It records the complete semantic label contract, deterministic synthetic seed
+and dimensions, predeclared sensitivity scales, aggregate CSV evidence, plot
+hashes, and explicit non-market limitations. Publication refuses to overwrite
+an existing evidence root. See [Financial label contracts and
+diagnostics](label_design.md).
