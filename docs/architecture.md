@@ -87,5 +87,12 @@ Two implementation layers sit beside the Python pipeline:
   head receipt; conservative failed-trial accounting; exact-family Holm/BH
   corrections; and predeclared kill decisions. See
   [Append-only research governance](research_governance.md).
+- **Governed baseline study** (`alphaforge/research/baseline_study.py`,
+  `alphaforge/research/baseline_study_evidence.py`): freezes the exact
+  seven-candidate family before execution, binds every trial to the append-only
+  ledger, computes matched-fold/multiplicity/economic/calibration aggregates,
+  and exposes only non-reconstructive evidence to Seaborn plotting. The
+  development runner opens the final holdout only for the selected candidate.
+  See [Governed seven-candidate baseline study](governed_baseline_study.md).
 - **Capacity evaluation** (`alphaforge/evaluation/capacity.py`): auditable AUM,
   participation, fill-ratio, and cost sensitivities using supplied lagged ADV.

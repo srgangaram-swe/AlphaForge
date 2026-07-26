@@ -146,6 +146,11 @@ The [append-only research governance contract](docs/research_governance.md)
 defines frozen hypothesis/lineage plans, trial state transitions, tamper and
 truncation detection, complete-family corrections, kill criteria, recovery
 behavior, and its external-receipt limitation.
+The [governed seven-candidate baseline study](docs/governed_baseline_study.md)
+binds that ledger to identical development folds, common costed economics,
+matched-fold inference, Holm correction, selected-candidate-only final-holdout
+access, and an aggregate-only Seaborn evidence publisher. Its stale WIKI run is
+an engineering study, not current market or trading-readiness evidence.
 
 Supply-chain and release controls are documented in
 [Release and security governance](docs/release_security.md).
