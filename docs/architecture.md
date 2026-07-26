@@ -23,6 +23,7 @@ flowchart TD
     preds --> overfit[Overfitting stats: DSR, PBO, NW t-stats]
     preds --> signals[Signals + regime filter]
     signals --> portfolio[Portfolio construction]
+    signals -. standalone synthetic study only .-> eligibility[Opt-in eligibility research]
     portfolio --> orders[Close-time target decisions]
     orders --> execution[Next-open causal fill model]
     execution --> ledger[Self-financing cash + signed-share ledger]
@@ -95,6 +96,14 @@ Two implementation layers sit beside the Python pipeline:
   Platt/isotonic state, moving-block bootstrap intervals, conservative
   block-conformal residual intervals, and bounded linear quantile regression.
   See [Calibration and uncertainty contracts](calibration_uncertainty.md).
+- **Decision eligibility boundary** (`alphaforge/decision/policy.py`): pure
+  immutable expected-value arithmetic; conservative cost and predictive
+  uncertainty charges; finite/range/freshness/disagreement/regime/drift gates;
+  deterministic IDs and ordered typed reasons; and no quantity, order, broker,
+  credential, network, or portfolio state. It is currently opt-in and exercised
+  only by its standalone synthetic study; the active signal-to-portfolio path
+  does not invoke it. See
+  [Cost- and uncertainty-aware decision policy](decision_policy.md).
 - **Metric governance boundary** (`alphaforge/evaluation/metric_suite.py`):
   immutable interpretation contracts, explicit undefined states,
   elapsed-calendar-time annualization, benchmark semantics, reconciled

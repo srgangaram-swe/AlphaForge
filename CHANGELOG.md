@@ -8,6 +8,10 @@ still evolve between minor releases.
 
 ### Added
 
+- A pure, immutable cost/uncertainty decision-policy boundary with stable
+  reason codes and identities, fail-closed freshness/disagreement/regime/drift
+  gates, strict configuration, deterministic always/never-trade aggregate
+  evidence, and no order-routing authority.
 - Schema-1.0 financial-label contracts for regression, classification,
   threshold, quantile, triple-barrier, volatility-scaled, and meta-label
   targets, with deterministic identities, normalized future-event intervals,

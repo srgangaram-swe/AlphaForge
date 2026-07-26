@@ -55,6 +55,12 @@ Important limitations:
   declared bins; moving-block bootstrap intervals require local stationarity
   and an adequate block length; block-conformal coverage requires exchangeable
   residual blocks; and linear quantile regressions can be misspecified.
+- The SF-S3-MR10 abstention reference is deterministic synthetic engineering
+  evidence, not a calibrated market study. Its policy reduced synthetic
+  conditional loss frequency, turnover, and capacity demand but captured less
+  total net value than always-trade. Expected costs, predictive uncertainty,
+  disagreement, regime support, and drift can all be jointly misspecified;
+  abstention cannot guarantee against loss.
 - Unified metric intervals remain conditional on the selected calendar,
   benchmark, sample, block length, and stationarity approximation. An
   undefined metric is reported explicitly, but a defined metric can still be

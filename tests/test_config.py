@@ -65,6 +65,11 @@ def test_wiki_bootstrap_profile_has_a_strict_pre_registered_boundary() -> None:
             lambda cfg: cfg["correction"].update({"failed_trial_p_value": 0.5}),
             "failed_trial_p_value",
         ),
+        (
+            "decision_policy",
+            lambda cfg: cfg["policy"].update({"broker_token": "forbidden"}),
+            "broker_token",
+        ),
     ],
 )
 def test_invalid_or_unknown_settings_fail_before_execution(
