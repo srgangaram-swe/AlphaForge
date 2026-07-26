@@ -51,6 +51,9 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Training-OOF-only Platt/isotonic probability calibration, Brier and
   reliability evidence, dependence-aware moving-block intervals, conservative
   block-conformal residual intervals, and bounded quantile regression.
+- A pure cost/uncertainty decision boundary with deterministic identities,
+  stable typed abstention reasons, freshness/disagreement/regime/drift gates,
+  and no portfolio, order, broker, or network authority.
 - Contract-bound predictive, IC, calibration, return, drawdown, turnover,
   exposure, capacity, benchmark, and cost metrics with elapsed-time
   annualization and moving-block sampling distributions.
@@ -83,7 +86,8 @@ flowchart LR
     D --> E[Walk-forward splits with embargo]
     E --> F[Model training and OOS predictions]
     F --> G[Signal construction]
-    G --> H[Portfolio construction]
+    G --> P[Cost/uncertainty eligibility or abstention]
+    P --> H[Portfolio construction]
     H --> I[Future-open fills + self-financing ledger]
     I --> J[Risk, P&L attribution, and capacity sensitivity]
     J --> K[Report / dashboard / API / paper sim]
@@ -121,6 +125,7 @@ make temporal-evidence OUTPUT=/tmp/alphaforge-temporal-evidence
 make time-frequency-evidence OUTPUT=/tmp/alphaforge-time-frequency-evidence
 make latent-representation-evidence OUTPUT=/tmp/alphaforge-latent-evidence
 make ensemble-evidence OUTPUT=/tmp/alphaforge-ensemble-evidence
+make decision-policy-evidence OUTPUT=/tmp/alphaforge-decision-policy-evidence
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
 make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
@@ -172,6 +177,9 @@ must use the governed OOF boundary.
 The [calibration and uncertainty contract](docs/calibration_uncertainty.md)
 documents OOF provenance, mathematical assumptions, deterministic
 configuration, JSON-safe persistence, and failure behavior.
+The [cost- and uncertainty-aware decision contract](docs/decision_policy.md)
+defines conservative value arithmetic, ordered fail-closed reason codes,
+stable replay identities, resource limits, and the strict no-order boundary.
 The [metric governance contract](docs/metric_governance.md) defines units,
 annualization, benchmarks, missingness, invalid states, and dependence-aware
 distributions for the unified research scorecard.
@@ -200,6 +208,9 @@ and inspected Seaborn plot.
 The [Sprint 3 ensemble report](docs/sprint_3_ensemble_report.md) records the
 deterministic synthetic recovery study, correlations, marginal contributions,
 turnover/costs, uncertainty, abstentions, and residual market-evidence gap.
+The [Sprint 3 MR10 abstention report](docs/sprint_3_abstention_policy_report.md)
+publishes the honest synthetic coverage-risk, turnover, capacity,
+missed-opportunity, and net-value comparison with always-trade and never-trade.
 
 ## Low-Latency Execution Core (C++)
 
@@ -282,6 +293,8 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - `alphaforge/training`: interval-aware temporal plans, walk-forward splitting,
   purged K-Fold, CPCV, and OOS prediction panels.
 - `alphaforge/evaluation`: IC analytics, PSR/DSR, PBO, Newey-West inference.
+- `alphaforge/decision`: pure cost/uncertainty eligibility and abstention
+  evidence before portfolio construction.
 - `alphaforge/signals`: rank, long-short, top-k, threshold, confidence-weighted,
   and regime-filtered signals.
 - `alphaforge/portfolio`: capped, inverse-vol, turnover-aware target weights.

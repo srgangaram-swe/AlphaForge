@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 from typing import Annotated, Any, Literal
 
@@ -922,6 +922,106 @@ class SignalFoundryResearchConfig(StrictConfig):
         return self
 
 
+class DecisionThresholdConfig(StrictConfig):
+    """Strict configuration for the pure pre-portfolio decision policy."""
+
+    schema_version: Literal["1.0.0"]
+    required_margin: UnitFloat
+    cost_multiplier: Annotated[float, Field(ge=1, le=100, allow_inf_nan=False)]
+    cost_uncertainty_multiplier: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
+    uncertainty_penalty: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
+    maximum_total_cost: UnitFloat
+    maximum_prediction_uncertainty: UnitFloat
+    maximum_model_disagreement: UnitFloat
+    maximum_regime_uncertainty: UnitFloat
+    maximum_drift_score: UnitFloat
+    maximum_data_age_seconds: Annotated[int, Field(ge=1, le=31_536_000)]
+    maximum_absolute_expected_return: Annotated[float, Field(gt=0, le=1, allow_inf_nan=False)]
+    maximum_batch_size: Annotated[int, Field(ge=1, le=100_000)]
+
+    @model_validator(mode="after")
+    def validate_margin_support(self) -> DecisionThresholdConfig:
+        if self.required_margin >= self.maximum_absolute_expected_return:
+            raise ValueError("required_margin must be below maximum_absolute_expected_return")
+        return self
+
+
+class DecisionPolicyStudyConfig(StrictConfig):
+    """Frozen deterministic synthetic study and resource budget."""
+
+    schema_version: Literal["1.0.0"]
+    scope: Literal["synthetic_engineering_only"]
+    baselines: list[Literal["always_trade", "never_trade"]]
+    seed: NonNegativeInt
+    observation_count: Annotated[int, Field(ge=100, le=100_000)]
+    period_count: Annotated[int, Field(ge=2, le=10_000)]
+    anchor_time: str
+    expected_return_scale: Annotated[float, Field(gt=0, le=0.10, allow_inf_nan=False)]
+    realized_noise_scale: Annotated[float, Field(ge=0, le=0.10, allow_inf_nan=False)]
+    minimum_expected_cost: UnitFloat
+    maximum_expected_cost: UnitFloat
+    cost_uncertainty_scale: UnitFloat
+    prediction_uncertainty_scale: UnitFloat
+    disagreement_scale: UnitFloat
+    regime_uncertainty_scale: UnitFloat
+    unsupported_regime_probability: UnitFloat
+    stale_probability: UnitFloat
+    future_probability: UnitFloat
+    drift_probability: UnitFloat
+    unit_turnover: Annotated[float, Field(gt=0, le=10, allow_inf_nan=False)]
+    unit_notional: PositiveFloat
+    period_capacity: PositiveFloat
+    interpretation: str
+    protected_holdout_access: Literal[False]
+    broker_access: Literal[False]
+
+    @field_validator("anchor_time")
+    @classmethod
+    def validate_anchor_time(cls, value: str) -> str:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("anchor_time must be an ISO-8601 timestamp") from exc
+        if parsed.tzinfo is None:
+            raise ValueError("anchor_time must include a timezone")
+        return value
+
+    @field_validator("interpretation")
+    @classmethod
+    def validate_interpretation(cls, value: str) -> str:
+        if not value or value != value.strip() or len(value) > 512:
+            raise ValueError(
+                "interpretation must be non-empty, trimmed, and at most 512 characters"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def validate_study(self) -> DecisionPolicyStudyConfig:
+        if self.baselines != ["always_trade", "never_trade"]:
+            raise ValueError("baselines must be frozen as always_trade, never_trade")
+        if self.period_count > self.observation_count:
+            raise ValueError("period_count cannot exceed observation_count")
+        if self.minimum_expected_cost >= self.maximum_expected_cost:
+            raise ValueError("minimum_expected_cost must be below maximum_expected_cost")
+        if self.stale_probability + self.future_probability > 1.0:
+            raise ValueError("stale_probability and future_probability cannot sum above one")
+        return self
+
+
+class DecisionPolicyExperimentConfig(StrictConfig):
+    """Complete opt-in SF-S3-MR10 study configuration."""
+
+    version: Literal["1.0.0"]
+    policy: DecisionThresholdConfig
+    study: DecisionPolicyStudyConfig
+
+    @model_validator(mode="after")
+    def validate_resource_budget(self) -> DecisionPolicyExperimentConfig:
+        if self.study.observation_count > self.policy.maximum_batch_size:
+            raise ValueError("study.observation_count cannot exceed policy.maximum_batch_size")
+        return self
+
+
 ConfigModel = (
     DataConfig
     | FeatureConfig
@@ -934,6 +1034,7 @@ ConfigModel = (
     | MetricSuitePolicyConfig
     | ResearchGovernanceConfig
     | SignalFoundryResearchConfig
+    | DecisionPolicyExperimentConfig
 )
 
 SCHEMAS: Mapping[str, type[ConfigModel]] = {
@@ -943,6 +1044,7 @@ SCHEMAS: Mapping[str, type[ConfigModel]] = {
     "models": ModelsConfig,
     "backtest": BacktestConfig,
     "calibration": CalibrationUncertaintyConfig,
+    "decision_policy": DecisionPolicyExperimentConfig,
     "metrics": MetricSuitePolicyConfig,
     "portfolio": StandalonePortfolioConfig,
     "research_governance": ResearchGovernanceConfig,
@@ -1018,3 +1120,7 @@ def load_research_governance_config(path: str | Path) -> dict[str, Any]:
 
 def load_signal_foundry_research_config(path: str | Path) -> dict[str, Any]:
     return load_config(path, "signal_foundry_research")
+
+
+def load_decision_policy_config(path: str | Path) -> dict[str, Any]:
+    return load_config(path, "decision_policy")
