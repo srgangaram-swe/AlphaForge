@@ -98,6 +98,15 @@ numeric state and fit provenance; their readers never deserialize executable
 Python objects. See [Calibration and uncertainty
 contracts](calibration_uncertainty.md).
 
+The canonical `configs/metrics.yaml` surface freezes the unified metric
+minimum samples, reliability bins, benchmark identity, and moving-block
+resample count, block length, confidence level, circular policy, and seed.
+Every published scalar carries a `MetricContract`; every defined uncertainty
+record includes its variance and complete resampling policy. Annualization uses
+the actual elapsed calendar span, so irregular calendars do not silently
+inherit a 252-session assumption. See [Metric governance and time-series
+distributions](metric_governance.md).
+
 ## Safe tabular artifacts
 
 Pipeline tables use the `1.0.0` `*.table.json` contract in

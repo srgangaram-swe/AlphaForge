@@ -30,6 +30,11 @@ Important limitations:
   declared bins; moving-block bootstrap intervals require local stationarity
   and an adequate block length; block-conformal coverage requires exchangeable
   residual blocks; and linear quantile regressions can be misspecified.
+- Unified metric intervals remain conditional on the selected calendar,
+  benchmark, sample, block length, and stationarity approximation. An
+  undefined metric is reported explicitly, but a defined metric can still be
+  economically irrelevant, selected after many trials, unstable across
+  regimes, or overwhelmed by unmodeled execution costs.
 - No broker integration places live orders.
 - Offline paper controls emit proposed state decisions only. They do not model
   broker acknowledgements, rejects, outages, recovery, exchange state, legal or

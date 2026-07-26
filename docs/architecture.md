@@ -13,7 +13,8 @@ flowchart TD
     splits --> models[Model training incl. IC-weighted ensemble]
     models --> preds[Out-of-sample prediction panel]
     preds --> calibration[OOF calibration + dependence-aware uncertainty]
-    calibration --> overfit
+    calibration --> metrics[Contract-bound unified metrics]
+    metrics --> overfit
     preds --> overfit[Overfitting stats: DSR, PBO, NW t-stats]
     preds --> signals[Signals + regime filter]
     signals --> portfolio[Portfolio construction]
@@ -73,5 +74,11 @@ Two implementation layers sit beside the Python pipeline:
   Platt/isotonic state, moving-block bootstrap intervals, conservative
   block-conformal residual intervals, and bounded linear quantile regression.
   See [Calibration and uncertainty contracts](calibration_uncertainty.md).
+- **Metric governance boundary** (`alphaforge/evaluation/metric_suite.py`):
+  immutable interpretation contracts, explicit undefined states,
+  elapsed-calendar-time annualization, benchmark semantics, reconciled
+  cost/capacity measures, and deterministic moving-block distributions with
+  published variance and assumptions. See
+  [Metric governance and time-series distributions](metric_governance.md).
 - **Capacity evaluation** (`alphaforge/evaluation/capacity.py`): auditable AUM,
   participation, fill-ratio, and cost sensitivities using supplied lagged ADV.
