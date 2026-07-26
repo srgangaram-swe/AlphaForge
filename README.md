@@ -41,6 +41,9 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Training-OOF-only Platt/isotonic probability calibration, Brier and
   reliability evidence, dependence-aware moving-block intervals, conservative
   block-conformal residual intervals, and bounded quantile regression.
+- Contract-bound predictive, IC, calibration, return, drawdown, turnover,
+  exposure, capacity, benchmark, and cost metrics with elapsed-time
+  annualization and moving-block sampling distributions.
 - Backtests that use out-of-sample predictions only.
 - Close-decision → next-open execution with a self-financing cash/share ledger,
   drifted holdings, causal lagged-liquidity inputs, partial fills, and reconciled P&L.
@@ -133,6 +136,9 @@ paper or live use.
 The [calibration and uncertainty contract](docs/calibration_uncertainty.md)
 documents OOF provenance, mathematical assumptions, deterministic
 configuration, JSON-safe persistence, and failure behavior.
+The [metric governance contract](docs/metric_governance.md) defines units,
+annualization, benchmarks, missingness, invalid states, and dependence-aware
+distributions for the unified research scorecard.
 
 Supply-chain and release controls are documented in
 [Release and security governance](docs/release_security.md).

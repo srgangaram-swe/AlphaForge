@@ -728,6 +728,33 @@ class CalibrationUncertaintyConfig(StrictConfig):
         return self
 
 
+class MetricSuitePolicyConfig(StrictConfig):
+    """Strict configuration surface for SF-S2-MR7."""
+
+    version: Literal["1.0.0"]
+    minimum_prediction_samples: Annotated[int, Field(ge=4, le=10_000_000)]
+    minimum_trading_periods: Annotated[int, Field(ge=4, le=10_000_000)]
+    reliability_bins: Annotated[int, Field(ge=2, le=100)]
+    benchmark_name: str
+    bootstrap: BootstrapUncertaintyConfig
+
+    @field_validator("benchmark_name")
+    @classmethod
+    def validate_benchmark_name(cls, value: str) -> str:
+        if not value or value != value.strip():
+            raise ValueError("benchmark_name must be non-empty and trimmed")
+        return value
+
+    @model_validator(mode="after")
+    def validate_block_support(self) -> MetricSuitePolicyConfig:
+        minimum = min(self.minimum_prediction_samples, self.minimum_trading_periods)
+        if self.bootstrap.block_length > minimum:
+            raise ValueError(
+                "bootstrap.block_length cannot exceed either minimum sample requirement"
+            )
+        return self
+
+
 class ResearchConfig(StrictConfig):
     holdout_start: str
     benchmark_symbol: str
@@ -794,6 +821,7 @@ ConfigModel = (
     | StandalonePortfolioConfig
     | RiskAnalyticsConfig
     | CalibrationUncertaintyConfig
+    | MetricSuitePolicyConfig
     | SignalFoundryResearchConfig
 )
 
@@ -804,6 +832,7 @@ SCHEMAS: Mapping[str, type[ConfigModel]] = {
     "models": ModelsConfig,
     "backtest": BacktestConfig,
     "calibration": CalibrationUncertaintyConfig,
+    "metrics": MetricSuitePolicyConfig,
     "portfolio": StandalonePortfolioConfig,
     "risk": RiskAnalyticsConfig,
     "signal_foundry_research": SignalFoundryResearchConfig,
@@ -865,6 +894,10 @@ def load_risk_config(path: str | Path) -> dict[str, Any]:
 
 def load_calibration_config(path: str | Path) -> dict[str, Any]:
     return load_config(path, "calibration")
+
+
+def load_metrics_config(path: str | Path) -> dict[str, Any]:
+    return load_config(path, "metrics")
 
 
 def load_signal_foundry_research_config(path: str | Path) -> dict[str, Any]:
