@@ -299,6 +299,14 @@ def test_committed_study_profile_freezes_exact_family_and_single_worker() -> Non
     profile = load_signal_foundry_research_config("configs/signal_foundry_sprint_2_study.yaml")
 
     assert tuple(model["name"] for model in profile["models"]) == SPRINT_2_CANDIDATES
+    assert profile["walk_forward"] == {
+        "scheme": "expanding",
+        "min_train_days": 504,
+        "test_days": 63,
+        "step_days": 63,
+        "embargo_days": 21,
+        "max_windows": None,
+    }
     for model in profile["models"]:
         if model["name"] in {"random_forest", "lightgbm", "xgboost", "catboost"}:
             assert model["params"]["n_jobs"] == 1

@@ -102,9 +102,9 @@ features:
 
 walk_forward:
   scheme: expanding
-  min_train_days: 756
-  test_days: 126
-  step_days: 126
+  min_train_days: 504
+  test_days: 63
+  step_days: 63
   embargo_days: 21
 
 backtest:

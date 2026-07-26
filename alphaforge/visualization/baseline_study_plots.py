@@ -68,6 +68,7 @@ def plot_costed_returns(frame: pd.DataFrame, path: str | Path) -> Path:
     """Compare gross and net annualized development backtest returns."""
 
     destination = _prepare(path)
+    model_order = frame["model"].astype(str).tolist()
     long = frame.melt(
         id_vars=["model"],
         value_vars=["gross_annual_return", "net_annual_return"],
@@ -86,10 +87,13 @@ def plot_costed_returns(frame: pd.DataFrame, path: str | Path) -> Path:
         x="annualized_return",
         y="model",
         hue="return_basis",
+        order=model_order,
         palette=_PALETTE,
         errorbar=None,
         ax=axis,
     )
+    axis.set_yticks(range(len(model_order)), labels=model_order)
+    axis.tick_params(axis="y", colors="#222222")
     axis.axvline(0.0, color="#444444", linestyle="--", linewidth=1.2)
     axis.set(
         title="Development OOS economics before and after declared trading costs",
