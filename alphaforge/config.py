@@ -8,6 +8,7 @@ return normalized dictionaries for the existing domain APIs.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -329,17 +330,25 @@ MODEL_PARAMETER_FIELDS: dict[str, frozenset[str]] = {
     "zero_baseline": frozenset(),
     "historical_mean": frozenset(),
     "momentum_baseline": frozenset({"feature", "scale"}),
-    "linear": frozenset({"fit_intercept"}),
+    "linear": frozenset({"fit_intercept", "positive"}),
     "ridge": frozenset({"alpha", "fit_intercept", "max_iter", "tol"}),
-    "lasso": frozenset({"alpha", "fit_intercept", "max_iter", "tol", "selection"}),
-    "elastic_net": frozenset(
-        {"alpha", "l1_ratio", "fit_intercept", "max_iter", "tol", "selection"}
-    ),
+    "lasso": frozenset({"alpha", "fit_intercept", "max_iter", "tol"}),
+    "elastic_net": frozenset({"alpha", "l1_ratio", "fit_intercept", "max_iter", "tol"}),
+    "huber": frozenset({"epsilon", "alpha", "max_iter", "tol"}),
     "random_forest": frozenset(
         {
             "n_estimators",
             "max_depth",
-            "min_samples_split",
+            "min_samples_leaf",
+            "max_features",
+            "n_jobs",
+            "random_state",
+        }
+    ),
+    "extra_trees": frozenset(
+        {
+            "n_estimators",
+            "max_depth",
             "min_samples_leaf",
             "max_features",
             "n_jobs",
@@ -349,13 +358,55 @@ MODEL_PARAMETER_FIELDS: dict[str, frozenset[str]] = {
     "gradient_boosting": frozenset(
         {
             "backend",
-            "loss",
             "learning_rate",
             "max_iter",
-            "max_leaf_nodes",
             "max_depth",
             "min_samples_leaf",
             "l2_regularization",
+            "random_state",
+        }
+    ),
+    "lightgbm": frozenset(
+        {
+            "n_estimators",
+            "max_depth",
+            "learning_rate",
+            "min_samples_leaf",
+            "l2_regularization",
+            "n_jobs",
+            "random_state",
+        }
+    ),
+    "xgboost": frozenset(
+        {
+            "n_estimators",
+            "max_depth",
+            "learning_rate",
+            "min_child_weight",
+            "l2_regularization",
+            "n_jobs",
+            "random_state",
+        }
+    ),
+    "catboost": frozenset(
+        {
+            "n_estimators",
+            "max_depth",
+            "learning_rate",
+            "min_samples_leaf",
+            "l2_regularization",
+            "n_jobs",
+            "random_state",
+        }
+    ),
+    "small_mlp": frozenset(
+        {
+            "hidden_layer_sizes",
+            "alpha",
+            "learning_rate_init",
+            "batch_size",
+            "max_iter",
+            "tol",
             "random_state",
         }
     ),
@@ -618,6 +669,166 @@ class RiskAnalyticsConfig(StrictConfig):
         return self
 
 
+class ProbabilityCalibrationConfig(StrictConfig):
+    """Governed probability-calibration settings."""
+
+    method: Literal["platt", "isotonic"]
+    reliability_bins: Annotated[int, Field(ge=2, le=100)]
+
+
+class BootstrapUncertaintyConfig(StrictConfig):
+    """Bounded moving-block bootstrap settings."""
+
+    n_resamples: Annotated[int, Field(ge=100, le=100_000)]
+    block_length: Annotated[int, Field(ge=2, le=10_000_000)]
+    confidence_level: OpenUnitFloat
+    seed: NonNegativeInt
+    circular: bool
+
+
+class ConformalUncertaintyConfig(StrictConfig):
+    """Block-conformal residual interval settings."""
+
+    alpha: OpenUnitFloat
+    block_length: Annotated[int, Field(ge=2, le=10_000_000)]
+    min_blocks: Annotated[int, Field(ge=3, le=10_000)]
+
+
+class QuantileRegressionUncertaintyConfig(StrictConfig):
+    """Bounded linear quantile-regression settings."""
+
+    lower_quantile: OpenUnitFloat
+    upper_quantile: OpenUnitFloat
+    alpha: NonNegativeFloat
+    max_iter: Annotated[int, Field(ge=100, le=1_000_000)]
+    max_samples: Annotated[int, Field(ge=10, le=10_000_000)]
+    max_features: Annotated[int, Field(ge=1, le=10_000)]
+
+    @model_validator(mode="after")
+    def validate_quantiles(self) -> QuantileRegressionUncertaintyConfig:
+        if not self.lower_quantile < 0.5 < self.upper_quantile:
+            raise ValueError("quantiles must satisfy lower_quantile < 0.5 < upper_quantile")
+        return self
+
+
+class CalibrationUncertaintyConfig(StrictConfig):
+    """Strict configuration surface for SF-S2-MR6."""
+
+    version: Literal["1.0.0"]
+    probability: ProbabilityCalibrationConfig
+    bootstrap: BootstrapUncertaintyConfig
+    conformal: ConformalUncertaintyConfig
+    quantile_regression: QuantileRegressionUncertaintyConfig
+
+    @model_validator(mode="after")
+    def validate_temporal_blocks(self) -> CalibrationUncertaintyConfig:
+        if self.bootstrap.block_length != self.conformal.block_length:
+            raise ValueError(
+                "bootstrap and conformal block lengths must match the predeclared dependence policy"
+            )
+        return self
+
+
+class MetricSuitePolicyConfig(StrictConfig):
+    """Strict configuration surface for SF-S2-MR7."""
+
+    version: Literal["1.0.0"]
+    minimum_prediction_samples: Annotated[int, Field(ge=4, le=10_000_000)]
+    minimum_trading_periods: Annotated[int, Field(ge=4, le=10_000_000)]
+    reliability_bins: Annotated[int, Field(ge=2, le=100)]
+    benchmark_name: str
+    bootstrap: BootstrapUncertaintyConfig
+
+    @field_validator("benchmark_name")
+    @classmethod
+    def validate_benchmark_name(cls, value: str) -> str:
+        if not value or value != value.strip():
+            raise ValueError("benchmark_name must be non-empty and trimmed")
+        return value
+
+    @model_validator(mode="after")
+    def validate_block_support(self) -> MetricSuitePolicyConfig:
+        minimum = min(self.minimum_prediction_samples, self.minimum_trading_periods)
+        if self.bootstrap.block_length > minimum:
+            raise ValueError(
+                "bootstrap.block_length cannot exceed either minimum sample requirement"
+            )
+        return self
+
+
+class MultipleTestingPolicyConfig(StrictConfig):
+    """Frozen complete-family correction policy for research governance."""
+
+    method: Literal["holm_bonferroni", "benjamini_hochberg"]
+    alpha: OpenUnitFloat
+    family_size: Annotated[int, Field(ge=1, le=10_000)]
+    assumptions: Annotated[list[str], Field(min_length=1, max_length=64)]
+    failed_trial_p_value: Annotated[float, Field(ge=1.0, le=1.0)] = 1.0
+
+    @field_validator("assumptions")
+    @classmethod
+    def validate_assumptions(cls, values: list[str]) -> list[str]:
+        if len(values) != len(set(values)) or any(
+            not value or value != value.strip() for value in values
+        ):
+            raise ValueError("assumptions must be unique non-empty declarations")
+        return values
+
+
+class KillCriterionConfig(StrictConfig):
+    """One predeclared candidate rejection condition."""
+
+    name: str
+    metric: str
+    operator: Literal["lt", "le", "gt", "ge"]
+    threshold: float
+
+    @field_validator("name", "metric")
+    @classmethod
+    def validate_identifier(cls, value: str) -> str:
+        if (
+            not value
+            or len(value) > 128
+            or value != value.strip()
+            or not value.isascii()
+            or not all(character.isalnum() or character in "._-" for character in value)
+        ):
+            raise ValueError("research-governance identifiers must be safe ASCII")
+        return value
+
+    @field_validator("threshold")
+    @classmethod
+    def validate_threshold(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("kill-criterion threshold must be finite")
+        return value
+
+
+class ResearchLedgerResourceConfig(StrictConfig):
+    """Bounded local append-only ledger resource policy."""
+
+    max_records: Annotated[int, Field(ge=10, le=1_000_000)]
+    max_bytes: Annotated[int, Field(ge=4096, le=1_073_741_824)]
+
+
+class ResearchGovernanceConfig(StrictConfig):
+    """Strict configuration surface for SF-S2-MR8."""
+
+    version: Literal["1.0.0"]
+    correction: MultipleTestingPolicyConfig
+    kill_criteria: Annotated[list[KillCriterionConfig], Field(min_length=1, max_length=64)]
+    ledger: ResearchLedgerResourceConfig
+
+    @model_validator(mode="after")
+    def validate_governance(self) -> ResearchGovernanceConfig:
+        names = [criterion.name for criterion in self.kill_criteria]
+        if len(names) != len(set(names)):
+            raise ValueError("kill-criterion names must be unique")
+        if self.ledger.max_records < self.correction.family_size * 4 + 2:
+            raise ValueError("ledger.max_records cannot hold the minimum trial event family")
+        return self
+
+
 class ResearchConfig(StrictConfig):
     holdout_start: str
     benchmark_symbol: str
@@ -683,6 +894,9 @@ ConfigModel = (
     | BacktestConfig
     | StandalonePortfolioConfig
     | RiskAnalyticsConfig
+    | CalibrationUncertaintyConfig
+    | MetricSuitePolicyConfig
+    | ResearchGovernanceConfig
     | SignalFoundryResearchConfig
 )
 
@@ -692,7 +906,10 @@ SCHEMAS: Mapping[str, type[ConfigModel]] = {
     "labels": LabelsConfig,
     "models": ModelsConfig,
     "backtest": BacktestConfig,
+    "calibration": CalibrationUncertaintyConfig,
+    "metrics": MetricSuitePolicyConfig,
     "portfolio": StandalonePortfolioConfig,
+    "research_governance": ResearchGovernanceConfig,
     "risk": RiskAnalyticsConfig,
     "signal_foundry_research": SignalFoundryResearchConfig,
 }
@@ -749,6 +966,18 @@ def load_portfolio_config(path: str | Path) -> dict[str, Any]:
 
 def load_risk_config(path: str | Path) -> dict[str, Any]:
     return load_config(path, "risk")
+
+
+def load_calibration_config(path: str | Path) -> dict[str, Any]:
+    return load_config(path, "calibration")
+
+
+def load_metrics_config(path: str | Path) -> dict[str, Any]:
+    return load_config(path, "metrics")
+
+
+def load_research_governance_config(path: str | Path) -> dict[str, Any]:
+    return load_config(path, "research_governance")
 
 
 def load_signal_foundry_research_config(path: str | Path) -> dict[str, Any]:

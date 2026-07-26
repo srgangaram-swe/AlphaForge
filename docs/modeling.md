@@ -3,11 +3,17 @@
 ## Models
 
 - Zero, historical mean, and momentum baselines — every ML model must beat these.
-- Linear regression, ridge, lasso, and elastic net (imputation + scaling
+- Linear regression, ridge, lasso, elastic net, and robust Huber regression
+  (imputation + scaling
   embedded in the pipeline, so statistics are always train-window-only).
-- Random forest and gradient boosting. Gradient boosting pins an explicit
-  `sklearn` or `lightgbm` backend in configuration; installing an optional
-  package never silently changes estimator semantics.
+- Random Forest, Extra Trees, bounded histogram gradient boosting, and a
+  controlled small MLP. Every stochastic backend receives an order-independent
+  seed and every worker, depth, tree, layer, and iteration setting is bounded.
+- LightGBM is the primary optional tabular benchmark; XGBoost and CatBoost are
+  explicit independent comparisons. Installing an optional package never
+  silently changes another registry name's estimator semantics. See
+  [Governed benchmark models](governed_benchmark_models.md) for mathematics,
+  dependency boundaries, termination evidence, and trading limitations.
 - Optional PyTorch MLP, GRU, and temporal CNN with causal per-symbol sequence
   construction and time-ordered early-stopping splits.
 - **TemporalAlphaNet** (`alphaforge/models/temporal.py`, ADR 0002): the
@@ -28,7 +34,8 @@
 
 The registry is config-driven. Walk-forward validation instantiates a fresh
 model per window, fits only on training rows, and emits predictions only for
-test rows.
+test rows. Its metrics also publish backend, convergence/completion status,
+iteration budget, seed, and warning count for governed estimators.
 
 ## Validation
 

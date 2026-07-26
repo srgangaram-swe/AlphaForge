@@ -12,6 +12,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from alphaforge.models.base import ModelError  # noqa: E402
 from alphaforge.models.registry import create_model  # noqa: E402
 from alphaforge.models.temporal import TemporalAlphaModel  # noqa: E402
 
@@ -122,7 +123,9 @@ def test_save_load_roundtrip(tmp_path):
     model = TemporalAlphaModel(**dict(FAST_PARAMS, max_epochs=2)).fit(X, y)
     path = tmp_path / "checkpoint.pt"
     model.save(path)
-    restored = TemporalAlphaModel.load(path)
+    with pytest.raises(ModelError, match="trusted=True"):
+        TemporalAlphaModel.load(path)
+    restored = TemporalAlphaModel.load(path, trusted=True)
     np.testing.assert_allclose(model.predict(X), restored.predict(X), rtol=1e-6)
 
 

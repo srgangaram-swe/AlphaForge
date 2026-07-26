@@ -64,7 +64,7 @@ is excluded from its artifact inventory to avoid a recursive hash.
 
 `uv.lock` is the committed universal resolution for Python 3.12–3.14 and all
 declared extras. CI pins the `setup-uv` action by full commit SHA and uv itself
-to `0.9.7`; the container uses the same uv version and lockfile. CI exercises
+to `0.11.28`; the container uses the same uv version and lockfile. CI exercises
 the base environment on every supported Python version, the native and torch
 boundaries, and separate locked import checks for the data, ML, and application
 extras.
@@ -89,6 +89,32 @@ artifact, or model work begins. `make config-check` validates every canonical
 configuration plus the pre-registered WIKI bootstrap profile. The generic
 permissive YAML loader has been retired;
 adding a new YAML surface requires a named schema and negative tests.
+
+The canonical `configs/calibration.yaml` surface fixes the probability
+calibrator, reliability bins, bootstrap resamples/block length/seed, conformal
+miscoverage and minimum blocks, and quantile-regression bounds. Calibration and
+conformal artifacts are atomic, versioned, bounded JSON records containing only
+numeric state and fit provenance; their readers never deserialize executable
+Python objects. See [Calibration and uncertainty
+contracts](calibration_uncertainty.md).
+
+The canonical `configs/metrics.yaml` surface freezes the unified metric
+minimum samples, reliability bins, benchmark identity, and moving-block
+resample count, block length, confidence level, circular policy, and seed.
+Every published scalar carries a `MetricContract`; every defined uncertainty
+record includes its variance and complete resampling policy. Annualization uses
+the actual elapsed calendar span, so irregular calendars do not silently
+inherit a 252-session assumption. See [Metric governance and time-series
+distributions](metric_governance.md).
+
+The canonical `configs/research_governance.yaml` surface freezes the eligible
+family size, multiple-testing method and assumptions, failed-trial treatment,
+candidate kill criteria, and ledger resource bounds. The plan and every ledger
+event use canonical JSON and SHA-256 chaining; an independently updated head
+receipt detects mutation and truncation before any supported append. Missing,
+extra, failed, interrupted, or nonterminal candidates cannot be silently
+excluded from family correction. See
+[Append-only research governance](research_governance.md).
 
 ## Safe tabular artifacts
 
@@ -133,3 +159,15 @@ symlinked inputs. The committed WIKI profile and aggregate evidence can be
 replayed from the verified local cache with zero provider requests. Licensed
 rows and row-level predictions, orders, fills, positions, and returns remain
 ignored and local.
+
+The Sprint 2 baseline study uses
+`configs/signal_foundry_sprint_2_study.yaml` together with
+`configs/research_governance.yaml`. Run
+`scripts/run_sprint_2_study.py` under `/usr/bin/time -l`, then pass its
+immutable study/run directories and the bounded time profile to
+`scripts/publish_sprint_2_evidence.py`. The plan hash includes the seeded
+candidate configurations, folds, holdout, costs, correction, and kill policy.
+The aggregate publisher refuses an existing destination, symlinked input,
+identity mismatch, incomplete family, unequal fold set, or source license that
+does not require aggregate-only publication. Full commands and assumptions are
+in [Governed seven-candidate baseline study](governed_baseline_study.md).

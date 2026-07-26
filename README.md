@@ -38,6 +38,15 @@ AlphaForge is an educational quantitative research and ML engineering project. I
   pickle interchange across the local research pipeline.
 - Overfitting statistics: Probabilistic and Deflated Sharpe Ratios, Probability of
   Backtest Overfitting (CSCV), and Newey-West IC t-statistics.
+- Training-OOF-only Platt/isotonic probability calibration, Brier and
+  reliability evidence, dependence-aware moving-block intervals, conservative
+  block-conformal residual intervals, and bounded quantile regression.
+- Contract-bound predictive, IC, calibration, return, drawdown, turnover,
+  exposure, capacity, benchmark, and cost metrics with elapsed-time
+  annualization and moving-block sampling distributions.
+- A deeply immutable hypothesis and trial-family plan, append-only hash-chained
+  research ledger, complete-family Holm/BH corrections, and frozen kill
+  criteria that retain failures and rejected evaluation attempts.
 - Backtests that use out-of-sample predictions only.
 - Close-decision → next-open execution with a self-financing cash/share ledger,
   drifted holdings, causal lagged-liquidity inputs, partial fills, and reconciled P&L.
@@ -123,11 +132,34 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [governed benchmark model contract](docs/governed_benchmark_models.md)
+documents the bounded linear, robust, tree, boosting, and small-MLP families,
+their deterministic termination evidence, and the remaining barriers to
+paper or live use.
+The [calibration and uncertainty contract](docs/calibration_uncertainty.md)
+documents OOF provenance, mathematical assumptions, deterministic
+configuration, JSON-safe persistence, and failure behavior.
+The [metric governance contract](docs/metric_governance.md) defines units,
+annualization, benchmarks, missingness, invalid states, and dependence-aware
+distributions for the unified research scorecard.
+The [append-only research governance contract](docs/research_governance.md)
+defines frozen hypothesis/lineage plans, trial state transitions, tamper and
+truncation detection, complete-family corrections, kill criteria, recovery
+behavior, and its external-receipt limitation.
+The [governed seven-candidate baseline study](docs/governed_baseline_study.md)
+binds that ledger to identical development folds, common costed economics,
+matched-fold inference, Holm correction, selected-candidate-only final-holdout
+access, and an aggregate-only Seaborn evidence publisher. Its stale WIKI run is
+an engineering study, not current market or trading-readiness evidence.
+
 Supply-chain and release controls are documented in
 [Release and security governance](docs/release_security.md).
 The [Sprint 1 evidence report](docs/sprint_1_report.md) records the final
 `NOT_READY` result and its reproducible Seaborn evidence without publishing
 licensed rows.
+The [Sprint 2 report](docs/sprint_2_report.md) records the governed
+seven-candidate comparison, selection correction, costed final-holdout
+rejection, compute profile, and aggregate-only Seaborn evidence.
 
 ## Low-Latency Execution Core (C++)
 

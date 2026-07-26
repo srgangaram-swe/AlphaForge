@@ -273,6 +273,62 @@ def _backtest(
     )
 
 
+def _gross_performance(equity_curve: pd.DataFrame) -> dict[str, float]:
+    """Reconstruct the pre-cost curve from the reconciled ledger output."""
+
+    gross_curve = equity_curve.copy()
+    first_net_return = float(gross_curve["return"].iloc[0])
+    initial_equity = float(gross_curve["equity"].iloc[0]) / (1.0 + first_net_return)
+    gross_curve["return"] = gross_curve["gross_return"].astype(float)
+    gross_curve["equity"] = initial_equity * (1.0 + gross_curve["return"]).cumprod()
+    return performance_summary(gross_curve)
+
+
+def _development_economic_summary(
+    *,
+    panel: pd.DataFrame,
+    predictions: pd.DataFrame,
+    features: pd.DataFrame,
+    benchmark_symbol: str,
+    backtest_config: dict[str, Any],
+) -> pd.DataFrame:
+    """Cost every candidate's identical development-only OOS prediction panel.
+
+    The returned table is aggregate evidence. Row-level orders, fills, weights,
+    and predictions remain inside the ignored governed-run directory.
+    """
+
+    records: list[dict[str, Any]] = []
+    for model_name, candidate_predictions in predictions.groupby("model", sort=True):
+        result = _backtest(
+            panel=panel,
+            predictions=candidate_predictions,
+            features=features,
+            benchmark_symbol=benchmark_symbol,
+            backtest_config=backtest_config,
+        )
+        net = performance_summary(result.equity_curve)
+        gross = _gross_performance(result.equity_curve)
+        records.append(
+            {
+                "model": str(model_name),
+                "prediction_rows": int(len(candidate_predictions)),
+                "trading_sessions": int(len(result.equity_curve)),
+                "order_count": int(len(result.orders)),
+                "fill_count": int(len(result.fills)),
+                "gross_annual_return": float(gross["annual_return"]),
+                "net_annual_return": float(net["annual_return"]),
+                "annual_cost_drag": float(gross["annual_return"] - net["annual_return"]),
+                "sharpe": float(net["sharpe"]),
+                "max_drawdown": float(net["max_drawdown"]),
+                "average_turnover": float(net["average_turnover"]),
+                "average_gross_exposure": float(net["average_gross_exposure"]),
+                "average_net_exposure": float(net["average_net_exposure"]),
+            }
+        )
+    return pd.DataFrame.from_records(records).sort_values("model", kind="stable")
+
+
 def _stress_scenarios(
     *,
     panel: pd.DataFrame,
@@ -676,6 +732,13 @@ def run_governed_signal_foundry_research(
         )
         selected_spec = next(spec for spec in model_specs if spec["name"] == candidate_name)
         ledger = _trial_ledger(model_specs, development_summary)
+        development_economics = _development_economic_summary(
+            panel=panel,
+            predictions=development.predictions,
+            features=features,
+            benchmark_symbol=research_config.benchmark_symbol,
+            backtest_config=backtest_config,
+        )
 
         supervised, columns = supervised_frame(features, labels, research_config.target)
         train = supervised.loc[supervised["date"].le(development_end)].dropna(
@@ -742,12 +805,7 @@ def run_governed_signal_foundry_research(
         capacity = estimate_capacity(primary.fills, capacity_config)
         capacity_passed = bool(capacity.curve["fill_ratio"].min() >= minimum_fill_ratio)
         primary_summary = performance_summary(primary.equity_curve)
-        gross_curve = primary.equity_curve.copy()
-        first_net_return = float(gross_curve["return"].iloc[0])
-        initial_equity = float(gross_curve["equity"].iloc[0]) / (1.0 + first_net_return)
-        gross_curve["return"] = gross_curve["gross_return"].astype(float)
-        gross_curve["equity"] = initial_equity * (1.0 + gross_curve["return"]).cumprod()
-        gross_summary = performance_summary(gross_curve)
+        gross_summary = _gross_performance(primary.equity_curve)
         concentration = exposure_summary(primary.weights)
         if dataset.source_panel.empty:
             paper_anchor = pd.Timestamp(panel["date"].max()).tz_localize(UTC)
@@ -821,6 +879,8 @@ def run_governed_signal_foundry_research(
 
         development_summary.to_csv(staging / "development_model_selection.csv", index=False)
         development.metrics.to_csv(staging / "development_windows.csv", index=False)
+        development.predictions.to_csv(staging / "development_predictions.csv", index=False)
+        development_economics.to_csv(staging / "development_economic_metrics.csv", index=False)
         if not development.transformations.empty:
             development.transformations.to_csv(
                 staging / "development_fitted_transformations.csv", index=False
