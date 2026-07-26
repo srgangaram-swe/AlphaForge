@@ -15,7 +15,9 @@ using alphaforge::Side;
 
 PYBIND11_MODULE(alphaforge_native, m) {
     m.doc() = "AlphaForge native execution core (C++17 limit order book)";
-    m.attr("__version__") = "0.1.0";
+    // This version identifies the stable Python/native boundary, not the
+    // independently released AlphaForge package.
+    m.attr("__abi_version__") = "1";
 
     py::enum_<Side>(m, "Side")
         .value("BUY", Side::Buy)

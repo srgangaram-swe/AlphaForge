@@ -341,7 +341,7 @@ def test_receipt_snapshot_rejects_symlink_swap(
         dir_fd: int | None = None,
     ) -> int:
         nonlocal swapped
-        if Path(path) == receipt and not swapped:
+        if Path(os.fsdecode(path)) == receipt and not swapped:
             swapped = True
             receipt.unlink()
             receipt.symlink_to(replacement)

@@ -121,6 +121,10 @@ jobs:
         if: matrix.extra == 'ml'
         run: uv run python -m pytest tests/test_optional_boosters.py
 
+      - name: Application API and version contract
+        if: matrix.extra == 'app'
+        run: uv run python -m pytest tests/test_backtest_ui.py
+
   smoke-demo:
     runs-on: ubuntu-latest
     timeout-minutes: 15

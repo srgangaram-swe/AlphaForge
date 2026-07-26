@@ -7,6 +7,7 @@ from alphaforge.execution.models import (
 )
 from alphaforge.execution.native import (
     BUY,
+    NATIVE_ABI_VERSION,
     NATIVE_AVAILABLE,
     SELL,
     make_order_book,
@@ -15,6 +16,7 @@ from alphaforge.execution.native import (
 
 __all__ = [
     "BUY",
+    "NATIVE_ABI_VERSION",
     "NATIVE_AVAILABLE",
     "SELL",
     "BarExecutionModel",

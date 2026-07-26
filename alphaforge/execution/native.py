@@ -9,8 +9,16 @@ from __future__ import annotations
 
 from alphaforge.execution import orderbook_py
 
+NATIVE_ABI_VERSION = "1"
+
 try:
     import alphaforge.alphaforge_native as _native
+
+    if _native.__abi_version__ != NATIVE_ABI_VERSION:
+        raise ImportError(
+            "native execution ABI mismatch: "
+            f"expected {NATIVE_ABI_VERSION}, observed {_native.__abi_version__!r}"
+        )
 except ImportError:
     NATIVE_AVAILABLE = False
 else:

@@ -10,7 +10,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from alphaforge.execution import BUY, NATIVE_AVAILABLE, SELL, make_order_book, simulate_fill
+from alphaforge.execution import (
+    BUY,
+    NATIVE_ABI_VERSION,
+    NATIVE_AVAILABLE,
+    SELL,
+    make_order_book,
+    simulate_fill,
+)
 from alphaforge.execution.orderbook_py import PyOrderBook
 
 needs_native = pytest.mark.skipif(not NATIVE_AVAILABLE, reason="native module not built")
@@ -18,6 +25,13 @@ needs_native = pytest.mark.skipif(not NATIVE_AVAILABLE, reason="native module no
 
 def fills_as_tuples(fills):
     return [f.as_tuple() if hasattr(f, "as_tuple") else tuple(f) for f in fills]
+
+
+@needs_native
+def test_native_abi_version_matches_loader_contract() -> None:
+    import alphaforge.alphaforge_native as native_module
+
+    assert native_module.__abi_version__ == NATIVE_ABI_VERSION
 
 
 def test_price_time_priority():

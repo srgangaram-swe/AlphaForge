@@ -216,7 +216,7 @@ def test_source_artifact_rejects_symlink_swap_before_descriptor_open(
         dir_fd: int | None = None,
     ) -> int:
         nonlocal swapped
-        if Path(path) == source_path and not swapped:
+        if Path(os.fsdecode(path)) == source_path and not swapped:
             swapped = True
             source_path.unlink()
             source_path.symlink_to(replacement)
