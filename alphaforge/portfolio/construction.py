@@ -21,11 +21,22 @@ def _normalize_scores(scores: pd.Series, max_gross: float) -> pd.Series:
     return scores / scores.abs().sum() * max_gross
 
 
-def _apply_caps(weights: pd.Series, max_weight: float, max_gross: float) -> pd.Series:
+def _apply_caps(
+    weights: pd.Series, max_weight: float, max_gross: float, max_net: float
+) -> pd.Series:
     weights = weights.clip(lower=-max_weight, upper=max_weight)
     gross = weights.abs().sum()
     if gross > max_gross and gross > 0:
         weights = weights * (max_gross / gross)
+    net = float(weights.sum())
+    if net > max_net:
+        positive = weights.clip(lower=0)
+        if positive.sum() > 0:
+            weights = weights - positive * ((net - max_net) / positive.sum())
+    elif net < -max_net:
+        negative = weights.clip(upper=0)
+        if negative.abs().sum() > 0:
+            weights = weights - negative * ((net + max_net) / negative.sum())
     return weights
 
 
@@ -36,27 +47,51 @@ def construct_portfolio(
 ) -> pd.DataFrame:
     """Convert signal scores into capped target weights by date."""
     cfg = config or {}
+    allowed = {
+        "scheme",
+        "max_weight",
+        "max_gross_exposure",
+        "max_net_exposure",
+        "inverse_vol_scaling",
+        "turnover_cap",
+        "vol_lookback",
+        "cash_buffer",
+    }
+    unknown = set(cfg) - allowed
+    if unknown:
+        raise ValueError(f"unknown portfolio settings: {sorted(unknown)}")
     max_weight = float(cfg.get("max_weight", 0.10))
-    max_gross = float(cfg.get("max_gross_exposure", 1.0))
-    inverse_vol = bool(cfg.get("inverse_vol_scaling", True))
+    cash_buffer = float(cfg.get("cash_buffer", 0.0))
+    max_gross = float(cfg.get("max_gross_exposure", 1.0)) * (1.0 - cash_buffer)
+    max_net = float(cfg.get("max_net_exposure", max_gross))
+    scheme = str(cfg.get("scheme", "inverse_vol"))
+    inverse_vol = bool(cfg.get("inverse_vol_scaling", scheme == "inverse_vol"))
+    vol_column = f"vol_{int(cfg.get('vol_lookback', 20))}"
     turnover_cap = cfg.get("turnover_cap")
     turnover_cap = None if turnover_cap is None else float(turnover_cap)
 
     frame = signals[ID_COLUMNS + ["signal"]].copy()
-    if features is not None and "vol_20" in features.columns:
-        frame = frame.merge(features[ID_COLUMNS + ["vol_20"]], on=ID_COLUMNS, how="left")
+    if features is not None and vol_column in features.columns:
+        frame = frame.merge(features[ID_COLUMNS + [vol_column]], on=ID_COLUMNS, how="left")
     else:
-        frame["vol_20"] = np.nan
+        frame[vol_column] = np.nan
 
     rows = []
     prev = pd.Series(dtype=float)
     for date, g in frame.groupby("date", sort=True):
         scores = g.set_index("symbol")["signal"].astype(float)
+        if scheme == "equal_weight":
+            scores = np.sign(scores)
         if inverse_vol:
-            vol = g.set_index("symbol")["vol_20"].replace(0, np.nan)
+            vol = g.set_index("symbol")[vol_column].replace(0, np.nan)
             scores = scores / vol.fillna(vol.median()).fillna(1.0)
         weights = _normalize_scores(scores, max_gross=max_gross)
-        weights = _apply_caps(weights, max_weight=max_weight, max_gross=max_gross)
+        weights = _apply_caps(
+            weights,
+            max_weight=max_weight,
+            max_gross=max_gross,
+            max_net=max_net,
+        )
 
         if turnover_cap is not None and not prev.empty:
             all_symbols = prev.index.union(weights.index)

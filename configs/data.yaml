@@ -26,7 +26,6 @@ start: "2010-01-01"
 end: null                 # null = today
 interval: 1d
 cache_dir: data/cache
-raw_dir: data/raw
 csv_dir: data/csv         # used when source == csv; one file per symbol
 quality_report: runs/data_quality.md
 

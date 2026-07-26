@@ -65,11 +65,15 @@ changes. `metadata().to_dict()` is JSON-friendly and deterministic under
   are **byte-identical**, and a load reconstructs the model via the registry plus
   `_load_fitted_state`.
 * Other models (sklearn pipelines, torch nets) fall back to **joblib**, which
-  round-trips but is not byte-deterministic. `TemporalAlphaModel` keeps its own
-  torch-checkpoint `save`/`load`.
+  round-trips under the pinned environment but is not byte-deterministic.
+  Because pickle-family formats can execute code, `AlphaModel.load` refuses
+  binary artifacts unless the caller passes `trusted=True` after provenance and
+  integrity verification. `TemporalAlphaModel` keeps its own torch-checkpoint
+  `save`/`load` and carries the same trusted-artifact limitation.
 
-`AlphaModel.load(path)` sniffs the format (JSON vs joblib) and raises `ModelError`
-if a joblib payload is not an `AlphaModel`.
+`AlphaModel.load(path)` bounds artifact size, schema-validates JSON containers,
+and raises `ModelError` for malformed, incompatible, unfitted, or unknown
+artifacts. Saving is atomic and refuses unfitted models.
 
 ## Naive baselines
 
@@ -124,7 +128,10 @@ JSON container is byte-stable). Reproduce with
   unchanged apart from `TemporalAlphaModel.load` now marking the model fitted.
   Reverting the commit restores the previous state.
 * **Deterministic serialization is guaranteed only for JSON-state models** (the
-  baselines); joblib payloads round-trip but are not byte-stable.
+  baselines); joblib payloads deterministically reproduce predictions in the
+  pinned environment but are not byte-stable and require `trusted=True`.
+* **Binary model artifacts are executable input.** Load them only after
+  verifying their source and integrity. The default loader refuses them.
 * **A baseline is not a strategy.** These bound comparison; they carry no
   predictive-edge claim and must never be treated as deployable.
 * **Sprint 1 dependency.** The contract is built on the current `dev`; it consumes

@@ -1,4 +1,4 @@
-"""Shared utilities: logging, config loading, seeding, run IDs."""
+"""Shared utilities: logging, JSON output, seeding, and run IDs."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import yaml
 
 ANNUALIZATION_DAYS = 252
 
@@ -25,11 +24,6 @@ def get_logger(name: str) -> logging.Logger:
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
     return logger
-
-
-def load_yaml(path: str | Path) -> dict[str, Any]:
-    with open(path) as f:
-        return yaml.safe_load(f) or {}
 
 
 def save_json(obj: Any, path: str | Path) -> None:
@@ -52,14 +46,29 @@ def save_json(obj: Any, path: str | Path) -> None:
 
 
 def set_seed(seed: int) -> None:
-    """Seed every RNG we use. Torch is seeded lazily if installed."""
+    """Seed applicable Python, NumPy, PyTorch, and TensorFlow runtime RNGs."""
+    if seed < 0:
+        raise ValueError("seed must be non-negative")
     random.seed(seed)
     np.random.seed(seed)
     try:
         import torch
 
-        torch.manual_seed(seed)
-    except ImportError:
+        if hasattr(torch, "manual_seed"):
+            torch.manual_seed(seed)
+        if hasattr(torch, "cuda") and torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+        if hasattr(torch, "use_deterministic_algorithms"):
+            torch.use_deterministic_algorithms(True, warn_only=True)
+    except (ImportError, AttributeError):
+        pass
+    try:
+        import tensorflow as tf
+
+        tf.random.set_seed(seed)
+        if hasattr(tf.config.experimental, "enable_op_determinism"):
+            tf.config.experimental.enable_op_determinism()
+    except (ImportError, AttributeError):
         pass
 
 

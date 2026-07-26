@@ -6,10 +6,10 @@ from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 from _common import latest_run_dir
 
 from alphaforge.backtesting import run_backtest
+from alphaforge.config import load_backtest_config, load_risk_config
 from alphaforge.evaluation import (
     CapacityColumns,
     CapacityConfig,
@@ -17,6 +17,7 @@ from alphaforge.evaluation import (
     estimate_capacity,
 )
 from alphaforge.portfolio import construct_portfolio
+from alphaforge.research import read_frame_artifact, refresh_experiment_manifest
 from alphaforge.risk import (
     exposure_summary,
     monthly_returns,
@@ -25,7 +26,7 @@ from alphaforge.risk import (
     stress_test_summary,
 )
 from alphaforge.signals import apply_regime_filter, build_signals, select_model_predictions
-from alphaforge.utils import load_yaml, save_json
+from alphaforge.utils import save_json
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,13 +48,13 @@ def _resolve_run_dir(args: argparse.Namespace) -> Path:
 def main() -> None:
     args = parse_args()
     run_dir = _resolve_run_dir(args)
-    cfg = load_yaml(args.config)
-    risk_cfg = load_yaml(args.risk_config)
+    cfg = load_backtest_config(args.config)
+    risk_cfg = load_risk_config(args.risk_config)
     meta = json.loads((run_dir / "run_meta.json").read_text())
 
-    panel = pd.read_pickle(run_dir / "panel.pkl")
-    features = pd.read_pickle(run_dir / "features.pkl")
-    predictions = pd.read_pickle(run_dir / "predictions.pkl")
+    panel = read_frame_artifact(run_dir / "panel.table.json")
+    features = read_frame_artifact(run_dir / "features.table.json")
+    predictions = read_frame_artifact(run_dir / "predictions.table.json")
     selected = select_model_predictions(predictions, model=args.model)
     signals = build_signals(
         selected, strategy=cfg.get("strategy", "long_short"), params=cfg.get("strategy_params", {})
@@ -172,6 +173,7 @@ def main() -> None:
         run_dir / "stress_tests.csv", index=False
     )
     save_json(summary, run_dir / "backtest_summary.json")
+    refresh_experiment_manifest(run_dir)
 
     print(f"backtest run: {run_dir}")
     print(f"selected model: {selected['model'].iloc[0] if 'model' in selected else 'single'}")

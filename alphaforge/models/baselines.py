@@ -69,6 +69,7 @@ class LagBaseline(AlphaModel):
     """
 
     name = "lag_baseline"
+    requires_raw_features = True
 
     def __init__(self, feature: str = "ret_1d") -> None:
         self.feature = feature
@@ -99,6 +100,7 @@ class MovingAverageBaseline(AlphaModel):
     """
 
     name = "moving_average_baseline"
+    requires_raw_features = True
 
     def __init__(self, feature: str = "ma_ratio_20") -> None:
         self.feature = feature
@@ -129,6 +131,7 @@ class MomentumBaseline(AlphaModel):
     """
 
     name = "momentum_baseline"
+    requires_raw_features = True
 
     def __init__(self, feature: str = "momentum_20", scale: float = 0.05) -> None:
         self.feature = feature

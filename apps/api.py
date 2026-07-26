@@ -13,6 +13,8 @@ from typing import Any
 
 import pandas as pd
 
+from alphaforge.research import read_frame_artifact
+
 try:
     from fastapi import FastAPI, HTTPException
 except ImportError as exc:  # pragma: no cover
@@ -76,10 +78,10 @@ def predict(symbol: str | None = None, model: str | None = None) -> dict[str, An
     These are research predictions generated strictly out-of-sample during
     walk-forward validation — not a live model endpoint.
     """
-    path = _run_dir_or_404() / "predictions.pkl"
+    path = _run_dir_or_404() / "predictions.table.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="no prediction panel in latest run")
-    preds = pd.read_pickle(path)
+    preds = read_frame_artifact(path)
     if model is not None:
         if model not in set(preds["model"]):
             raise HTTPException(status_code=404, detail=f"model {model!r} not in run")

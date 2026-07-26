@@ -9,7 +9,6 @@ from _common import latest_run_dir
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Print model evaluation summary.")
-    parser.add_argument("--config", default="configs/models.yaml")
     parser.add_argument("--run-dir")
     return parser.parse_args()
 

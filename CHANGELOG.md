@@ -6,6 +6,42 @@ still evolve between minor releases.
 
 ## [Unreleased]
 
+### Added
+
+- Schema-1.0 financial-label contracts for regression, classification,
+  threshold, quantile, triple-barrier, volatility-scaled, and meta-label
+  targets, with deterministic identities, normalized future-event intervals,
+  holdout protection, statistical diagnostics, and reproducible synthetic
+  Seaborn evidence.
+- A versioned semantic feature registry, deterministic content-addressed
+  feature cache with verified lineage, and train-fold-only fitted-transform
+  state for walk-forward and governed final-holdout workflows.
+- Independent Signal Foundry schema 1.1 universe-membership and
+  corporate-action validation, decision-time revision views, explicit
+  entry/exit reconstruction, and point-in-time risk diagnostics.
+- Versioned experiment manifests with canonical configuration identities, full
+  Git provenance, immutable dataset fingerprints, named deterministic seed
+  streams, exact dependency versions, safe runtime metadata, redacted
+  invocation arguments, and hashed artifact inventories.
+- A committed universal `uv.lock` plus locked CI and container installation for
+  reproducible dependency resolution across supported Python versions.
+
+### Changed
+
+- Signal Foundry as-of loading now applies both economic-effective and
+  information-availability cutoffs to every record family while preserving
+  schema 1.0 compatibility.
+- Governed Signal Foundry run manifests now use the versioned `2.0.0` wrapper
+  and separate semantic experiment identity from execution and result metadata.
+- Added strict frozen schemas and cross-field validation for every supported
+  YAML configuration, including model-parameter allowlists and a repository
+  configuration gate.
+- Replaced executable pickle pipeline interchange with atomic, resource-bounded
+  versioned JSON Table Schema artifacts.
+- Migrated evaluation graphics to Seaborn's plotting and theme APIs with a
+  colorblind palette and explicit sprint visual-evidence guidance.
+- Added locked CI import coverage for the data, ML, and application extras.
+
 ## [0.2.1] - 2026-07-23
 
 ### Added

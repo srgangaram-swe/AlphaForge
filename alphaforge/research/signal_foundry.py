@@ -12,8 +12,10 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
-from importlib.metadata import PackageNotFoundError, version
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,14 +33,32 @@ from alphaforge.evaluation import (
     information_coefficient_by_date,
     probability_of_backtest_overfitting,
 )
-from alphaforge.features import build_features
+from alphaforge.features import (
+    FittedFeatureTransformer,
+    FittedTransformSpec,
+    build_features,
+)
 from alphaforge.labels.labels import build_labels
-from alphaforge.models.registry import create_model
+from alphaforge.models.registry import create_model, seed_model_specs
+from alphaforge.paper import audit_offline_paper_controls
 from alphaforge.portfolio import construct_portfolio
-from alphaforge.risk import drawdown_series, performance_summary, regime_performance
+from alphaforge.research.manifest import (
+    ExperimentManifest,
+    capture_environment,
+    capture_git_context,
+    inventory_artifacts,
+    redact_cli_arguments,
+)
+from alphaforge.risk import (
+    drawdown_series,
+    exposure_summary,
+    performance_summary,
+    regime_performance,
+)
 from alphaforge.signals import build_signals
 from alphaforge.training import run_walk_forward
 from alphaforge.training.walk_forward import supervised_frame
+from alphaforge.utils import set_seed
 
 
 @dataclass(frozen=True)
@@ -86,14 +106,6 @@ def _sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _sha256_file(path: Path) -> str:
-    hasher = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            hasher.update(chunk)
-    return hasher.hexdigest()
-
-
 def _git_sha() -> str:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -110,30 +122,20 @@ def _git_sha() -> str:
     return value
 
 
-def _dependency_versions() -> dict[str, str]:
-    """Fingerprint the numerical stack that can affect governed evidence."""
-    packages = (
-        "alphaforge",
-        "numpy",
-        "pandas",
-        "pyarrow",
-        "scikit-learn",
-        "scipy",
-    )
-    resolved: dict[str, str] = {}
-    for package in packages:
-        try:
-            resolved[package] = version(package)
-        except PackageNotFoundError:
-            resolved[package] = "not-installed"
-    return resolved
-
-
 def _model_matrix(frame: pd.DataFrame, columns: list[str], model: Any) -> pd.DataFrame:
     matrix = frame[columns].copy()
     if getattr(model, "needs_sequence_index", False):
         matrix.index = pd.MultiIndex.from_frame(frame[["date", "symbol"]])
     return matrix
+
+
+def _transformed_model_matrix(
+    matrix: pd.DataFrame, frame: pd.DataFrame, model: Any
+) -> pd.DataFrame:
+    result = matrix.copy()
+    if getattr(model, "needs_sequence_index", False):
+        result.index = pd.MultiIndex.from_frame(frame[["date", "symbol"]])
+    return result
 
 
 def _validate_model_specs(model_specs: list[dict[str, Any]]) -> None:
@@ -329,7 +331,14 @@ def _stress_scenarios(
             np.isfinite(summary["max_drawdown"]) and summary["max_drawdown"] >= -maximum_drawdown
         )
         passed = passed and scenario_passed
-        summaries.append({"scenario": name, "passed": scenario_passed, **summary})
+        summaries.append(
+            {
+                "scenario": name,
+                "passed": scenario_passed,
+                "accounting_reconciled": True,
+                **summary,
+            }
+        )
 
     placebo = predictions.copy()
     rng = np.random.default_rng(seed)
@@ -344,7 +353,13 @@ def _stress_scenarios(
         backtest_config=backtest_config,
     )
     placebo_summary = performance_summary(placebo_result.equity_curve)
-    summaries.append({"scenario": "permuted_signal_placebo", **placebo_summary})
+    summaries.append(
+        {
+            "scenario": "permuted_signal_placebo",
+            "accounting_reconciled": True,
+            **placebo_summary,
+        }
+    )
     return summaries, passed
 
 
@@ -439,6 +454,7 @@ def _borrow_financing_sensitivity(
     adjusted["equity"] = initial * (1.0 + adjusted["return"]).cumprod()
     return {
         "scenario": "stressed_borrow_and_financing_proxy",
+        "accounting_reconciled": True,
         "short_borrow_bps_annual": borrow,
         "cash_financing_bps_annual": financing,
         "method": "post-ledger exposure-based sensitivity; not a locate or borrow-availability model",
@@ -467,6 +483,34 @@ def _missing_price_halts(
     except (ValueError, RuntimeError):
         return True
     return False
+
+
+def _capacity_config(backtest_config: dict[str, Any]) -> tuple[CapacityConfig, float]:
+    """Translate the strict backtest capacity policy into evaluator inputs."""
+    settings = dict(backtest_config.get("capacity", {}))
+    required = {"aum_multiples", "max_participation_rate", "minimum_fill_ratio"}
+    supported = required | {"enabled", "impact_exponent", "variable_cost_fraction"}
+    missing = required - set(settings)
+    unknown = set(settings) - supported
+    if missing or unknown:
+        raise ValueError(
+            "capacity fields mismatch; " f"missing={sorted(missing)}, unknown={sorted(unknown)}"
+        )
+    if settings.get("enabled", True) is not True:
+        raise ValueError("governed research requires capacity evaluation to be enabled")
+    reference_aum = float(backtest_config.get("initial_capital", 1_000_000.0))
+    aum_values = tuple(reference_aum * float(multiple) for multiple in settings["aum_multiples"])
+    return (
+        CapacityConfig(
+            reference_aum=reference_aum,
+            aum_values=aum_values,
+            max_participation_rate=float(settings["max_participation_rate"]),
+            impact_exponent=float(settings.get("impact_exponent", 0.5)),
+            variable_cost_fraction=float(settings.get("variable_cost_fraction", 0.5)),
+            columns=CapacityColumns.for_fill_records(),
+        ),
+        float(settings["minimum_fill_ratio"]),
+    )
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -518,9 +562,17 @@ def run_governed_signal_foundry_research(
     readiness_thresholds: ReadinessThresholds,
     output_root: str | Path = "runs/signal-foundry",
     code_sha: str | None = None,
+    invocation: Mapping[str, Any] | None = None,
+    clock: Callable[[], datetime] | None = None,
 ) -> GovernedResearchResult:
-    """Execute one immutable, governed development/final-holdout evaluation."""
+    """Execute one immutable, governed development/final-holdout evaluation.
+
+    ``clock`` is injectable so reference tests can prove deterministic semantic
+    evidence while production runs retain honest start and finish timestamps.
+    """
     _validate_model_specs(model_specs)
+    set_seed(research_config.seed)
+    model_specs = seed_model_specs(model_specs, research_config.seed)
     if research_config.benchmark_symbol not in set(dataset.panel["symbol"]):
         raise ValueError("pre-registered benchmark is absent from the verified bundle")
     if (
@@ -529,20 +581,49 @@ def run_governed_signal_foundry_research(
     ):
         raise ValueError("bundle license policy is inconsistent")
 
-    resolved_sha = code_sha or _git_sha()
-    identity = {
-        "workflow_version": "1.0.0",
+    now = clock or (lambda: datetime.now(UTC))
+    started_at = now().astimezone(UTC).isoformat().replace("+00:00", "Z")
+    git_context = capture_git_context()
+    git_context["sha"] = code_sha or _git_sha()
+    runtime_environment = capture_environment()
+    invocation_record = dict(invocation or {})
+    invocation_record.setdefault("entrypoint", Path(sys.argv[0]).name)
+    invocation_record["arguments"] = redact_cli_arguments(
+        [str(argument) for argument in invocation_record.get("arguments", sys.argv[1:])]
+    )
+    dataset_record = {
         "bundle_id": dataset.bundle_id,
-        "code_sha": resolved_sha,
-        "dependencies": _dependency_versions(),
-        "research": asdict(research_config),
-        "readiness": asdict(readiness_thresholds),
-        "models": model_specs,
-        "features": feature_config,
-        "walk_forward": walk_forward_config,
-        "backtest": backtest_config,
+        "schema_version": dataset.manifest.get("schema_version", "unknown"),
+        "license": dataset.manifest["license"],
+        "point_in_time_limits": dataset.manifest["point_in_time_limits"],
     }
-    run_id = _sha256_bytes(_canonical_json(identity))
+    universe = sorted(dataset.panel["symbol"].unique().tolist())
+    date_range = {
+        "start": str(pd.Timestamp(dataset.panel["date"].min()).date()),
+        "end": str(pd.Timestamp(dataset.panel["date"].max()).date()),
+    }
+    label_record = asdict(research_config)
+    validation_record = {
+        "walk_forward": walk_forward_config,
+        "readiness": asdict(readiness_thresholds),
+    }
+    planned_manifest = ExperimentManifest.build(
+        code=git_context,
+        dataset=dataset_record,
+        universe=universe,
+        date_range=date_range,
+        features=feature_config,
+        label=label_record,
+        models=model_specs,
+        validation=validation_record,
+        transaction_costs=backtest_config,
+        root_seed=research_config.seed,
+        environment=runtime_environment,
+        invocation=invocation_record,
+        execution={"started_at": started_at, "finished_at": started_at},
+        artifacts=(),
+    )
+    run_id = planned_manifest.experiment_id
     root = Path(output_root)
     destination = root / run_id
     if destination.exists():
@@ -587,6 +668,7 @@ def run_governed_signal_foundry_research(
             target=research_config.target,
             config=walk_forward_config,
             max_horizon=max_horizon,
+            transform_config=feature_config.get("fitted_transform"),
         )
         candidate_name, development_summary = _select_candidate(
             development.metrics,
@@ -605,14 +687,25 @@ def run_governed_signal_foundry_research(
         if train.empty or holdout.empty:
             raise ValueError("pre-registered final holdout has no eligible train/test rows")
         model = create_model(candidate_name, **selected_spec.get("params", {}))
-        model.fit(
-            _model_matrix(train, columns, model),
-            train[research_config.target].astype(float),
-        )
+        transform_spec = FittedTransformSpec.from_config(feature_config.get("fitted_transform"))
+        final_transform_state: dict[str, Any] | None = None
+        if transform_spec.enabled and not getattr(model, "requires_raw_features", False):
+            transformer = FittedFeatureTransformer(transform_spec)
+            transformed_train = transformer.fit_transform(train[columns], train["date"])
+            transformed_holdout = transformer.transform(holdout[columns])
+            train_matrix = _transformed_model_matrix(transformed_train, train, model)
+            holdout_matrix = _transformed_model_matrix(transformed_holdout, holdout, model)
+            if transformer.state_ is None:  # pragma: no cover - fit_transform guarantees state
+                raise RuntimeError("final-holdout transformer did not publish fitted state")
+            final_transform_state = asdict(transformer.state_)
+        else:
+            train_matrix = _model_matrix(train, columns, model)
+            holdout_matrix = _model_matrix(holdout, columns, model)
+        model.fit(train_matrix, train[research_config.target].astype(float))
         predictions = holdout[["date", "symbol", research_config.target]].rename(
             columns={research_config.target: "target"}
         )
-        predictions["prediction"] = model.predict(_model_matrix(holdout, columns, model))
+        predictions["prediction"] = model.predict(holdout_matrix)
         predictions["model"] = candidate_name
         predictions["window_id"] = "final_holdout"
 
@@ -645,31 +738,28 @@ def run_governed_signal_foundry_research(
             benchmark_symbol=research_config.benchmark_symbol,
             backtest_config=backtest_config,
         )
-        capacity_settings = dict(backtest_config.get("capacity", {}))
-        expected_capacity = {"aum_multiples", "max_participation_rate", "minimum_fill_ratio"}
-        if set(capacity_settings) != expected_capacity:
-            raise ValueError(
-                "capacity fields mismatch; "
-                f"missing={sorted(expected_capacity - set(capacity_settings))}, "
-                f"unknown={sorted(set(capacity_settings) - expected_capacity)}"
-            )
-        aum_values = tuple(
-            float(backtest_config.get("initial_capital", 1_000_000.0)) * float(multiple)
-            for multiple in capacity_settings["aum_multiples"]
-        )
-        capacity = estimate_capacity(
-            primary.fills,
-            CapacityConfig(
-                reference_aum=float(backtest_config.get("initial_capital", 1_000_000.0)),
-                aum_values=aum_values,
-                max_participation_rate=float(capacity_settings["max_participation_rate"]),
-                columns=CapacityColumns.for_fill_records(),
-            ),
-        )
-        capacity_passed = bool(
-            capacity.curve["fill_ratio"].min() >= float(capacity_settings["minimum_fill_ratio"])
-        )
+        capacity_config, minimum_fill_ratio = _capacity_config(backtest_config)
+        capacity = estimate_capacity(primary.fills, capacity_config)
+        capacity_passed = bool(capacity.curve["fill_ratio"].min() >= minimum_fill_ratio)
         primary_summary = performance_summary(primary.equity_curve)
+        gross_curve = primary.equity_curve.copy()
+        first_net_return = float(gross_curve["return"].iloc[0])
+        initial_equity = float(gross_curve["equity"].iloc[0]) / (1.0 + first_net_return)
+        gross_curve["return"] = gross_curve["gross_return"].astype(float)
+        gross_curve["equity"] = initial_equity * (1.0 + gross_curve["return"]).cumprod()
+        gross_summary = performance_summary(gross_curve)
+        concentration = exposure_summary(primary.weights)
+        if dataset.source_panel.empty:
+            paper_anchor = pd.Timestamp(panel["date"].max()).tz_localize(UTC)
+        else:
+            paper_anchor = pd.Timestamp(dataset.source_panel["available_at"].max())
+            if paper_anchor.tzinfo is None:
+                raise ValueError("paper-control audit requires timezone-aware availability")
+            paper_anchor = paper_anchor.tz_convert(UTC)
+        paper_controls = audit_offline_paper_controls(
+            decision_time=paper_anchor.to_pydatetime(),
+            maximum_notional=float(backtest_config.get("initial_capital", 1_000_000.0)),
+        )
         placebo_summary = next(
             item for item in scenario_summaries if item["scenario"] == "permuted_signal_placebo"
         )
@@ -690,8 +780,11 @@ def run_governed_signal_foundry_research(
             additional_gates={
                 "capacity_liquidity": capacity_passed,
                 "missing_price_halt": missing_price_halt,
+                "paper_controls": bool(paper_controls["all_controls_passed"]),
             },
         )
+        dossier["metrics"]["gross_annual_return"] = gross_summary["annual_return"]
+        dossier["metrics"]["gross_total_return"] = gross_summary["total_return"]
         dossier["candidate_model"] = candidate_name
         dossier["bundle_id"] = dataset.bundle_id
         dossier["run_id"] = run_id
@@ -700,6 +793,8 @@ def run_governed_signal_foundry_research(
         dossier["overfitting"] = pbo
         dossier["scenarios"] = scenario_summaries
         dossier["placebo_outperformed"] = placebo_passed
+        dossier["concentration"] = concentration
+        dossier["paper_controls"] = paper_controls
         dossier["uncertainty"] = _bootstrap_uncertainty(
             primary.equity_curve["return"],
             seed=research_config.seed,
@@ -726,6 +821,12 @@ def run_governed_signal_foundry_research(
 
         development_summary.to_csv(staging / "development_model_selection.csv", index=False)
         development.metrics.to_csv(staging / "development_windows.csv", index=False)
+        if not development.transformations.empty:
+            development.transformations.to_csv(
+                staging / "development_fitted_transformations.csv", index=False
+            )
+        if final_transform_state is not None:
+            _write_json(staging / "final_holdout_fitted_transformation.json", final_transform_state)
         predictions.to_csv(staging / "final_holdout_predictions.csv", index=False)
         primary.equity_curve.to_csv(staging / "final_holdout_equity.csv", index=False)
         primary.orders.to_csv(staging / "orders.csv", index=False)
@@ -734,6 +835,7 @@ def run_governed_signal_foundry_research(
         capacity.curve.to_csv(staging / "capacity_curve.csv", index=False)
         capacity.scenario_trades.to_csv(staging / "capacity_scenario_trades.csv", index=False)
         _write_json(staging / "capacity_diagnostics.json", asdict(capacity.diagnostics))
+        _write_json(staging / "paper_control_evidence.json", paper_controls)
         (staging / "trial_ledger.jsonl").write_text(
             "".join(_canonical_json(record).decode("utf-8") + "\n" for record in ledger),
             encoding="utf-8",
@@ -741,27 +843,38 @@ def run_governed_signal_foundry_research(
         _write_json(staging / "dossier.json", dossier)
         _write_markdown_dossier(staging / "dossier.md", dossier)
 
-        artifacts = [
-            {
-                "path": path.name,
-                "sha256": _sha256_file(path),
-                "bytes": path.stat().st_size,
-            }
-            for path in sorted(staging.iterdir())
-            if path.is_file()
-        ]
+        artifacts = inventory_artifacts(staging)
+        finished_at = now().astimezone(UTC).isoformat().replace("+00:00", "Z")
+        experiment_manifest = ExperimentManifest.build(
+            code=git_context,
+            dataset=dataset_record,
+            universe=universe,
+            date_range=date_range,
+            features=feature_config,
+            label=label_record,
+            models=model_specs,
+            validation=validation_record,
+            transaction_costs=backtest_config,
+            root_seed=research_config.seed,
+            environment=runtime_environment,
+            invocation=invocation_record,
+            execution={"started_at": started_at, "finished_at": finished_at},
+            artifacts=artifacts,
+        )
+        if experiment_manifest.experiment_id != run_id:
+            raise RuntimeError("experiment identity changed while publishing evidence")
         _write_json(
             staging / "run_manifest.json",
             {
-                **identity,
-                "run_id": run_id,
-                "candidate_model": candidate_name,
-                "development_end": str(development_end.date()),
-                "holdout_start": research_config.holdout_start,
-                "trial_ledger_head": ledger[-1]["record_hash"],
-                "license": dataset.manifest["license"],
-                "point_in_time_limits": dataset.manifest["point_in_time_limits"],
-                "artifacts": artifacts,
+                "run_manifest_version": "2.0.0",
+                "experiment": experiment_manifest.to_dict(),
+                "result": {
+                    "run_id": run_id,
+                    "candidate_model": candidate_name,
+                    "development_end": str(development_end.date()),
+                    "holdout_start": research_config.holdout_start,
+                    "trial_ledger_head": ledger[-1]["record_hash"],
+                },
             },
         )
         staging.replace(destination)

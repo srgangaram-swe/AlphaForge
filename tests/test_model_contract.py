@@ -8,6 +8,8 @@ the probability/uncertainty interface.
 
 from __future__ import annotations
 
+import json
+
 import joblib
 import numpy as np
 import pandas as pd
@@ -140,7 +142,9 @@ def test_sklearn_model_uses_joblib_fallback(
     path = tmp_path / "linear.joblib"
     model.save(path)
     assert path.read_bytes()[:1] != b"{"  # not the JSON container
-    restored = AlphaModel.load(path)
+    with pytest.raises(ModelError, match="trusted=True"):
+        AlphaModel.load(path)
+    restored = AlphaModel.load(path, trusted=True)
     np.testing.assert_allclose(restored.predict(X), model.predict(X), rtol=1e-9)
 
 
@@ -148,6 +152,41 @@ def test_load_rejects_non_model_payload(tmp_path) -> None:
     path = tmp_path / "junk.joblib"
     joblib.dump({"not": "a model"}, path)
     with pytest.raises(ModelError):
+        AlphaModel.load(path, trusted=True)
+
+
+def test_save_before_fit_is_rejected(tmp_path) -> None:
+    with pytest.raises(NotFittedError):
+        create_model("zero_baseline").save(tmp_path / "unfitted.json")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("format", "unknown", "format"),
+        ("format_version", 999, "version"),
+        ("metadata.fitted", False, "not fitted"),
+        ("metadata.contract_version", "999.0.0", "contract version"),
+    ],
+)
+def test_json_artifact_schema_fails_closed(
+    field: str,
+    value: object,
+    message: str,
+    frame: tuple[pd.DataFrame, pd.Series, pd.Series],
+    tmp_path,
+) -> None:
+    model = _fit("zero_baseline", frame)
+    path = tmp_path / "model.json"
+    model.save(path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if "." in field:
+        parent, child = field.split(".", maxsplit=1)
+        payload[parent][child] = value
+    else:
+        payload[field] = value
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ModelError, match=message):
         AlphaModel.load(path)
 
 
@@ -197,10 +236,36 @@ def test_non_dataframe_x_rejected(frame: tuple[pd.DataFrame, pd.Series, pd.Serie
         create_model("zero_baseline").fit(np.zeros((len(y_reg), 3)), y_reg)
 
 
+def test_non_dataframe_predict_rejected(
+    frame: tuple[pd.DataFrame, pd.Series, pd.Series],
+) -> None:
+    X, y_reg, _ = frame
+    model = create_model("zero_baseline").fit(X, y_reg)
+    with pytest.raises(FeatureSchemaError):
+        model.predict(np.zeros((len(X), 3)))
+
+
 def test_length_mismatch_rejected(frame: tuple[pd.DataFrame, pd.Series, pd.Series]) -> None:
     X, y_reg, _ = frame
     with pytest.raises(FeatureSchemaError):
         create_model("zero_baseline").fit(X, y_reg.iloc[:-1])
+
+
+def test_misaligned_indices_rejected(frame: tuple[pd.DataFrame, pd.Series, pd.Series]) -> None:
+    X, y_reg, _ = frame
+    shifted = y_reg.copy()
+    shifted.index = shifted.index + 1
+    with pytest.raises(FeatureSchemaError, match="indices"):
+        create_model("zero_baseline").fit(X, shifted)
+
+
+def test_duplicate_feature_names_rejected(
+    frame: tuple[pd.DataFrame, pd.Series, pd.Series],
+) -> None:
+    X, y_reg, _ = frame
+    duplicate = pd.concat([X["ret_1d"], X["ret_1d"]], axis=1)
+    with pytest.raises(FeatureSchemaError, match="unique"):
+        create_model("zero_baseline").fit(duplicate, y_reg)
 
 
 def test_empty_training_set_rejected() -> None:
@@ -216,6 +281,17 @@ def test_non_finite_features_rejected(frame: tuple[pd.DataFrame, pd.Series, pd.S
     corrupt.iloc[0, 0] = np.inf
     with pytest.raises(FeatureSchemaError):
         create_model("zero_baseline").fit(corrupt, y_reg)
+
+
+def test_infinite_predict_features_rejected(
+    frame: tuple[pd.DataFrame, pd.Series, pd.Series],
+) -> None:
+    X, y_reg, _ = frame
+    model = create_model("momentum_baseline").fit(X, y_reg)
+    corrupt = X.copy()
+    corrupt.iloc[0, corrupt.columns.get_loc("momentum_20")] = np.inf
+    with pytest.raises(FeatureSchemaError, match="infinite"):
+        model.predict(corrupt)
 
 
 def test_non_finite_labels_rejected(frame: tuple[pd.DataFrame, pd.Series, pd.Series]) -> None:
@@ -273,6 +349,40 @@ def test_feature_agnostic_baseline_ignores_columns(
     assert model.predict(other).shape == (10,)
 
 
+def test_failed_refit_invalidates_model(
+    frame: tuple[pd.DataFrame, pd.Series, pd.Series],
+) -> None:
+    X, y_reg, _ = frame
+    model = create_model("momentum_baseline").fit(X, y_reg)
+    with pytest.raises(FeatureSchemaError):
+        model.fit(X.drop(columns=["momentum_20"]), y_reg)
+    with pytest.raises(NotFittedError):
+        model.predict(X)
+
+
+@pytest.mark.parametrize("kind", ["wrong_shape", "non_finite"])
+def test_invalid_prediction_output_fails_closed(
+    kind: str, frame: tuple[pd.DataFrame, pd.Series, pd.Series]
+) -> None:
+    X, y_reg, _ = frame
+
+    class InvalidOutputModel(AlphaModel):
+        name = "invalid_output"
+        feature_agnostic = True
+
+        def fit(self, X: pd.DataFrame, y: pd.Series) -> InvalidOutputModel:
+            return self
+
+        def predict(self, X: pd.DataFrame) -> np.ndarray:
+            if kind == "wrong_shape":
+                return np.zeros((len(X), 1))
+            return np.full(len(X), np.nan)
+
+    model = InvalidOutputModel().fit(X, y_reg)
+    with pytest.raises(ModelError):
+        model.predict(X)
+
+
 # ---------------------------------------------------------------------------
 # Probability and uncertainty interface
 # ---------------------------------------------------------------------------
@@ -291,6 +401,13 @@ def test_equal_probability_predicts_half(frame: tuple[pd.DataFrame, pd.Series, p
     X = frame[0]
     model = _fit("equal_probability", frame)
     np.testing.assert_allclose(model.predict_proba(X), 0.5)
+
+
+def test_probability_before_fit_raises(
+    frame: tuple[pd.DataFrame, pd.Series, pd.Series],
+) -> None:
+    with pytest.raises(NotFittedError):
+        create_model("equal_probability").predict_proba(frame[0])
 
 
 def test_historical_mean_reports_uncertainty(
