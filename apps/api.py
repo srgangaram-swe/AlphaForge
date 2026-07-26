@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 import pandas as pd
 
+from alphaforge import __version__
 from alphaforge.research import read_frame_artifact
 
 try:
@@ -35,7 +36,7 @@ DISCLAIMER = "Educational research output. Simulated results only. Not financial
 
 app = FastAPI(
     title="AlphaForge API",
-    version="0.2.1",
+    version=__version__,
     description=DISCLAIMER,
 )
 

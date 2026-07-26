@@ -12,6 +12,7 @@ from alphaforge.research.cross_repository_provenance import (
 from alphaforge.research.deep_sequence_study import load_deep_sequence_study_config
 from alphaforge.research.ensemble_study import load_ensemble_study_config
 from alphaforge.research.representation_study import load_representation_study_config
+from alphaforge.research.sprint_3_decision import load_sprint_3_evaluation_plan
 from alphaforge.research.time_frequency_study import load_time_frequency_study_config
 
 _SIGNALATTICE_REPOSITORY = "srgangaram-swe/Signalattice"
@@ -53,6 +54,15 @@ def main() -> None:
     print(
         f"validated cross_repository_receipt: {receipt_path} "
         f"(sources={len(receipt.sources)}, bytes={sum(source.bytes for source in receipt.sources)})"
+    )
+    sprint_3_path = Path("configs/sprint_3_decision.yaml")
+    sprint_3_plan = load_sprint_3_evaluation_plan(
+        sprint_3_path,
+        repository_root=Path.cwd(),
+    )
+    print(
+        f"validated sprint_3_decision: {sprint_3_path} "
+        f"(plan_id={sprint_3_plan.plan_id}, families={len(sprint_3_plan.families)})"
     )
 
 

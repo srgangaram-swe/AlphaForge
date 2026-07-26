@@ -37,6 +37,9 @@ jobs:
       - name: Repository policy hooks
         run: uv run python -m pre_commit run --all-files
 
+      - name: Validate committed configurations
+        run: uv run python scripts/validate_configs.py
+
       - name: Type check (mypy)
         run: uv run python -m mypy alphaforge tests scripts apps
 
@@ -45,7 +48,7 @@ jobs:
           uv run python -m build --wheel --sdist
           python -m venv /tmp/alphaforge-wheel-smoke
           /tmp/alphaforge-wheel-smoke/bin/pip install --no-deps dist/*.whl
-          /tmp/alphaforge-wheel-smoke/bin/python -c "import alphaforge; assert alphaforge.__version__ == '0.2.1'"
+          /tmp/alphaforge-wheel-smoke/bin/python -c "import alphaforge; assert alphaforge.__version__ == '0.3.0'"
 
   test:
     runs-on: ubuntu-latest
@@ -152,4 +155,4 @@ jobs:
       - name: Verify package and native core
         run: |
           docker run --rm --entrypoint python alphaforge:ci -c \
-            "import alphaforge; from alphaforge.execution import NATIVE_AVAILABLE; assert alphaforge.__version__ == '0.2.1'; assert NATIVE_AVAILABLE"
+            "import alphaforge; from alphaforge.execution import NATIVE_AVAILABLE; assert alphaforge.__version__ == '0.3.0'; assert NATIVE_AVAILABLE"
