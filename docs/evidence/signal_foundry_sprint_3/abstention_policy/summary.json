@@ -11,7 +11,7 @@
     "unsupported_regime": 218
   },
   "compute": {
-    "algorithmic_complexity": "O(n) time and O(n) bounded study memory",
+    "algorithmic_complexity": "O(n) validation/evaluation plus O(n log n) deterministic ordering; O(n) bounded study memory",
     "device": "cpu",
     "maximum_batch_size": 4096,
     "numpy": "2.5.1",

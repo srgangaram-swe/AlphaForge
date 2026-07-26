@@ -23,7 +23,8 @@ The strict `configs/decision_policy.yaml` profile fixes:
 - maximum cost, uncertainty, disagreement, regime-uncertainty, drift, and
   one-day age gates;
 - always-trade and never-trade baselines;
-- a 4,096-signal batch ceiling and CPU-only \(O(n)\) evaluation; and
+- a 4,096-signal batch ceiling, linear evaluation, and deterministic
+  \(O(n\log n)\) result ordering; and
 - explicit false declarations for protected-holdout and broker access.
 
 The synthetic generator includes cost, uncertainty, disagreement, unsupported
@@ -63,9 +64,10 @@ coverage.
 
 ![Synthetic abstention policy tradeoffs](evidence/signal_foundry_sprint_3/abstention_policy/decision_policy_study.png)
 
-The Seaborn plot was generated directly from the aggregate CSV and visually
-inspected at 3,147×1,899 pixels. It shows coverage-risk, net value, missed
-opportunity, turnover, peak capacity, and every observed reason. The underlying
+The Seaborn plot was generated directly from the serialized aggregate CSVs
+and visually inspected at 3,147×1,899 pixels. It shows coverage-risk, net
+value, missed opportunity, turnover, peak capacity, and every observed reason.
+The underlying
 [aggregate metrics](evidence/signal_foundry_sprint_3/abstention_policy/aggregate_metrics.csv),
 [reason counts](evidence/signal_foundry_sprint_3/abstention_policy/abstention_reasons.csv),
 and [summary with hashes and resolved
@@ -82,9 +84,10 @@ excess cost; stale and future availability; disagreement; unsupported and
 unknown regimes; regime uncertainty; drift; predictive uncertainty; threshold
 and strict-margin equality; reference arithmetic; monotonic cost/uncertainty
 changes; stable JSON and SHA-256 identities; immutability; duplicate and batch
-bounds; input-order isolation; realized-label causality; strict config;
-always/never baselines; aggregate-only publication; Seaborn usage; byte-stable
-same-environment replay; and failure cleanup.
+bounds; a deterministic operation-count benchmark at 1, 64, 4,096, and the
+4,097-item failure boundary; input-order isolation; realized-label causality;
+strict config; always/never baselines; aggregate-only publication; Seaborn
+usage; byte-stable same-environment replay; and failure cleanup.
 
 The reference establishes that the layer can abstain consistently and expose
 its opportunity cost. It does not establish that the configured thresholds are

@@ -111,9 +111,52 @@ def test_every_nonfinite_estimate_abstains_with_json_safe_evidence(
     assert decision.action is DecisionAction.ABSTAIN
     assert decision.reasons[0] is DecisionReason.NON_FINITE_INPUT
     assert field in decision.failed_fields
-    assert decision.penalized_expected_value is None
+    if field in {
+        "expected_return",
+        "expected_cost",
+        "cost_uncertainty",
+        "prediction_uncertainty",
+    }:
+        assert decision.penalized_expected_value is None
     assert "NaN" not in decision.to_json()
     assert "Infinity" not in decision.to_json()
+
+
+def test_oversized_integer_estimate_normalizes_to_a_bounded_abstention() -> None:
+    signal = _signal(expected_return=10**10_000)
+    decision = DecisionPolicy(_thresholds()).evaluate(signal)
+
+    assert signal.expected_return == math.inf
+    assert decision.action is DecisionAction.ABSTAIN
+    assert decision.reasons == (DecisionReason.NON_FINITE_INPUT,)
+    assert decision.failed_fields == ("expected_return",)
+    assert "Infinity" not in decision.to_json()
+
+
+def test_invalid_estimate_does_not_hide_unrelated_applicable_gates() -> None:
+    decision = DecisionPolicy(_thresholds()).evaluate(
+        _signal(
+            expected_return=math.nan,
+            expected_cost=0.004,
+            prediction_uncertainty=0.004,
+            model_disagreement=0.60,
+            regime=RegimeSupport.UNSUPPORTED,
+            regime_uncertainty=0.80,
+            drift_score=0.70,
+        )
+    )
+
+    assert decision.action is DecisionAction.ABSTAIN
+    assert decision.reasons == (
+        DecisionReason.NON_FINITE_INPUT,
+        DecisionReason.EXCESS_COST,
+        DecisionReason.HIGH_DISAGREEMENT,
+        DecisionReason.UNSUPPORTED_REGIME,
+        DecisionReason.UNCERTAIN_REGIME,
+        DecisionReason.DRIFT_DETECTED,
+        DecisionReason.EXCESS_UNCERTAINTY,
+    )
+    assert decision.penalized_expected_value is None
 
 
 def test_excess_cost_and_all_independent_gates_accumulate_in_stable_order() -> None:
@@ -302,6 +345,43 @@ def test_batch_resource_and_uniqueness_bounds_fail_before_unbounded_work() -> No
         policy.evaluate_many(_signal(signal_id=f"signal-{index}") for index in range(3))
     with pytest.raises(ValueError, match="duplicate"):
         policy.evaluate_many([_signal(), _signal()])
+
+
+def test_batch_evaluation_operation_count_benchmark_and_prework_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Count the linear evaluation phase and prove overflow fails before it."""
+    policy = DecisionPolicy(_thresholds(maximum_batch_size=4096))
+    original = DecisionPolicy.evaluate
+    evaluation_calls = 0
+
+    def counting_evaluate(self: DecisionPolicy, signal: DecisionSignal):
+        nonlocal evaluation_calls
+        evaluation_calls += 1
+        return original(self, signal)
+
+    monkeypatch.setattr(DecisionPolicy, "evaluate", counting_evaluate)
+    for sample_count in (1, 64, 4096):
+        evaluation_calls = 0
+        decisions = policy.evaluate_many(
+            _signal(signal_id=f"benchmark-{index:04d}") for index in range(sample_count)
+        )
+        assert len(decisions) == sample_count
+        assert evaluation_calls == sample_count
+
+    pulled = 0
+
+    def oversized_batch():
+        nonlocal pulled
+        for index in range(4097):
+            pulled += 1
+            yield _signal(signal_id=f"overflow-{index:04d}")
+
+    evaluation_calls = 0
+    with pytest.raises(ValueError, match="maximum_batch_size"):
+        policy.evaluate_many(oversized_batch())
+    assert pulled == 4097
+    assert evaluation_calls == 0
 
 
 def test_structural_input_and_threshold_errors_are_rejected() -> None:

@@ -379,8 +379,8 @@ def run_decision_policy_study(
         )
         reason_frame.to_csv(reasons_path, index=False, lineterminator="\n")
         plot_decision_policy_study(
-            metrics_frame,
-            reason_frame,
+            pd.read_csv(metrics_path),
+            pd.read_csv(reasons_path),
             plot_path,
             observation_count=config.observation_count,
             seed=config.seed,
@@ -534,7 +534,10 @@ def _summary_payload(
         },
         "compute": {
             "device": "cpu",
-            "algorithmic_complexity": "O(n) time and O(n) bounded study memory",
+            "algorithmic_complexity": (
+                "O(n) validation/evaluation plus O(n log n) deterministic ordering; "
+                "O(n) bounded study memory"
+            ),
             "observations_evaluated": config.observation_count,
             "maximum_batch_size": config.thresholds.maximum_batch_size,
             "seed": config.seed,

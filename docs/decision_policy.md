@@ -4,7 +4,9 @@
 portfolio construction. It decides whether one forecast is supported strongly
 enough to continue downstream. It does not size a position, choose a venue,
 construct an order, access an account, contact a broker, or authorize paper or
-live trading.
+live trading. The boundary is currently opt-in and exercised only by the
+standalone synthetic study; AlphaForge's active signal-to-portfolio path does
+not call it.
 
 ## Contract and mathematics
 
@@ -70,6 +72,9 @@ Non-finite and invalid-range inputs never enter arithmetic. Their decisions
 remain JSON-safe and retain the failed field names. Future data means
 `data_available_at > decision_time`; stale data means age strictly exceeds the
 configured maximum. Both `unsupported` and `unknown` regimes abstain.
+One malformed estimate suppresses only the arithmetic or semantic gate that
+requires that estimate. Other independently evaluable cost, disagreement,
+regime, drift, uncertainty, and freshness failures remain visible.
 
 `DecisionPolicy.evaluate_many` consumes no more than the configured batch
 limit, rejects duplicate signal identities, and returns decisions sorted by
@@ -133,10 +138,15 @@ fills. The reference generator is not calibrated to market or execution data.
 
 ## Complexity, security, and limitations
 
-Single-signal evaluation is constant time. The study uses \(O(n)\) time and
-bounded \(O(n)\) memory with `observation_count <= maximum_batch_size <=
-100,000`. It is deterministic, CPU-only, network-independent, and accepts no
-credential, executable artifact, pickle, market row, tensor, or model state.
+Single-signal evaluation is constant time. Batch validation and evaluation are
+linear, followed by deterministic decision-ID ordering in \(O(n\log n)\)
+comparison time; memory is bounded \(O(n)\) with
+`observation_count <= maximum_batch_size <= 100,000`. The operation-count
+benchmark exercises batches of 1, 64, and 4,096 and proves one evaluation per
+accepted signal; a 4,097th item fails before any policy arithmetic. No
+wall-clock threshold is a correctness gate. The study is deterministic,
+CPU-only, network-independent, and accepts no credential, executable artifact,
+pickle, market row, tensor, or model state.
 
 This policy cannot guarantee a loss will be avoided. Its thresholds can become
 miscalibrated as forecast, cost, or regime distributions shift. Expected cost

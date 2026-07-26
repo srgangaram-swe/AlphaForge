@@ -150,8 +150,10 @@ class DecisionSignal:
     """One untrusted model opportunity evaluated at a known UTC instant.
 
     Numeric estimates may be non-finite or outside semantic ranges so the
-    policy can record a deterministic fail-closed decision. Structural type,
-    identifier, and timezone violations are rejected at construction.
+    policy can record a deterministic fail-closed decision. Finite integers
+    normalize to floats; integers outside the float range normalize to signed
+    infinity and therefore abstain. Structural type, identifier, and timezone
+    violations are rejected at construction.
     """
 
     signal_id: str
@@ -184,6 +186,11 @@ class DecisionSignal:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, int | float):
                 raise TypeError(f"{name} must be numeric")
+            try:
+                normalized = float(value)
+            except OverflowError:
+                normalized = -math.inf if value < 0 else math.inf
+            object.__setattr__(self, name, normalized)
         if not isinstance(self.regime, RegimeSupport):
             raise TypeError("regime must be a RegimeSupport")
 
@@ -273,32 +280,24 @@ class DecisionPolicy:
             failed_fields.extend(non_finite)
 
         out_of_bounds: list[str] = []
-        if not non_finite:
-            if abs(numeric["expected_return"]) > threshold.maximum_absolute_expected_return:
-                out_of_bounds.append("expected_return")
-            for name in (
-                "expected_cost",
-                "cost_uncertainty",
-                "prediction_uncertainty",
-                "model_disagreement",
-                "regime_uncertainty",
-                "drift_score",
-            ):
-                if numeric[name] < 0.0:
-                    out_of_bounds.append(name)
-            for name in (
-                "expected_cost",
-                "cost_uncertainty",
-                "prediction_uncertainty",
-            ):
-                if numeric[name] > 1.0:
-                    out_of_bounds.append(name)
-            for name in ("model_disagreement", "regime_uncertainty", "drift_score"):
-                if numeric[name] > 1.0:
-                    out_of_bounds.append(name)
-            if out_of_bounds:
-                reasons.append(DecisionReason.OUT_OF_BOUNDS_INPUT)
-                failed_fields.extend(dict.fromkeys(out_of_bounds))
+        if math.isfinite(numeric["expected_return"]) and (
+            abs(numeric["expected_return"]) > threshold.maximum_absolute_expected_return
+        ):
+            out_of_bounds.append("expected_return")
+        for name in (
+            "expected_cost",
+            "cost_uncertainty",
+            "prediction_uncertainty",
+            "model_disagreement",
+            "regime_uncertainty",
+            "drift_score",
+        ):
+            if math.isfinite(numeric[name]) and not 0.0 <= numeric[name] <= 1.0:
+                out_of_bounds.append(name)
+        if out_of_bounds:
+            reasons.append(DecisionReason.OUT_OF_BOUNDS_INPUT)
+            failed_fields.extend(out_of_bounds)
+        invalid_fields = set(non_finite) | set(out_of_bounds)
 
         decision_time = signal.decision_time.astimezone(UTC)
         available_at = signal.data_available_at.astimezone(UTC)
@@ -313,14 +312,20 @@ class DecisionPolicy:
         conservative_cost: float | None = None
         uncertainty_charge: float | None = None
         penalized_value: float | None = None
-        if not non_finite and not out_of_bounds:
+        if not invalid_fields.intersection({"expected_cost", "cost_uncertainty"}):
             conservative_cost = threshold.cost_multiplier * math.fsum(
                 (
                     numeric["expected_cost"],
                     threshold.cost_uncertainty_multiplier * numeric["cost_uncertainty"],
                 )
             )
+        if "prediction_uncertainty" not in invalid_fields:
             uncertainty_charge = threshold.uncertainty_penalty * numeric["prediction_uncertainty"]
+        if (
+            "expected_return" not in invalid_fields
+            and conservative_cost is not None
+            and uncertainty_charge is not None
+        ):
             penalized_value = math.fsum(
                 (
                     abs(numeric["expected_return"]),
@@ -328,31 +333,40 @@ class DecisionPolicy:
                     -uncertainty_charge,
                 )
             )
-            if conservative_cost > threshold.maximum_total_cost:
-                reasons.append(DecisionReason.EXCESS_COST)
-                failed_fields.append("conservative_cost")
-            if numeric["model_disagreement"] > threshold.maximum_model_disagreement:
-                reasons.append(DecisionReason.HIGH_DISAGREEMENT)
-                failed_fields.append("model_disagreement")
-            if signal.regime is not RegimeSupport.SUPPORTED:
-                reasons.append(DecisionReason.UNSUPPORTED_REGIME)
-                failed_fields.append("regime")
-            if numeric["regime_uncertainty"] > threshold.maximum_regime_uncertainty:
-                reasons.append(DecisionReason.UNCERTAIN_REGIME)
-                failed_fields.append("regime_uncertainty")
-            if numeric["drift_score"] > threshold.maximum_drift_score:
-                reasons.append(DecisionReason.DRIFT_DETECTED)
-                failed_fields.append("drift_score")
-            if numeric["prediction_uncertainty"] > threshold.maximum_prediction_uncertainty:
-                reasons.append(DecisionReason.EXCESS_UNCERTAINTY)
-                failed_fields.append("prediction_uncertainty")
-            if penalized_value <= threshold.required_margin:
-                reasons.append(DecisionReason.INSUFFICIENT_MARGIN)
-                failed_fields.append("penalized_expected_value")
-        elif signal.regime is not RegimeSupport.SUPPORTED:
-            # State gates remain observable even when numeric estimates are unusable.
+
+        if conservative_cost is not None and conservative_cost > threshold.maximum_total_cost:
+            reasons.append(DecisionReason.EXCESS_COST)
+            failed_fields.append("conservative_cost")
+        if (
+            "model_disagreement" not in invalid_fields
+            and numeric["model_disagreement"] > threshold.maximum_model_disagreement
+        ):
+            reasons.append(DecisionReason.HIGH_DISAGREEMENT)
+            failed_fields.append("model_disagreement")
+        if signal.regime is not RegimeSupport.SUPPORTED:
             reasons.append(DecisionReason.UNSUPPORTED_REGIME)
             failed_fields.append("regime")
+        if (
+            "regime_uncertainty" not in invalid_fields
+            and numeric["regime_uncertainty"] > threshold.maximum_regime_uncertainty
+        ):
+            reasons.append(DecisionReason.UNCERTAIN_REGIME)
+            failed_fields.append("regime_uncertainty")
+        if (
+            "drift_score" not in invalid_fields
+            and numeric["drift_score"] > threshold.maximum_drift_score
+        ):
+            reasons.append(DecisionReason.DRIFT_DETECTED)
+            failed_fields.append("drift_score")
+        if (
+            "prediction_uncertainty" not in invalid_fields
+            and numeric["prediction_uncertainty"] > threshold.maximum_prediction_uncertainty
+        ):
+            reasons.append(DecisionReason.EXCESS_UNCERTAINTY)
+            failed_fields.append("prediction_uncertainty")
+        if penalized_value is not None and penalized_value <= threshold.required_margin:
+            reasons.append(DecisionReason.INSUFFICIENT_MARGIN)
+            failed_fields.append("penalized_expected_value")
 
         direction = _direction(numeric["expected_return"])
         action = DecisionAction.ABSTAIN if reasons else DecisionAction.TRADE

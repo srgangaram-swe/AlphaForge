@@ -86,8 +86,8 @@ flowchart LR
     D --> E[Walk-forward splits with embargo]
     E --> F[Model training and OOS predictions]
     F --> G[Signal construction]
-    G --> P[Cost/uncertainty eligibility or abstention]
-    P --> H[Portfolio construction]
+    G --> H[Portfolio construction]
+    G -. standalone synthetic study only .-> P[Opt-in cost/uncertainty eligibility research]
     H --> I[Future-open fills + self-financing ledger]
     I --> J[Risk, P&L attribution, and capacity sensitivity]
     J --> K[Report / dashboard / API / paper sim]
@@ -293,8 +293,8 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - `alphaforge/training`: interval-aware temporal plans, walk-forward splitting,
   purged K-Fold, CPCV, and OOS prediction panels.
 - `alphaforge/evaluation`: IC analytics, PSR/DSR, PBO, Newey-West inference.
-- `alphaforge/decision`: pure cost/uncertainty eligibility and abstention
-  evidence before portfolio construction.
+- `alphaforge/decision`: opt-in, standalone cost/uncertainty eligibility and
+  abstention evidence; it is not wired into the active portfolio path.
 - `alphaforge/signals`: rank, long-short, top-k, threshold, confidence-weighted,
   and regime-filtered signals.
 - `alphaforge/portfolio`: capped, inverse-vol, turnover-aware target weights.
