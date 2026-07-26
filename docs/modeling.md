@@ -28,6 +28,14 @@
   best-checkpoint restore, persisted per-epoch history) via
   `scripts/train_model.py` (`make train`), and available in walk-forward
   comparisons as `temporal_alpha`.
+- **Latent representations** (`alphaforge/representations/`, ADR 0005):
+  standardized raw features, full/incremental/robust-scaling PCA, dense,
+  sequence, denoising, and variational autoencoders, and a causal contrastive
+  encoder behind a target-free fit/transform/reconstruct contract. Every
+  learned transform fits inside the training interval, publishes stable
+  identities and resource/termination evidence, and is compared with fixed
+  prediction, regime, similarity, anomaly, diversification, and reconstruction
+  diagnostics. See [Leakage-safe latent representations](latent_representations.md).
 - **IC-weighted ensemble**: members are fit on the first 80% of the training
   window (chronological, never shuffled), scored by rank IC on the held-out
   tail, weighted by max(IC, 0) + floor, then refit on the full window.

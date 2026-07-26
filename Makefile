@@ -2,7 +2,7 @@ PYTHON ?= python
 UV ?= uv
 SIGNAL_FOUNDRY_CONFIG ?= configs/signal_foundry_research.yaml
 
-.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence temporal-evidence deep-sequence-evidence time-frequency-evidence signal-foundry-evidence train evaluate \
+.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence temporal-evidence deep-sequence-evidence time-frequency-evidence latent-representation-evidence signal-foundry-evidence train evaluate \
         walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
         native bench bench-native
 
@@ -63,6 +63,11 @@ deep-sequence-evidence:
 time-frequency-evidence:
 	@test -n "$(OUTPUT)" || (echo "OUTPUT must name a new evidence directory" >&2; exit 2)
 	$(PYTHON) scripts/run_time_frequency_vision_benchmark.py --output "$(OUTPUT)"
+
+# Usage: make latent-representation-evidence OUTPUT=/absolute/path/to/new/evidence-directory
+latent-representation-evidence:
+	@test -n "$(OUTPUT)" || (echo "OUTPUT must name a new evidence directory" >&2; exit 2)
+	$(PYTHON) scripts/run_latent_representation_benchmark.py --output "$(OUTPUT)"
 
 train:
 	$(PYTHON) scripts/train_model.py --config configs/models.yaml

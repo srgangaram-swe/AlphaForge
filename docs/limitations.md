@@ -18,6 +18,14 @@ Important limitations:
   were correctly blocked. This rejection does not establish that image models
   fail on licensed point-in-time data; it establishes only that larger models
   were unjustified on the declared reference.
+- The SF-S3-MR8 latent-representation reference is one small synthetic split
+  with planted factors, regimes, and conspicuous anomalies. PCA was selected on
+  validation but tied the raw control on test rank IC and slightly worsened
+  prediction MSE. Robust-scale PCA's higher post-selection test rank IC cannot
+  be used to revise that choice. Daily standard errors do not correct for serial
+  dependence, and neural epoch ceilings, synthetic transfer scores, and
+  single-fit timings do not establish convergence, market value, or production
+  performance.
 - Backtests are daily-bar approximations. The close-decision/next-open ledger
   prevents pre-fill gap capture and lets holdings drift, but bars cannot reveal
   queue position, auction dynamics, intraday path, or order-book state.

@@ -29,6 +29,11 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - A fail-closed time-frequency progression from LightGBM descriptors to a
   mandatory small CNN, conditional ResNet, and conditional ViT, with
   validation-only tamper-evident gates and aggregate Seaborn evidence.
+- A target-free latent-representation boundary spanning raw features, full and
+  incremental PCA, robust-scaling PCA, dense/sequence/denoising/variational
+  autoencoders, and causal contrastive learning, with train-only fitted state,
+  stable identities, bounded optional Torch execution, and validation-only
+  selection against the raw control.
 - A neural temporal alpha model (dilated causal TCN + attention pooling, composite
   Huber + cross-sectional IC loss) with a real training loop — early stopping on
   validation rank IC, checkpointing, persisted history — via `make train` (ADR 0002).
@@ -112,6 +117,7 @@ make build-features     # feature and label panels
 make label-evidence OUTPUT=/tmp/alphaforge-label-evidence
 make temporal-evidence OUTPUT=/tmp/alphaforge-temporal-evidence
 make time-frequency-evidence OUTPUT=/tmp/alphaforge-time-frequency-evidence
+make latent-representation-evidence OUTPUT=/tmp/alphaforge-latent-evidence
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
 make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
@@ -148,6 +154,12 @@ documents Signalattice tensor alignment, train-only normalization,
 meaning-preserving perturbations, bounded CNN/ResNet/ViT implementations, and
 validation-only progression. Its committed synthetic reference rejected the
 small CNN and therefore blocked both larger architectures.
+The [latent-representation contract](docs/latent_representations.md) documents
+the target-free fit boundary, PCA ambiguity handling, causal sequence
+semantics, bounded autoencoders and contrastive encoder, stable state
+identities, fixed downstream diagnostics, and aggregate-only evidence. Its
+synthetic reference selected PCA on validation but found no test prediction
+improvement over raw features.
 The [calibration and uncertainty contract](docs/calibration_uncertainty.md)
 documents OOF provenance, mathematical assumptions, deterministic
 configuration, JSON-safe persistence, and failure behavior.
@@ -172,6 +184,10 @@ licensed rows.
 The [Sprint 2 report](docs/sprint_2_report.md) records the governed
 seven-candidate comparison, selection correction, costed final-holdout
 rejection, compute profile, and aggregate-only Seaborn evidence.
+The [Sprint 3 latent-representation report](docs/sprint_3_latent_representation_report.md)
+records the nine-candidate synthetic engineering comparison, its mixed/negative
+predictive result, transfer and reconstruction diagnostics, compute evidence,
+and inspected Seaborn plot.
 
 ## Low-Latency Execution Core (C++)
 
@@ -246,6 +262,8 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 
 - `alphaforge/data`: loaders, schema validation, quality reports, synthetic data.
 - `alphaforge/features`: technical, cross-sectional, benchmark-relative, and regime features.
+- `alphaforge/representations`: typed raw/PCA and optional neural encoders with
+  train-only state, causal sequence inputs, reconstruction, and stable identities.
 - `alphaforge/labels`: versioned future-event labels and statistical diagnostics.
 - `alphaforge/models`: baselines, sklearn wrappers, torch wrappers, IC-weighted ensemble,
   Gaussian HMM regime model, registry.
