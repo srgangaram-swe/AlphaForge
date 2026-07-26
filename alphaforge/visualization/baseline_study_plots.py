@@ -22,12 +22,15 @@ def plot_fold_rank_ic(frame: pd.DataFrame, path: str | Path) -> Path:
     """Plot every matched walk-forward fold, including unfavorable values."""
 
     destination = _prepare(path)
+    model_order = frame["model"].astype(str).drop_duplicates().tolist()
     figure, axis = plt.subplots(figsize=(11, 6.5))
     sns.boxplot(
         data=frame,
         x="rank_ic",
         y="model",
         hue="model",
+        order=model_order,
+        hue_order=model_order,
         palette=_PALETTE,
         legend=False,
         whis=(0, 100),
@@ -38,12 +41,15 @@ def plot_fold_rank_ic(frame: pd.DataFrame, path: str | Path) -> Path:
         data=frame,
         x="rank_ic",
         y="model",
+        order=model_order,
         color="#222222",
         alpha=0.72,
         size=5,
         jitter=0.10,
         ax=axis,
     )
+    axis.set_yticks(range(len(model_order)), labels=model_order)
+    axis.tick_params(axis="y", colors="#222222")
     axis.axvline(0.0, color="#444444", linestyle="--", linewidth=1.2)
     axis.set(
         title="Development-only rank IC across matched walk-forward folds",
@@ -59,7 +65,8 @@ def plot_fold_rank_ic(frame: pd.DataFrame, path: str | Path) -> Path:
         fontsize=9,
     )
     figure.tight_layout()
-    figure.savefig(destination, dpi=180, bbox_inches="tight")
+    figure.subplots_adjust(left=0.24, bottom=0.20)
+    figure.savefig(destination, dpi=180)
     plt.close(figure)
     return destination
 
@@ -110,7 +117,8 @@ def plot_costed_returns(frame: pd.DataFrame, path: str | Path) -> Path:
         fontsize=9,
     )
     figure.tight_layout()
-    figure.savefig(destination, dpi=180, bbox_inches="tight")
+    figure.subplots_adjust(left=0.24, bottom=0.20)
+    figure.savefig(destination, dpi=180)
     plt.close(figure)
     return destination
 

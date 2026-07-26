@@ -157,6 +157,9 @@ Supply-chain and release controls are documented in
 The [Sprint 1 evidence report](docs/sprint_1_report.md) records the final
 `NOT_READY` result and its reproducible Seaborn evidence without publishing
 licensed rows.
+The [Sprint 2 report](docs/sprint_2_report.md) records the governed
+seven-candidate comparison, selection correction, costed final-holdout
+rejection, compute profile, and aggregate-only Seaborn evidence.
 
 ## Low-Latency Execution Core (C++)
 
