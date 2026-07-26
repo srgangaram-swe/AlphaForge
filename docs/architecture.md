@@ -12,6 +12,8 @@ flowchart TD
     labels --> splits[Walk-forward / Purged K-Fold / CPCV splits]
     splits --> models[Model training incl. IC-weighted ensemble]
     models --> preds[Out-of-sample prediction panel]
+    preds --> calibration[OOF calibration + dependence-aware uncertainty]
+    calibration --> overfit
     preds --> overfit[Overfitting stats: DSR, PBO, NW t-stats]
     preds --> signals[Signals + regime filter]
     signals --> portfolio[Portfolio construction]
@@ -64,5 +66,12 @@ Two implementation layers sit beside the Python pipeline:
   termination evidence, deterministic seed injection, and trusted-only binary
   deserialization. See
   [Governed benchmark models](governed_benchmark_models.md).
+- **Calibration and uncertainty boundary**
+  (`alphaforge/evaluation/calibration.py`,
+  `alphaforge/evaluation/uncertainty.py`): training-OOF-only provenance,
+  post-fit evaluation periods, strict probability metrics, JSON-safe
+  Platt/isotonic state, moving-block bootstrap intervals, conservative
+  block-conformal residual intervals, and bounded linear quantile regression.
+  See [Calibration and uncertainty contracts](calibration_uncertainty.md).
 - **Capacity evaluation** (`alphaforge/evaluation/capacity.py`): auditable AUM,
   participation, fill-ratio, and cost sensitivities using supplied lagged ADV.

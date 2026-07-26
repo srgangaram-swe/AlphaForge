@@ -90,6 +90,14 @@ configuration plus the pre-registered WIKI bootstrap profile. The generic
 permissive YAML loader has been retired;
 adding a new YAML surface requires a named schema and negative tests.
 
+The canonical `configs/calibration.yaml` surface fixes the probability
+calibrator, reliability bins, bootstrap resamples/block length/seed, conformal
+miscoverage and minimum blocks, and quantile-regression bounds. Calibration and
+conformal artifacts are atomic, versioned, bounded JSON records containing only
+numeric state and fit provenance; their readers never deserialize executable
+Python objects. See [Calibration and uncertainty
+contracts](calibration_uncertainty.md).
+
 ## Safe tabular artifacts
 
 Pipeline tables use the `1.0.0` `*.table.json` contract in

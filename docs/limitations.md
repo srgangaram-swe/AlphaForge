@@ -25,6 +25,11 @@ Important limitations:
   microstructure calibration or the paper replay's source of truth.
 - DSR/PBO correct for the trials the platform knows about; they cannot correct
   for ideas discarded before they were coded.
+- Probability calibration and interval coverage can fail under prevalence
+  drift, regime changes, or changed model/feature policy. ECE depends on its
+  declared bins; moving-block bootstrap intervals require local stationarity
+  and an adequate block length; block-conformal coverage requires exchangeable
+  residual blocks; and linear quantile regressions can be misspecified.
 - No broker integration places live orders.
 - Offline paper controls emit proposed state decisions only. They do not model
   broker acknowledgements, rejects, outages, recovery, exchange state, legal or

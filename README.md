@@ -38,6 +38,9 @@ AlphaForge is an educational quantitative research and ML engineering project. I
   pickle interchange across the local research pipeline.
 - Overfitting statistics: Probabilistic and Deflated Sharpe Ratios, Probability of
   Backtest Overfitting (CSCV), and Newey-West IC t-statistics.
+- Training-OOF-only Platt/isotonic probability calibration, Brier and
+  reliability evidence, dependence-aware moving-block intervals, conservative
+  block-conformal residual intervals, and bounded quantile regression.
 - Backtests that use out-of-sample predictions only.
 - Close-decision → next-open execution with a self-financing cash/share ledger,
   drifted holdings, causal lagged-liquidity inputs, partial fills, and reconciled P&L.
@@ -127,6 +130,9 @@ The [governed benchmark model contract](docs/governed_benchmark_models.md)
 documents the bounded linear, robust, tree, boosting, and small-MLP families,
 their deterministic termination evidence, and the remaining barriers to
 paper or live use.
+The [calibration and uncertainty contract](docs/calibration_uncertainty.md)
+documents OOF provenance, mathematical assumptions, deterministic
+configuration, JSON-safe persistence, and failure behavior.
 
 Supply-chain and release controls are documented in
 [Release and security governance](docs/release_security.md).
