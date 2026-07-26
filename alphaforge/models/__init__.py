@@ -9,6 +9,25 @@ from alphaforge.models.base import (
     ProbabilityNotSupportedError,
     TrainingDiagnostics,
 )
+from alphaforge.models.ensemble import (
+    EnsembleAuditRecord,
+    GovernedEnsembleConfig,
+    GovernedEnsembleState,
+    fit_governed_ensemble,
+)
+from alphaforge.models.ensemble_contracts import (
+    ENSEMBLE_CONTRACT_VERSION,
+    EnsembleContractError,
+    EnsembleDecision,
+    HoldoutLeakageError,
+    IncompleteOOFError,
+    InferenceBatch,
+    InferencePrediction,
+    TemporalOOFFold,
+    TrainingOOFPanel,
+    TrainingOOFPrediction,
+    TrainingOOFTarget,
+)
 from alphaforge.models.registry import MODEL_REGISTRY, available_models, create_model
 
 __all__ = [
@@ -22,6 +41,21 @@ __all__ = [
     "ProbabilityNotSupportedError",
     "TrainingDiagnostics",
     "CONTRACT_VERSION",
+    "ENSEMBLE_CONTRACT_VERSION",
+    "EnsembleAuditRecord",
+    "EnsembleContractError",
+    "EnsembleDecision",
+    "GovernedEnsembleConfig",
+    "GovernedEnsembleState",
+    "HoldoutLeakageError",
+    "IncompleteOOFError",
+    "InferenceBatch",
+    "InferencePrediction",
+    "TemporalOOFFold",
+    "TrainingOOFPanel",
+    "TrainingOOFPrediction",
+    "TrainingOOFTarget",
     "available_models",
     "create_model",
+    "fit_governed_ensemble",
 ]

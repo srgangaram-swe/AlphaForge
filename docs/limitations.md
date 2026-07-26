@@ -26,6 +26,13 @@ Important limitations:
   dependence, and neural epoch ceilings, synthetic transfer scores, and
   single-fit timings do not establish convergence, market value, or production
   performance.
+- The SF-S3-MR9 ensemble reference is synthetic and deliberately gives experts
+  complementary calm/stress error. Its favorable stacking, dynamic, and gated
+  results prove recovery and failure behavior only. The OOF contract validates
+  declared fold/date provenance but cannot prove an external expert producer
+  was honest; Bayesian likelihood assumptions, regime calibration, online
+  drift, licensed point-in-time data, multiplicity, capacity, and event-driven
+  execution remain unresolved.
 - Backtests are daily-bar approximations. The close-decision/next-open ledger
   prevents pre-fill gap capture and lets holdings drift, but bars cannot reveal
   queue position, auction dynamics, intraday path, or order-book state.

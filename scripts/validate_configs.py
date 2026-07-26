@@ -6,6 +6,7 @@ from pathlib import Path
 
 from alphaforge.config import SCHEMAS, load_config
 from alphaforge.research.deep_sequence_study import load_deep_sequence_study_config
+from alphaforge.research.ensemble_study import load_ensemble_study_config
 from alphaforge.research.representation_study import load_representation_study_config
 from alphaforge.research.time_frequency_study import load_time_frequency_study_config
 
@@ -31,6 +32,10 @@ def main() -> None:
     representation_path = Path("configs/latent_representation_benchmark.yaml")
     load_representation_study_config(representation_path)
     print(f"validated representation_study: {representation_path}")
+
+    ensemble_path = Path("configs/ensemble_benchmark.yaml")
+    load_ensemble_study_config(ensemble_path)
+    print(f"validated ensemble_study: {ensemble_path}")
 
 
 if __name__ == "__main__":

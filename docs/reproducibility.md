@@ -116,6 +116,14 @@ extra, failed, interrupted, or nonterminal candidates cannot be silently
 excluded from family correction. See
 [Append-only research governance](research_governance.md).
 
+The canonical `configs/ensemble_benchmark.yaml` surface freezes the synthetic
+reference dimensions, temporal folds, candidate-independent seed, turnover
+cost, policy hyperparameters, fallback prediction, and record/audit ceilings.
+Its exact-schema loader rejects unknown fields and misleading interpretation
+labels. Training panels and fitted states use canonical sorted-key JSON and
+SHA-256 identities; final inference is a distinct target-free type. See
+[Governed temporal-OOF ensembles](governed_ensembles.md).
+
 ## Safe tabular artifacts
 
 Pipeline tables use the `1.0.0` `*.table.json` contract in
@@ -149,6 +157,18 @@ and dimensions, predeclared sensitivity scales, aggregate CSV evidence, plot
 hashes, and explicit non-market limitations. Publication refuses to overwrite
 an existing evidence root. See [Financial label contracts and
 diagnostics](label_design.md).
+
+The governed ensemble reference uses
+`make ensemble-evidence OUTPUT=<new-directory>`. It evaluates all six policies
+offline, refuses overwrite, records SHA-256 integrity hashes for each aggregate
+artifact, and commits no row prediction, target, fitted state, licensed
+observation, or model binary. The resolved config and runtime environment are
+recorded together with distinct generator/bootstrap seeds, derived named child
+streams, and the complete moving-block policy. Its Seaborn summary and
+prediction/error correlations, regime overlap, drop-one marginal
+contributions, turnover/cost, heuristic dispersion, and moving-block
+variability tables are linked from the
+[Sprint 3 ensemble report](sprint_3_ensemble_report.md).
 
 The governed real-data workflow uses
 `make signal-foundry-evidence RUN=<run> BUNDLE=<bundle> OUTPUT=<new-directory>`.

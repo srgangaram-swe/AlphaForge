@@ -1,3 +1,4 @@
+from alphaforge.visualization.ensemble_plots import plot_ensemble_evidence
 from alphaforge.visualization.label_plots import (
     plot_label_class_balance,
     plot_label_dependence,
@@ -26,6 +27,7 @@ __all__ = [
     "plot_label_dependence",
     "plot_label_parameter_sensitivity",
     "plot_label_temporal_stability",
+    "plot_ensemble_evidence",
     "plot_ic_decay",
     "plot_ic_timeseries",
     "plot_model_comparison",
