@@ -12,8 +12,10 @@ import pytest
 import yaml
 
 from alphaforge.research.sprint_3_decision import (
+    EVIDENCE_FACT_ROLES,
     EVIDENCE_GATES,
     SPRINT_3_FAMILIES,
+    EvidenceFact,
     EvidenceGateSupport,
     FamilyEvidence,
     SourceArtifact,
@@ -26,6 +28,7 @@ from alphaforge.research.sprint_3_decision import (
     load_sprint_3_evaluation_plan,
     plot_gate_matrix,
     publish_sprint_3_decision,
+    semantic_review_receipt,
     sha256_file,
 )
 
@@ -61,10 +64,19 @@ def _family(source: SourceArtifact, **updates: Any) -> FamilyEvidence:
         values["gate_support"] = tuple(
             EvidenceGateSupport(
                 gate=gate,
-                source_path=source.path,
-                locator_kind="json_pointer",
-                locator="/aggregate",
-                claim=f"bounded fixture supports {gate}",
+                verdict="supported",
+                review_method="independent_manual_source_semantics",
+                assertion=f"bounded fixture semantically supports {gate}",
+                facts=(
+                    EvidenceFact(
+                        roles=EVIDENCE_FACT_ROLES,
+                        source_path=source.path,
+                        locator_kind="json_pointer",
+                        locator="/aggregate",
+                        observed=f"fixture fact for {gate}",
+                    ),
+                ),
+                residual_limitations=("bounded synthetic fixture only",),
             )
             for gate in EVIDENCE_GATES
             if values[gate]
@@ -197,28 +209,28 @@ def test_sha256_file_bounds_growth_after_initial_stat(
     assert grew_after_stat
 
 
-def test_gate_support_resolves_json_csv_and_markdown_locators(tmp_path: Path) -> None:
+def test_semantic_facts_resolve_json_csv_and_markdown_locators(tmp_path: Path) -> None:
     json_source = _source(tmp_path)
-    json_support = EvidenceGateSupport(
-        gate="out_of_sample",
+    json_fact = EvidenceFact(
+        roles=("result",),
         source_path=json_source.path,
         locator_kind="json_pointer",
         locator="/aggregate",
-        claim="the aggregate fixture exists",
+        observed="the aggregate fixture is true",
     )
-    json_support.verify(tmp_path, (json_source,))
+    json_fact.verify(tmp_path, (json_source,))
     with pytest.raises(Sprint3DecisionError, match="does not resolve"):
-        replace(json_support, locator="/missing").verify(tmp_path, (json_source,))
+        replace(json_fact, locator="/missing").verify(tmp_path, (json_source,))
 
     csv_path = tmp_path / "metrics.csv"
     csv_path.write_text("rank_ic,fold\n0.1,1\n", encoding="utf-8")
     csv_source = SourceArtifact(path="metrics.csv", sha256=sha256_file(csv_path))
-    EvidenceGateSupport(
-        gate="uncertainty",
+    EvidenceFact(
+        roles=("result",),
         source_path=csv_source.path,
         locator_kind="csv_column",
         locator="rank_ic",
-        claim="the aggregate table reports rank IC",
+        observed="rank IC column is present",
     ).verify(tmp_path, (csv_source,))
 
     markdown_path = tmp_path / "report.md"
@@ -227,13 +239,92 @@ def test_gate_support_resolves_json_csv_and_markdown_locators(tmp_path: Path) ->
         path="report.md",
         sha256=sha256_file(markdown_path),
     )
-    EvidenceGateSupport(
-        gate="compute_accounting",
+    EvidenceFact(
+        roles=("limitation",),
         source_path=markdown_source.path,
         locator_kind="markdown_heading",
         locator="## Limitations",
-        claim="the report contains a limitations section",
+        observed="the report has an explicit limitations boundary",
     ).verify(tmp_path, (markdown_source,))
+
+
+def test_positive_gate_requires_complete_independent_semantic_substantiation(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path)
+    result_only = EvidenceFact(
+        roles=("result",),
+        source_path=source.path,
+        locator_kind="json_pointer",
+        locator="/aggregate",
+        observed="a content hash and result locator exist",
+    )
+
+    with pytest.raises(Sprint3DecisionError, match="lacks required roles"):
+        EvidenceGateSupport(
+            gate="net_economics",
+            verdict="supported",
+            review_method="independent_manual_source_semantics",
+            assertion="a hash alone must not promote a net-economics gate",
+            facts=(result_only,),
+            residual_limitations=("fixture has no cost policy or limitation fact",),
+        )
+
+    supported = EvidenceGateSupport(
+        gate="net_economics",
+        verdict="supported",
+        review_method="independent_manual_source_semantics",
+        assertion="the reviewed source reports a costed result and its limitation",
+        facts=(
+            replace(result_only, roles=("result", "cost_policy")),
+            replace(
+                result_only,
+                roles=("limitation",),
+                observed="the source limits the result to synthetic mechanics",
+            ),
+        ),
+        residual_limitations=("synthetic mechanics are not market evidence",),
+    )
+    supported.verify(tmp_path, (source,))
+
+
+def test_false_gate_cannot_be_promoted_by_review_or_source_hash(tmp_path: Path) -> None:
+    family = _family(_source(tmp_path))
+
+    with pytest.raises(Sprint3DecisionError, match="true exactly when"):
+        replace(family, net_economics=False)
+
+    with pytest.raises(Sprint3DecisionError, match="true exactly when"):
+        replace(
+            family,
+            uncertainty=True,
+        )
+
+
+def test_semantic_review_facts_are_bounded_unique_and_declared(tmp_path: Path) -> None:
+    source = _source(tmp_path)
+    support = _family(source).gate_support[0]
+    duplicate = support.facts[0]
+    with pytest.raises(Sprint3DecisionError, match="facts must be unique"):
+        replace(support, facts=(duplicate, duplicate))
+    with pytest.raises(Sprint3DecisionError, match="declared family sources"):
+        replace(
+            _family(source),
+            gate_support=(
+                replace(
+                    support,
+                    facts=(
+                        replace(
+                            duplicate,
+                            source_path="untrusted.json",
+                        ),
+                    ),
+                ),
+            ),
+            out_of_sample=True,
+            net_economics=False,
+            compute_accounting=False,
+        )
 
 
 def test_family_records_missing_gates_without_treating_them_as_not_applicable(
@@ -423,6 +514,32 @@ def test_plan_loader_rejects_unknown_fields_and_unsupported_freeze_claims(
         )
 
 
+def test_plan_loader_rejects_legacy_locator_and_incomplete_review_roles(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path)
+    _write_plan(tmp_path, _complete_families(source))
+    path = tmp_path / "sprint_3_decision.yaml"
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    payload["families"][0]["gate_support"][0] = {
+        "gate": "out_of_sample",
+        "source_path": source.path,
+        "locator_kind": "json_pointer",
+        "locator": "/aggregate",
+        "claim": "the legacy hash-plus-locator model is not a semantic review",
+    }
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    with pytest.raises(Sprint3DecisionError, match="invalid Sprint 3 plan"):
+        load_sprint_3_evaluation_plan(path, repository_root=tmp_path)
+
+    _write_plan(tmp_path, _complete_families(source))
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    payload["families"][0]["gate_support"][0]["facts"][0]["roles"] = ["result"]
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    with pytest.raises(Sprint3DecisionError, match="lacks required roles"):
+        load_sprint_3_evaluation_plan(path, repository_root=tmp_path)
+
+
 @pytest.mark.parametrize(
     "dimension",
     (
@@ -528,6 +645,12 @@ def test_publisher_is_atomic_content_addressed_and_aggregate_only(tmp_path: Path
         "model_weights_published": False,
         "row_predictions_published": False,
     }
+    semantic_review = json.loads((output / "semantic_review.json").read_text(encoding="utf-8"))
+    assert semantic_review == semantic_review_receipt(plan.families)
+    assert len(semantic_review["rows"]) == sum(family.gate_score for family in plan.families)
+    assert semantic_review["rows"][0]["verdict"] == "supported"
+    assert semantic_review["rows"][0]["facts"][0]["source_path"] == source.path
+    assert semantic_review["rows"][0]["facts"][0]["source_sha256"] == source.sha256
     manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert len(manifest["source_artifacts"]) == len(SPRINT_3_FAMILIES)
     assert manifest["source_artifacts"][0] == {

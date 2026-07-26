@@ -47,6 +47,16 @@ EvidenceContext = Literal[
 FamilyDisposition = Literal["advance", "reject", "defer"]
 ReadinessDecision = Literal["NOT_READY"]
 EvidenceLocatorKind = Literal["json_pointer", "csv_column", "markdown_heading"]
+EvidenceFactRole = Literal[
+    "temporal_contract",
+    "uncertainty_method",
+    "cost_policy",
+    "result",
+    "selection_control",
+    "experimental_control",
+    "resource_boundary",
+    "limitation",
+]
 
 EVIDENCE_GATES = (
     "out_of_sample",
@@ -71,6 +81,34 @@ SPRINT_3_FAMILIES = (
     "governed_ensembles",
     "abstention_policy",
 )
+EVIDENCE_FACT_ROLES: tuple[EvidenceFactRole, ...] = (
+    "temporal_contract",
+    "uncertainty_method",
+    "cost_policy",
+    "result",
+    "selection_control",
+    "experimental_control",
+    "resource_boundary",
+    "limitation",
+)
+MAX_EVIDENCE_FACTS_PER_GATE = 8
+MAX_REVIEW_LIMITATIONS_PER_GATE = 8
+
+_REQUIRED_EVIDENCE_ROLES: dict[str, frozenset[EvidenceFactRole]] = {
+    "out_of_sample": frozenset({"temporal_contract", "result"}),
+    "uncertainty": frozenset({"uncertainty_method", "result", "limitation"}),
+    "net_economics": frozenset({"cost_policy", "result", "limitation"}),
+    "selection_correction": frozenset({"selection_control", "result", "limitation"}),
+    "feature_ablation": frozenset({"experimental_control", "result", "limitation"}),
+    "randomized_control": frozenset({"experimental_control", "result", "limitation"}),
+    "regime_stability": frozenset(
+        {"experimental_control", "uncertainty_method", "result", "limitation"}
+    ),
+    "year_stability": frozenset(
+        {"experimental_control", "uncertainty_method", "result", "limitation"}
+    ),
+    "compute_accounting": frozenset({"resource_boundary", "result", "limitation"}),
+}
 
 
 class Sprint3DecisionError(ValueError):
@@ -190,18 +228,22 @@ class _SourceArtifactSpec(_StrictPlanModel):
 
 
 @dataclass(frozen=True)
-class EvidenceGateSupport:
-    """One verifiable locator supporting a positive evidence-gate claim."""
+class EvidenceFact:
+    """One reviewed, content-addressed fact used by an evidence-gate decision."""
 
-    gate: str
+    roles: tuple[EvidenceFactRole, ...]
     source_path: str
     locator_kind: EvidenceLocatorKind
     locator: str
-    claim: str
+    observed: str
 
     def __post_init__(self) -> None:
-        if self.gate not in EVIDENCE_GATES:
-            raise Sprint3DecisionError(f"unsupported evidence gate {self.gate!r}")
+        if not self.roles or len(self.roles) > len(EVIDENCE_FACT_ROLES):
+            raise Sprint3DecisionError("evidence fact roles must be non-empty and bounded")
+        if len(self.roles) != len(set(self.roles)):
+            raise Sprint3DecisionError("evidence fact roles must be unique")
+        if any(role not in EVIDENCE_FACT_ROLES for role in self.roles):
+            raise Sprint3DecisionError("evidence fact contains an unsupported semantic role")
         SourceArtifact(path=self.source_path, sha256="0" * 64)
         if self.locator_kind not in {
             "json_pointer",
@@ -211,8 +253,12 @@ class EvidenceGateSupport:
             raise Sprint3DecisionError(f"unsupported evidence locator kind {self.locator_kind!r}")
         if not isinstance(self.locator, str) or not self.locator or len(self.locator) > 512:
             raise Sprint3DecisionError("evidence locator must contain at most 512 characters")
-        if not isinstance(self.claim, str) or not self.claim.strip() or len(self.claim) > 1000:
-            raise Sprint3DecisionError("evidence support requires a bounded explicit claim")
+        if (
+            not isinstance(self.observed, str)
+            or not self.observed.strip()
+            or len(self.observed) > 1000
+        ):
+            raise Sprint3DecisionError("evidence fact requires a bounded observed-value summary")
         if self.locator_kind == "json_pointer" and not self.locator.startswith("/"):
             raise Sprint3DecisionError("JSON evidence locator must be an absolute JSON pointer")
         if self.locator_kind == "markdown_heading" and not self.locator.startswith("#"):
@@ -225,12 +271,12 @@ class EvidenceGateSupport:
         *,
         verified_sources: Mapping[str, Path] | None = None,
     ) -> None:
-        """Verify that the declared source contains the addressed evidence."""
+        """Verify that the declared source contains the reviewed fact locator."""
 
         by_path = {source.path: source for source in sources}
         if self.source_path not in by_path:
             raise Sprint3DecisionError(
-                f"gate {self.gate!r} references undeclared source {self.source_path!r}"
+                f"semantic fact references undeclared source {self.source_path!r}"
             )
         if verified_sources is None:
             path = by_path[self.source_path].verify(repository_root)
@@ -238,14 +284,14 @@ class EvidenceGateSupport:
             cached_path = verified_sources.get(self.source_path)
             if cached_path is None:
                 raise Sprint3DecisionError(
-                    f"gate {self.gate!r} source has not passed content verification"
+                    "semantic fact source has not passed content verification"
                 )
             path = cached_path
         if self.locator_kind == "json_pointer":
             try:
                 value: Any = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-                raise Sprint3DecisionError(f"gate {self.gate!r} source is not valid JSON") from exc
+                raise Sprint3DecisionError("semantic fact source is not valid JSON") from exc
             for token in self.locator[1:].split("/"):
                 key = token.replace("~1", "/").replace("~0", "~")
                 if isinstance(value, dict) and key in value:
@@ -253,17 +299,15 @@ class EvidenceGateSupport:
                 elif isinstance(value, list) and key.isdigit() and int(key) < len(value):
                     value = value[int(key)]
                 else:
-                    raise Sprint3DecisionError(f"gate {self.gate!r} JSON pointer does not resolve")
+                    raise Sprint3DecisionError("semantic fact JSON pointer does not resolve")
         elif self.locator_kind == "csv_column":
             try:
                 with path.open("r", encoding="utf-8", newline="") as stream:
                     columns = next(csv.reader(stream))
             except (OSError, UnicodeError, StopIteration, csv.Error) as exc:
-                raise Sprint3DecisionError(
-                    f"gate {self.gate!r} source has no valid CSV header"
-                ) from exc
+                raise Sprint3DecisionError("semantic fact source has no valid CSV header") from exc
             if self.locator not in columns:
-                raise Sprint3DecisionError(f"gate {self.gate!r} CSV column does not exist")
+                raise Sprint3DecisionError("semantic fact CSV column does not exist")
         else:
             try:
                 headings = {
@@ -273,20 +317,122 @@ class EvidenceGateSupport:
                 }
             except (OSError, UnicodeError) as exc:
                 raise Sprint3DecisionError(
-                    f"gate {self.gate!r} source is not valid UTF-8 Markdown"
+                    "semantic fact source is not valid UTF-8 Markdown"
                 ) from exc
             if self.locator not in headings:
-                raise Sprint3DecisionError(f"gate {self.gate!r} Markdown heading does not exist")
+                raise Sprint3DecisionError("semantic fact Markdown heading does not exist")
 
 
-class _EvidenceGateSupportSpec(_StrictPlanModel):
-    """Strict YAML representation of one gate-to-source binding."""
+class _EvidenceFactSpec(_StrictPlanModel):
+    """Strict YAML representation of one reviewed source fact."""
 
-    gate: str
+    roles: Annotated[list[EvidenceFactRole], Field(min_length=1, max_length=8)]
     source_path: str
     locator_kind: EvidenceLocatorKind
     locator: str
-    claim: str
+    observed: str
+
+    @model_validator(mode="after")
+    def validate_domain_contract(self) -> _EvidenceFactSpec:
+        self.to_domain()
+        return self
+
+    def to_domain(self) -> EvidenceFact:
+        """Return the immutable reviewed fact."""
+
+        return EvidenceFact(
+            roles=tuple(self.roles),
+            source_path=self.source_path,
+            locator_kind=self.locator_kind,
+            locator=self.locator,
+            observed=self.observed,
+        )
+
+
+@dataclass(frozen=True)
+class EvidenceGateSupport:
+    """Independent semantic review substantiating one positive evidence gate."""
+
+    gate: str
+    verdict: Literal["supported"]
+    review_method: Literal["independent_manual_source_semantics"]
+    assertion: str
+    facts: tuple[EvidenceFact, ...]
+    residual_limitations: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.gate not in EVIDENCE_GATES:
+            raise Sprint3DecisionError(f"unsupported evidence gate {self.gate!r}")
+        if self.verdict != "supported":
+            raise Sprint3DecisionError("positive evidence gates require a supported review verdict")
+        if self.review_method != "independent_manual_source_semantics":
+            raise Sprint3DecisionError(
+                "positive evidence gates require independent semantic review"
+            )
+        if (
+            not isinstance(self.assertion, str)
+            or not self.assertion.strip()
+            or len(self.assertion) > 2000
+        ):
+            raise Sprint3DecisionError("semantic review requires a bounded explicit assertion")
+        if not 0 < len(self.facts) <= MAX_EVIDENCE_FACTS_PER_GATE:
+            raise Sprint3DecisionError(
+                f"semantic review fact count must be in [1, {MAX_EVIDENCE_FACTS_PER_GATE}]"
+            )
+        identities = tuple(
+            (fact.source_path, fact.locator_kind, fact.locator, fact.roles) for fact in self.facts
+        )
+        if len(identities) != len(set(identities)):
+            raise Sprint3DecisionError("semantic review facts must be unique")
+        if not 0 < len(self.residual_limitations) <= MAX_REVIEW_LIMITATIONS_PER_GATE:
+            raise Sprint3DecisionError(
+                "semantic review requires one or more bounded residual limitations"
+            )
+        for limitation in self.residual_limitations:
+            if not isinstance(limitation, str) or not limitation.strip() or len(limitation) > 1000:
+                raise Sprint3DecisionError(
+                    "semantic review limitations must be non-empty and bounded"
+                )
+        observed_roles = {role for fact in self.facts for role in fact.roles}
+        missing_roles = _REQUIRED_EVIDENCE_ROLES[self.gate] - observed_roles
+        if missing_roles:
+            raise Sprint3DecisionError(
+                f"gate {self.gate!r} semantic review lacks required roles: "
+                f"{sorted(missing_roles)}"
+            )
+
+    def verify(
+        self,
+        repository_root: str | Path,
+        sources: tuple[SourceArtifact, ...],
+        *,
+        verified_sources: Mapping[str, Path] | None = None,
+    ) -> None:
+        """Verify every independently reviewed fact against pinned source bytes."""
+
+        for fact in self.facts:
+            fact.verify(
+                repository_root,
+                sources,
+                verified_sources=verified_sources,
+            )
+
+
+class _EvidenceGateSupportSpec(_StrictPlanModel):
+    """Strict YAML representation of one positive semantic-review decision."""
+
+    gate: str
+    verdict: Literal["supported"]
+    review_method: Literal["independent_manual_source_semantics"]
+    assertion: str
+    facts: Annotated[
+        list[_EvidenceFactSpec],
+        Field(min_length=1, max_length=MAX_EVIDENCE_FACTS_PER_GATE),
+    ]
+    residual_limitations: Annotated[
+        list[str],
+        Field(min_length=1, max_length=MAX_REVIEW_LIMITATIONS_PER_GATE),
+    ]
 
     @model_validator(mode="after")
     def validate_domain_contract(self) -> _EvidenceGateSupportSpec:
@@ -294,19 +440,26 @@ class _EvidenceGateSupportSpec(_StrictPlanModel):
         return self
 
     def to_domain(self) -> EvidenceGateSupport:
-        """Return the immutable evidence support record."""
+        """Return the immutable semantic-review record."""
 
-        return EvidenceGateSupport(**self.model_dump())
+        return EvidenceGateSupport(
+            gate=self.gate,
+            verdict=self.verdict,
+            review_method=self.review_method,
+            assertion=self.assertion,
+            facts=tuple(fact.to_domain() for fact in self.facts),
+            residual_limitations=tuple(self.residual_limitations),
+        )
 
 
 @dataclass(frozen=True)
 class FamilyEvidence:
     """Normalized aggregate evidence for one pre-registered family.
 
-    Boolean evidence gates describe whether the linked source actually reports
-    the named evidence. A false value is a visible missing gate, never silently
-    treated as not applicable. Optional performance values remain contextual
-    and are not ranked across studies.
+    Boolean evidence gates describe whether independently reviewed, linked
+    source facts substantiate the named evidence. A false value is a visible
+    missing gate, never silently treated as not applicable. Optional
+    performance values remain contextual and are not ranked across studies.
     """
 
     family: str
@@ -348,9 +501,12 @@ class FamilyEvidence:
         support_gates = tuple(support.gate for support in self.gate_support)
         if len(support_gates) != len(set(support_gates)):
             raise Sprint3DecisionError("evidence gate support records must be unique")
-        if any(support.source_path not in source_paths for support in self.gate_support):
+        referenced_fact_paths = {
+            fact.source_path for support in self.gate_support for fact in support.facts
+        }
+        if not referenced_fact_paths <= source_paths:
             raise Sprint3DecisionError(
-                "evidence gate support must reference a declared family source"
+                "semantic review facts must reference declared family sources"
             )
         if self.context == "unsupported" and self.evaluated:
             raise Sprint3DecisionError("unsupported families cannot be marked evaluated")
@@ -363,7 +519,7 @@ class FamilyEvidence:
                 raise Sprint3DecisionError(f"{field} must be a boolean")
             if bool(getattr(self, field)) != (field in support_gates):
                 raise Sprint3DecisionError(
-                    f"{field} must be true exactly when a support locator is declared"
+                    f"{field} must be true exactly when a positive semantic review is declared"
                 )
         if self.disposition == "advance" and self.missing_gates:
             raise Sprint3DecisionError(
@@ -837,12 +993,66 @@ def evaluate_sprint_3(
     )
 
 
+def _semantic_review_payload(
+    support: EvidenceGateSupport,
+    source_sha256_by_path: Mapping[str, str],
+) -> dict[str, Any]:
+    """Return one deterministic public semantic-review record."""
+
+    return {
+        "gate": support.gate,
+        "verdict": support.verdict,
+        "review_method": support.review_method,
+        "assertion": support.assertion,
+        "facts": [
+            {
+                "roles": list(fact.roles),
+                "source_path": fact.source_path,
+                "source_sha256": source_sha256_by_path[fact.source_path],
+                "locator_kind": fact.locator_kind,
+                "locator": fact.locator,
+                "observed": fact.observed,
+            }
+            for fact in support.facts
+        ],
+        "residual_limitations": list(support.residual_limitations),
+    }
+
+
+def semantic_review_receipt(
+    families: tuple[FamilyEvidence, ...],
+) -> dict[str, Any]:
+    """Return the aggregate, content-addressed review receipt for positive gates."""
+
+    return {
+        "schema_version": SPRINT_3_DECISION_SCHEMA_VERSION,
+        "review_method": "independent_manual_source_semantics",
+        "interpretation": (
+            "Each row is an independent semantic judgment over pinned source facts. "
+            "The assertion and observed summaries are review prose; source hashes and "
+            "locators remain the evidence boundary."
+        ),
+        "rows": [
+            {
+                "family": family.family,
+                **_semantic_review_payload(
+                    support,
+                    {source.path: source.sha256 for source in family.sources},
+                ),
+            }
+            for family in families
+            for support in family.gate_support
+        ],
+    }
+
+
 def family_evidence_frame(families: tuple[FamilyEvidence, ...]) -> pd.DataFrame:
     """Return a deterministic machine-readable family decision table."""
 
     rows: list[dict[str, Any]] = []
     for family in families:
         support_by_gate = {support.gate: support for support in family.gate_support}
+        source_sha256_by_path = {source.path: source.sha256 for source in family.sources}
         rows.append(
             {
                 "family": family.family,
@@ -859,12 +1069,10 @@ def family_evidence_frame(families: tuple[FamilyEvidence, ...]) -> pd.DataFrame:
                 "source_sha256": ";".join(source.sha256 for source in family.sources),
                 "gate_support": json.dumps(
                     {
-                        gate: {
-                            "source_path": support_by_gate[gate].source_path,
-                            "locator_kind": support_by_gate[gate].locator_kind,
-                            "locator": support_by_gate[gate].locator,
-                            "claim": support_by_gate[gate].claim,
-                        }
+                        gate: _semantic_review_payload(
+                            support_by_gate[gate],
+                            source_sha256_by_path,
+                        )
                         for gate in EVIDENCE_GATES
                         if gate in support_by_gate
                     },
@@ -883,6 +1091,7 @@ def gate_matrix_frame(families: tuple[FamilyEvidence, ...]) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for family in families:
         support_by_gate = {support.gate: support for support in family.gate_support}
+        source_sha256_by_path = {source.path: source.sha256 for source in family.sources}
         for gate in EVIDENCE_GATES:
             support = support_by_gate.get(gate)
             rows.append(
@@ -891,9 +1100,31 @@ def gate_matrix_frame(families: tuple[FamilyEvidence, ...]) -> pd.DataFrame:
                     "context": family.context,
                     "gate": gate,
                     "reported": support is not None,
-                    "source_path": None if support is None else support.source_path,
-                    "locator_kind": None if support is None else support.locator_kind,
-                    "locator": None if support is None else support.locator,
+                    "semantic_reviewed": support is not None,
+                    "fact_count": 0 if support is None else len(support.facts),
+                    "source_paths": (
+                        ""
+                        if support is None
+                        else ";".join(dict.fromkeys(fact.source_path for fact in support.facts))
+                    ),
+                    "locators": (
+                        ""
+                        if support is None
+                        else json.dumps(
+                            [
+                                {
+                                    "kind": fact.locator_kind,
+                                    "locator": fact.locator,
+                                    "roles": list(fact.roles),
+                                    "source_path": fact.source_path,
+                                    "source_sha256": source_sha256_by_path[fact.source_path],
+                                }
+                                for fact in support.facts
+                            ],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                    ),
                 }
             )
     return pd.DataFrame(rows)
@@ -1018,6 +1249,10 @@ def publish_sprint_3_decision(
         gate_frame.to_csv(staging / "gate_matrix.csv", index=False)
         plot_gate_matrix(families, staging / "plots/evidence_coverage.png")
         _write_json(
+            staging / "semantic_review.json",
+            semantic_review_receipt(families),
+        )
+        _write_json(
             staging / "summary.json",
             {
                 "schema_version": SPRINT_3_DECISION_SCHEMA_VERSION,
@@ -1069,9 +1304,9 @@ def publish_sprint_3_decision(
             "evidence category. It is not a performance score, and families from "
             "different data contexts are not ranked against one another.\n\n"
             "![Sprint 3 evidence coverage](plots/evidence_coverage.png)\n\n"
-            "See `family_evidence.csv`, `gate_matrix.csv`, and `summary.json` for "
-            "source hashes, explicit missing gates, dispositions, and residual "
-            "readiness limitations.\n",
+            "See `family_evidence.csv`, `gate_matrix.csv`, `semantic_review.json`, "
+            "and `summary.json` for source hashes, reviewed fact bindings, explicit "
+            "missing gates, dispositions, and residual readiness limitations.\n",
             encoding="utf-8",
         )
         artifacts = {
