@@ -7,6 +7,7 @@ from alphaforge.models.base import (
     ModelMetadata,
     NotFittedError,
     ProbabilityNotSupportedError,
+    TrainingDiagnostics,
 )
 from alphaforge.models.registry import MODEL_REGISTRY, available_models, create_model
 
@@ -19,6 +20,7 @@ __all__ = [
     "FeatureSchemaError",
     "InvalidLabelError",
     "ProbabilityNotSupportedError",
+    "TrainingDiagnostics",
     "CONTRACT_VERSION",
     "available_models",
     "create_model",

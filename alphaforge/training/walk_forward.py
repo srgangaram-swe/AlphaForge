@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from typing import Any
 
 import pandas as pd
 
@@ -224,8 +225,20 @@ def run_walk_forward(
             block["window_id"] = window.window_id
             pred_frames.append(block)
 
-            metrics = regression_metrics(y_test, pred)
+            metrics: dict[str, Any] = dict(regression_metrics(y_test, pred))
             metrics.update({"model": name, "window_id": window.window_id})
+            diagnostics = model.training_diagnostics()
+            if diagnostics is not None:
+                metrics.update(
+                    {
+                        "training_backend": diagnostics.backend,
+                        "training_status": diagnostics.status,
+                        "training_iterations": diagnostics.iterations,
+                        "training_iteration_limit": diagnostics.iteration_limit,
+                        "training_seed": diagnostics.seed,
+                        "training_warning_count": len(diagnostics.warnings),
+                    }
+                )
             metric_rows.append(metrics)
 
             importance = model.feature_importance()

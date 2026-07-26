@@ -24,12 +24,18 @@ from alphaforge.models.baselines import (
 )
 from alphaforge.models.ensemble import EnsembleModel
 from alphaforge.models.sklearn_models import (
+    make_catboost,
     make_elastic_net,
+    make_extra_trees,
     make_gradient_boosting,
+    make_huber,
     make_lasso,
+    make_lightgbm,
     make_linear,
     make_random_forest,
     make_ridge,
+    make_small_mlp,
+    make_xgboost,
 )
 
 
@@ -67,8 +73,14 @@ MODEL_REGISTRY: dict[str, Callable[..., AlphaModel]] = {
     "ridge": make_ridge,
     "lasso": make_lasso,
     "elastic_net": make_elastic_net,
+    "huber": make_huber,
     "random_forest": make_random_forest,
+    "extra_trees": make_extra_trees,
     "gradient_boosting": make_gradient_boosting,
+    "lightgbm": make_lightgbm,
+    "xgboost": make_xgboost,
+    "catboost": make_catboost,
+    "small_mlp": make_small_mlp,
     "torch_mlp": _make_torch("mlp"),
     "torch_gru": _make_torch("gru"),
     "torch_tcn": _make_torch("tcn"),
@@ -115,7 +127,15 @@ def seed_model_specs(model_specs: list[dict[str, Any]], root_seed: int) -> list[
         params = spec.setdefault("params", {})
         if not isinstance(params, dict):
             raise TypeError(f"model {name!r} params must be a mapping")
-        if name in {"random_forest", "gradient_boosting"}:
+        if name in {
+            "random_forest",
+            "extra_trees",
+            "gradient_boosting",
+            "lightgbm",
+            "xgboost",
+            "catboost",
+            "small_mlp",
+        }:
             params.setdefault("random_state", root_seed)
         elif name in {"torch_mlp", "torch_gru", "torch_tcn", "temporal_alpha"}:
             params.setdefault("seed", root_seed)

@@ -1,4 +1,4 @@
-"""Unified, typed model contract for every alpha model (SF-S2-MR4).
+"""Unified, typed model contract for every alpha model (SF-S2-MR4/MR5).
 
 Every model — sklearn wrapper, torch sequence model, ensemble, or naive
 baseline — subclasses :class:`AlphaModel` and therefore shares one contract:
@@ -9,6 +9,7 @@ baseline — subclasses :class:`AlphaModel` and therefore shares one contract:
   enforced uniformly;
 * **feature-schema checks** — the training feature schema is recorded at fit and
   a model's required features are checked at predict;
+* immutable, typed training termination diagnostics when a backend exposes them;
 * **versioned metadata** via :meth:`AlphaModel.metadata`; and
 * **deterministic serialization** via :meth:`AlphaModel.save` / :meth:`load`
   (a stable, sorted-key JSON container for models with JSON-safe state — every
@@ -33,13 +34,13 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 
 #: Semantic version of the model contract; bumped when the interface changes.
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.1.0"
 
 _JSON_FORMAT = "alphaforge-model/json"
 _JSON_FORMAT_VERSION = 1
@@ -64,6 +65,35 @@ class InvalidLabelError(ModelError):
 
 class ProbabilityNotSupportedError(ModelError):
     """Raised when ``predict_proba`` is called on a non-probabilistic model."""
+
+
+@dataclass(frozen=True)
+class TrainingDiagnostics:
+    """Immutable termination evidence for one fitted model.
+
+    ``status`` distinguishes numerical convergence from algorithms that simply
+    complete a declared finite budget. Tree ensembles, for example, do not have
+    a convergence tolerance and therefore report ``completed`` rather than
+    manufacturing a convergence claim.
+    """
+
+    backend: str
+    status: Literal["converged", "completed", "max_iterations", "warning"]
+    iterations: int | None
+    iteration_limit: int | None
+    seed: int | None
+    warnings: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a deterministic JSON-compatible record."""
+        return {
+            "backend": self.backend,
+            "status": self.status,
+            "iterations": self.iterations,
+            "iteration_limit": self.iteration_limit,
+            "seed": self.seed,
+            "warnings": list(self.warnings),
+        }
 
 
 @dataclass(frozen=True)
@@ -230,6 +260,11 @@ class AlphaModel(ABC):
 
     def feature_importance(self) -> pd.Series | None:
         """Optional per-feature importance (higher = more important)."""
+        self._ensure_fitted()
+        return None
+
+    def training_diagnostics(self) -> TrainingDiagnostics | None:
+        """Return fitted termination evidence when the backend exposes it."""
         self._ensure_fitted()
         return None
 

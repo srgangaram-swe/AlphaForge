@@ -31,6 +31,9 @@ Important limitations:
   tax obligations, or operational capital controls.
 - Model results can overfit even with walk-forward validation, purging, and
   deflated statistics.
+- Deterministic fitting, convergence evidence, and agreement with numerical
+  references establish implementation behavior only. They do not establish a
+  tradable signal, cross-platform bitwise identity, or persistence of an edge.
 - Label diagnostics quantify overlap, autocorrelation, class balance, temporal
   drift, and parameter sensitivity but do not prove that a target is
   predictable. Daily-close triple barriers cannot establish intraday hit

@@ -18,7 +18,7 @@ COPY scripts ./scripts
 COPY apps ./apps
 COPY configs ./configs
 
-RUN pip install --no-cache-dir "uv==0.9.7" \
+RUN pip install --no-cache-dir "uv==0.11.28" \
     && uv sync --locked --extra dev \
     && uv run python scripts/build_native.py
 

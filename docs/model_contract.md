@@ -15,6 +15,7 @@ that bound what "adding value" means.
 | `predict_proba(X) -> np.ndarray` | no | up-probability (classification); regressors raise `ProbabilityNotSupportedError` |
 | `predict_uncertainty(X) -> np.ndarray \| None` | no | per-row predictive std (default `None`) |
 | `feature_importance() -> pd.Series \| None` | no | per-feature importance (default `None`) |
+| `training_diagnostics() -> TrainingDiagnostics \| None` | no | immutable backend, termination, budget, seed, and warning evidence |
 | `metadata() -> ModelMetadata` | provided | versioned model + fitted-state description |
 | `save(path)` / `load(path)` | provided | deterministic serialization (see below) |
 | `get_params() -> dict` | no | JSON-safe constructor params used to rebuild the model |
@@ -54,9 +55,15 @@ issue's non-goal made concrete: no behaviour hidden behind untyped dictionaries.
 
 `metadata()` returns an immutable, versioned `ModelMetadata`
 (`name`, `task`, `contract_version`, `fitted`, `n_features`, `feature_names`,
-`params`). `contract_version` (currently `1.0.0`) is bumped when the interface
+`params`). `contract_version` (currently `1.1.0`) is bumped when the interface
 changes. `metadata().to_dict()` is JSON-friendly and deterministic under
 `sort_keys`.
+
+Governed estimators return an immutable `TrainingDiagnostics` after fit. The
+record distinguishes numerical convergence, completion of a finite
+non-iterative budget, exhausted iterations, and warning-bearing completion.
+Callers therefore do not need to infer convergence from backend-private state.
+Walk-forward training copies the record's scalar fields into model metrics.
 
 ## Serialization
 
@@ -74,6 +81,11 @@ changes. `metadata().to_dict()` is JSON-friendly and deterministic under
 `AlphaModel.load(path)` bounds artifact size, schema-validates JSON containers,
 and raises `ModelError` for malformed, incompatible, unfitted, or unknown
 artifacts. Saving is atomic and refuses unfitted models.
+
+Contract `1.1.0` is intentionally incompatible with `1.0.0` JSON artifacts
+because termination evidence was added to the public interface. Regenerate
+baseline artifacts from their recorded configuration and immutable input
+rather than rewriting an old artifact's version field.
 
 ## Naive baselines
 
@@ -137,3 +149,6 @@ JSON container is byte-stable). Reproduce with
 * **Sprint 1 dependency.** The contract is built on the current `dev`; it consumes
   the Sprint 1 feature, label, configuration, and validation contracts once those
   are merged and verified.
+
+The governed sklearn and optional boosting implementations are documented in
+[Governed benchmark models](governed_benchmark_models.md).
