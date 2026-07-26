@@ -109,7 +109,20 @@ def test_verification_reads_pinned_commit_not_dirty_worktree(tmp_path: Path) -> 
             lambda document: document.update(
                 {"origin_url": "https://github.com/example/other.git"}
             ),
+            "same GitHub repository",
+        ),
+        (
+            lambda document: document.update(
+                {
+                    "repository": "example/other",
+                    "origin_url": "https://github.com/example/other.git",
+                }
+            ),
             "origin mismatch",
+        ),
+        (
+            lambda document: document.update({"repository": "example/other"}),
+            "same GitHub repository",
         ),
         (
             lambda document: document["sources"][0].update({"path": "../escape"}),
@@ -148,6 +161,16 @@ def test_loader_rejects_unknown_fields_duplicates_and_symlinks(tmp_path: Path) -
     link.symlink_to(receipt)
     with pytest.raises(CrossRepositoryProvenanceError, match="symlink"):
         load_cross_repository_receipt(link)
+
+
+def test_receipt_size_is_bounded_before_verification(tmp_path: Path) -> None:
+    oversized = tmp_path / "oversized.json"
+    oversized.write_bytes(b"x" * (1024 * 1024 + 1))
+
+    with pytest.raises(CrossRepositoryProvenanceError, match="receipt bytes"):
+        load_cross_repository_receipt(oversized)
+    with pytest.raises(CrossRepositoryProvenanceError, match="receipt bytes"):
+        verify_cross_repository_receipt(oversized, checkout=tmp_path)
 
 
 def test_verifier_rejects_symlinked_checkout(tmp_path: Path) -> None:

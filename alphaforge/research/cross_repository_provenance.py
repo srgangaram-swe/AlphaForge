@@ -99,6 +99,45 @@ def _safe_repository_path(value: Any) -> str:
     return path_text
 
 
+def _safe_repository_id(value: Any) -> str:
+    repository = _safe_text(value, field="repository", maximum=256)
+    parts = repository.split("/")
+    if (
+        len(parts) != 2
+        or any(part in {"", ".", ".."} for part in parts)
+        or any(
+            not all(character.isalnum() or character in "._-" for character in part)
+            for part in parts
+        )
+    ):
+        raise CrossRepositoryProvenanceError(
+            "repository must be a safe GitHub owner/repository identifier"
+        )
+    return repository
+
+
+def _bounded_receipt_sha256(path: str | Path) -> str:
+    source = Path(path)
+    if source.is_symlink() or not source.is_file():
+        raise CrossRepositoryProvenanceError("receipt must be a regular non-symlink file")
+    digest = hashlib.sha256()
+    total = 0
+    try:
+        with source.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(64 * 1024), b""):
+                total += len(chunk)
+                if total > MAX_RECEIPT_BYTES:
+                    raise CrossRepositoryProvenanceError(
+                        f"receipt bytes must be in [1, {MAX_RECEIPT_BYTES}]"
+                    )
+                digest.update(chunk)
+    except OSError as exc:
+        raise CrossRepositoryProvenanceError("unable to read receipt") from exc
+    if total == 0:
+        raise CrossRepositoryProvenanceError(f"receipt bytes must be in [1, {MAX_RECEIPT_BYTES}]")
+    return digest.hexdigest()
+
+
 @dataclass(frozen=True)
 class ExternalSource:
     """One exact Git blob supporting a bounded cross-repository claim."""
@@ -137,7 +176,7 @@ class CrossRepositoryReceipt:
     sources: tuple[ExternalSource, ...]
 
     def __post_init__(self) -> None:
-        _safe_text(self.repository, field="repository", maximum=256)
+        repository = _safe_repository_id(self.repository)
         origin = _safe_text(self.origin_url, field="origin_url", maximum=512)
         if (
             not origin.startswith("https://github.com/")
@@ -146,6 +185,10 @@ class CrossRepositoryReceipt:
         ):
             raise CrossRepositoryProvenanceError(
                 "origin_url must be a credential-free HTTPS GitHub repository URL"
+            )
+        if origin != f"https://github.com/{repository}.git":
+            raise CrossRepositoryProvenanceError(
+                "repository and origin_url must identify the same GitHub repository"
             )
         _lower_hex(self.commit, length=40, field="commit")
         timestamp = _safe_text(
@@ -289,10 +332,7 @@ def verify_cross_repository_receipt(
     if checkout_path.is_symlink() or not checkout_path.is_dir():
         raise CrossRepositoryProvenanceError("checkout must be a real non-symlink directory")
     receipt_file = Path(receipt_path)
-    try:
-        initial_receipt_sha256 = hashlib.sha256(receipt_file.read_bytes()).hexdigest()
-    except OSError as exc:
-        raise CrossRepositoryProvenanceError("unable to read receipt") from exc
+    initial_receipt_sha256 = _bounded_receipt_sha256(receipt_file)
     receipt = load_cross_repository_receipt(receipt_path)
     inside = _run_git(
         checkout_path,
@@ -367,10 +407,7 @@ def verify_cross_repository_receipt(
                 f"{source.sha256}, observed {observed_sha256}"
             )
         total_bytes += len(content)
-    try:
-        final_receipt_sha256 = hashlib.sha256(receipt_file.read_bytes()).hexdigest()
-    except OSError as exc:
-        raise CrossRepositoryProvenanceError("unable to re-read receipt") from exc
+    final_receipt_sha256 = _bounded_receipt_sha256(receipt_file)
     if final_receipt_sha256 != initial_receipt_sha256:
         raise CrossRepositoryProvenanceError("receipt changed during verification")
     return CrossRepositoryVerification(
