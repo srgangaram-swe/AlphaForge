@@ -1,4 +1,4 @@
-# ADR 0005: Put fail-closed eligibility before portfolio and order boundaries
+# ADR 0007: Put fail-closed eligibility before portfolio and order boundaries
 
 - Status: Accepted
 - Date: 2026-07-26

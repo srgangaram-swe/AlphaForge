@@ -155,5 +155,5 @@ result may hide economically important missed opportunities. Thresholds must
 be frozen on development evidence and may not be chosen on a protected final
 holdout.
 
-See [ADR 0005](adr/0005-fail-closed-decision-eligibility.md) and the
+See [ADR 0007](adr/0007-fail-closed-decision-eligibility.md) and the
 [SF-S3-MR10 evidence report](sprint_3_abstention_policy_report.md).
