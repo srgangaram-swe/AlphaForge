@@ -14,8 +14,12 @@
   silently changes another registry name's estimator semantics. See
   [Governed benchmark models](governed_benchmark_models.md) for mathematics,
   dependency boundaries, termination evidence, and trading limitations.
-- Optional PyTorch MLP, GRU, and temporal CNN with causal per-symbol sequence
-  construction and time-ordered early-stopping splits.
+- Optional PyTorch MLP, GRU, and temporal CNN preserve the original temporal
+  research interfaces. The separate
+  [controlled deep-sequence family](deep_sequence_benchmarks.md) compares a
+  causal CNN, TCN, masked LSTM, masked GRU, and causal Transformer under one
+  bounded training, validation, resource, persistence, and costed-OOS policy
+  (ADR 0003).
 - **TemporalAlphaNet** (`alphaforge/models/temporal.py`, ADR 0002): the
   flagship neural model — dilated causal TCN encoder with attention pooling,
   optional multi-task horizon heads, and a composite Huber + cross-sectional

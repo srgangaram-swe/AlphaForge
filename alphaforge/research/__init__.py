@@ -13,6 +13,13 @@ from alphaforge.research.baseline_study import (
     BaselineStudyResult,
     run_governed_baseline_study,
 )
+from alphaforge.research.deep_sequence_study import (
+    DEEP_SEQUENCE_CANDIDATES,
+    DeepSequenceStudyConfig,
+    DeepSequenceStudyResult,
+    load_deep_sequence_study_config,
+    run_deep_sequence_study,
+)
 from alphaforge.research.governance import (
     GOVERNANCE_SCHEMA_VERSION,
     HEAD_FILE_NAME,
@@ -52,6 +59,9 @@ __all__ = [
     "TABLE_ARTIFACT_VERSION",
     "ArtifactValidationError",
     "BaselineStudyResult",
+    "DEEP_SEQUENCE_CANDIDATES",
+    "DeepSequenceStudyConfig",
+    "DeepSequenceStudyResult",
     "DuplicateTrialError",
     "ExperimentManifest",
     "FamilyEvaluation",
@@ -77,11 +87,13 @@ __all__ = [
     "capture_git_context",
     "derive_seed_map",
     "inventory_artifacts",
+    "load_deep_sequence_study_config",
     "read_frame_artifact",
     "refresh_experiment_manifest",
     "redact_cli_arguments",
     "run_governed_baseline_study",
     "run_governed_signal_foundry_research",
+    "run_deep_sequence_study",
     "write_experiment_manifest",
     "write_frame_artifact",
 ]

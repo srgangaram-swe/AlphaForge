@@ -436,8 +436,44 @@ MODEL_PARAMETER_FIELDS: dict[str, frozenset[str]] = {
             "seed",
         }
     ),
+    "sequence_cnn": frozenset(
+        {
+            "seq_len",
+            "min_history",
+            "hidden_size",
+            "n_layers",
+            "kernel_size",
+            "n_heads",
+            "dropout",
+            "learning_rate",
+            "weight_decay",
+            "max_epochs",
+            "patience",
+            "batch_size",
+            "validation_fraction",
+            "gradient_clip",
+            "clip_z",
+            "max_parameters",
+            "max_windows",
+            "max_tensor_bytes",
+            "seed",
+            "device",
+        }
+    ),
+    "sequence_tcn": frozenset(),
+    "sequence_lstm": frozenset(),
+    "sequence_gru": frozenset(),
+    "sequence_transformer": frozenset(),
     "ensemble": frozenset({"weighting", "members"}),
 }
+
+for _sequence_name in (
+    "sequence_tcn",
+    "sequence_lstm",
+    "sequence_gru",
+    "sequence_transformer",
+):
+    MODEL_PARAMETER_FIELDS[_sequence_name] = MODEL_PARAMETER_FIELDS["sequence_cnn"]
 
 
 class ModelSpec(StrictConfig):
