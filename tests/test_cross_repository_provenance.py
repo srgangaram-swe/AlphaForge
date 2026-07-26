@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from alphaforge.research import cross_repository_provenance as provenance_module
 from alphaforge.research.cross_repository_provenance import (
     CrossRepositoryProvenanceError,
     load_cross_repository_receipt,
@@ -92,6 +93,42 @@ def test_verification_reads_pinned_commit_not_dirty_worktree(tmp_path: Path) -> 
     assert first == second
     assert first.source_count == 1
     assert first.total_bytes == len(b'{"scope":"aggregate-only"}\n')
+
+
+def test_committed_receipt_is_network_free_and_semantically_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject_subprocess(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("committed receipt loading must not invoke Git or a network path")
+
+    monkeypatch.setattr(provenance_module.subprocess, "run", reject_subprocess)
+    receipt_path = (
+        Path(__file__).resolve().parents[1]
+        / "docs/evidence/signal_foundry_sprint_3/cross_repository_provenance.json"
+    )
+    receipt = load_cross_repository_receipt(receipt_path)
+
+    assert receipt.repository == "srgangaram-swe/Signalattice"
+    assert receipt.origin_url == "https://github.com/srgangaram-swe/Signalattice.git"
+    assert receipt.commit == "000ae12de3b409e5f409b53fb191aa003b105318"
+    assert len(receipt.sources) == 9
+    assert sum(source.bytes for source in receipt.sources) == 142_578
+    assert {source.family for source in receipt.sources} == {
+        "adaptive_decomposition",
+        "spectral_descriptors",
+        "state_space",
+        "time_frequency_vision",
+    }
+    assert all(
+        0 < source.bytes <= provenance_module.MAX_EXTERNAL_SOURCE_BYTES
+        for source in receipt.sources
+    )
+    assert all(len(source.git_blob_sha1) == 40 for source in receipt.sources)
+    assert all(len(source.sha256) == 64 for source in receipt.sources)
+    assert (
+        hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+        == "982ea9c4f2204148cd532824a807dcee4e9c769948c4ae29193d267c5b5d6391"
+    )
 
 
 @pytest.mark.parametrize(

@@ -168,6 +168,35 @@ def test_source_artifact_detects_mutation_and_path_escape(tmp_path: Path) -> Non
         linked.verify(tmp_path)
 
 
+def test_sha256_file_bounds_growth_after_initial_stat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "growing.json"
+    source.write_bytes(b"12345678")
+    original_open = Path.open
+    grew_after_stat = False
+
+    def open_after_growth(
+        path: Path,
+        mode: str = "r",
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        nonlocal grew_after_stat
+        if path == source and mode == "rb" and not grew_after_stat:
+            grew_after_stat = True
+            with original_open(path, "ab") as writer:
+                writer.write(b"x" * 4096)
+        return original_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_after_growth)
+
+    with pytest.raises(Sprint3DecisionError, match="exceeds maximum byte length"):
+        sha256_file(source, max_bytes=8)
+    assert grew_after_stat
+
+
 def test_gate_support_resolves_json_csv_and_markdown_locators(tmp_path: Path) -> None:
     json_source = _source(tmp_path)
     json_support = EvidenceGateSupport(
@@ -269,7 +298,7 @@ def test_synthesis_never_grants_paper_or_order_authority(
     family = _family(
         _source(tmp_path),
         disposition="advance",
-        reason="all pre-registered research evidence gates passed",
+        reason="all governed synthesis evidence gates passed",
         uncertainty=True,
         selection_correction=True,
         feature_ablation=True,
@@ -392,6 +421,41 @@ def test_plan_loader_rejects_unknown_fields_and_unsupported_freeze_claims(
             tmp_path / "sprint_3_decision.yaml",
             repository_root=tmp_path,
         )
+
+
+@pytest.mark.parametrize(
+    "dimension",
+    (
+        "configurations",
+        "trial_family",
+        "ablations",
+        "randomized_controls",
+        "compute_budgets",
+        "folds",
+        "costs",
+        "decision_thresholds",
+    ),
+)
+def test_every_frozen_protocol_dimension_requires_verified_non_plan_evidence(
+    tmp_path: Path,
+    dimension: str,
+) -> None:
+    source = _source(tmp_path)
+    _write_plan(tmp_path, _complete_families(source))
+    path = tmp_path / "sprint_3_decision.yaml"
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    payload["protocol_dimensions"][dimension] = {
+        "status": "frozen",
+        "reason": "a plan cannot substantiate its own frozen protocol claim",
+        "source_paths": ["sprint_3_decision.yaml"],
+    }
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(
+        Sprint3DecisionError,
+        match=rf"frozen protocol dimension '{dimension}'.*verified non-plan source",
+    ):
+        load_sprint_3_evaluation_plan(path, repository_root=tmp_path)
 
 
 def test_plan_loader_rejects_symlinked_plan(tmp_path: Path) -> None:

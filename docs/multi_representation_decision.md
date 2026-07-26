@@ -37,7 +37,14 @@ mechanical gate, but it cannot become historical market evidence. The synthesis
 copies no “best” rank IC, return, or Sharpe value because those quantities are
 not commensurate across the studies.
 
-## Frozen family decision
+This matrix is a retrospective synthesis of already completed constituent
+experiments. The final inventory, source hashes, gate classifications,
+dispositions, and readiness policy are frozen before synthesis publication.
+That freeze is not retroactive preregistration of any constituent experiment;
+only the original constituent configuration, ledger, or source artifact can
+establish what was fixed before that experiment ran.
+
+## Frozen synthesis decision
 
 Gate columns are abbreviated in the order OOS, uncertainty, net economics,
 selection correction, feature ablation, randomized control, regime stability,
@@ -46,13 +53,13 @@ year stability, and compute accounting.
 | Family | Context | Current-evidence disposition | OOS | U | Net | Sel | Abl | Rand | Reg | Year | Compute |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Conventional baselines | Historical WIKI engineering | Reject paper advancement | 1 | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 1 |
-| Spectral descriptors | Synthetic representation comparison | Defer matched incremental-value claim | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
+| Spectral descriptors | Synthetic representation comparison | Defer matched incremental-value claim | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | Adaptive decomposition | Synthetic mechanism and compute only | Defer; economic experiment not run | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| Regime/change points | Planted synthetic regimes | Defer matched economic and stability study | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 1 |
+| Regime/change points | Planted synthetic regimes | Defer matched economic and stability study | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | State space | Synthetic recovery and interval study | Defer market evaluation | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| Deep sequence | Historical WIKI development fold | Reject current advancement evidence | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
-| Time-frequency vision | Synthetic chronological holdout | Reject progression; small-CNN gate failed | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
-| Latent representations | Synthetic chronological holdout | Reject learned-representation promotion | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| Deep sequence | Historical WIKI development fold | Reject current advancement evidence | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Time-frequency vision | Synthetic chronological holdout | Reject progression; small-CNN gate failed | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
+| Latent representations | Synthetic chronological holdout | Reject learned-representation promotion | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
 | Governed ensembles | Synthetic chronological holdout | Defer market evaluation | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 0 |
 | Abstention policy | Synthetic policy mechanics | Reject current thresholds as an improvement | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 
@@ -68,8 +75,9 @@ The detailed interpretation is deliberately conservative:
   does not provide the predeclared out-of-sample incremental-value experiment.
 - State-space evidence demonstrates synthetic recovery and interval behavior,
   not alpha or market robustness.
-- Deep-sequence diagnostics use one development fold and lack a complete
-  dependence-aware, multiplicity-corrected study.
+- Deep-sequence diagnostics use one development fold, lack a complete
+  dependence-aware, multiplicity-corrected study, and omit required LightGBM
+  resource fields; their compute-accounting gate therefore remains false.
 - The small CNN failed its validation progression gate, so ResNet and ViT were
   correctly blocked.
 - PCA was selected on validation, tied the raw control on synthetic-test rank
@@ -85,10 +93,13 @@ The detailed interpretation is deliberately conservative:
 
 ## Protocol re-scope
 
-Constituent configurations, the exact ten-family inventory, compute budgets,
-folds, declared costs, and final decision thresholds are frozen and
-content-addressed. Two planned dimensions were not completed and are therefore
-explicitly re-scoped rather than claimed:
+The final synthesis plan content-addresses the exact ten-family inventory,
+source evidence, gate decisions, dispositions, protocol status, and readiness
+thresholds before aggregate publication. It preserves constituent
+configurations, folds, costs, and compute evidence where the original sources
+actually recorded them; it does not claim that the final plan preregistered
+experiments that had already completed. Two planned dimensions were not
+completed and are therefore explicitly re-scoped rather than claimed:
 
 - matched feature and parameter ablations continue under Sprint 4 issue #41;
 - randomized perturbation/placebo controls continue under Sprint 4 issue #43.
@@ -117,13 +128,17 @@ cannot emit an order.
 
 ## Reproducibility and provenance
 
-The final plan is `configs/sprint_3_decision.yaml`. Its SHA-256 is the study
+The final plan is `configs/sprint_3_decision.yaml`. Its SHA-256 is the plan
 identity. Loading the plan verifies every AlphaForge source hash and every
 positive gate locator. The Signalattice receipt at
 `docs/evidence/signal_foundry_sprint_3/cross_repository_provenance.json` pins
 repository `srgangaram-swe/Signalattice`, commit
 `000ae12de3b409e5f409b53fb191aa003b105318`, Git blob identities, byte lengths,
-and SHA-256 digests. Verify it without a network request:
+and SHA-256 digests. AlphaForge CI loads that committed receipt without a
+sibling checkout and validates its schema, expected repository/origin, hash
+formats, and declared size bounds. CI does not claim to have read the external
+Signalattice blobs. Verify those exact blobs explicitly against an existing
+local Signalattice object database, without a network request:
 
 ```bash
 python scripts/verify_sprint_3_cross_repository_sources.py \
@@ -135,7 +150,7 @@ Publish the aggregate decision into a new directory:
 ```bash
 python scripts/publish_sprint_3_decision.py \
   --config configs/sprint_3_decision.yaml \
-  --output /absolute/path/to/new/sprint-3-decision
+  --output runs/sprint-3-decision-replay
 ```
 
 Publication is atomic and refuses overwrite. The committed reference contains

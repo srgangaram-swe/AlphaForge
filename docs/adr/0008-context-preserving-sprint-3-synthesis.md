@@ -63,8 +63,12 @@ JSON pointer, CSV column, or exact Markdown heading. Missing evidence remains a
 zero in the matrix. An “advance” disposition is structurally invalid unless all
 nine gates have support. The reference decision advances no family.
 
-The final YAML fixes the complete family, source hashes, dispositions, protocol
-status, readiness facts, and evidence policy before aggregate publication.
+The final YAML is frozen after the constituent experiments and before aggregate
+synthesis publication. It fixes the complete family, source hashes, gate
+classifications, dispositions, protocol status, readiness facts, and evidence
+policy for this final synthesis. It does not retroactively preregister or freeze
+an already-completed constituent experiment; only that experiment's original
+configuration, ledger, or source artifact can establish pre-execution intent.
 Protocol dimensions that were not completed are recorded as `deferred` with an
 explicit reason and follow-up scope; they are not self-attested as frozen.
 Feature and parameter ablations continue under Sprint 4 issue #41, temporal and
@@ -74,8 +78,12 @@ year/regime robustness under #42, and randomized perturbation controls under
 Cross-repository Signalattice claims use a strict receipt pinned to repository,
 origin, commit, Git blob, byte length, and SHA-256. A local verifier reads the
 pinned Git object database without fetching, checking out, or trusting current
-worktree contents. AlphaForge CI validates the receipt schema and its own
-content hash without requiring network access or a sibling checkout.
+worktree contents. Without a sibling checkout, AlphaForge CI loads the committed
+receipt network-free and validates its schema, expected repository/origin, hash
+formats, declared size bounds, and pinned receipt regression hash. CI does not
+claim that this validates the external blobs. Exact Signalattice commit/blob,
+byte-length, and SHA-256 verification remains an explicit local/manual step
+through `scripts/verify_sprint_3_cross_repository_sources.py`.
 
 The synthesis decision is unconditionally `NOT_READY`. Even a hypothetical
 configuration with every research and operational boolean true cannot grant

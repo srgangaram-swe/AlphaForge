@@ -37,6 +37,7 @@ MAX_FAMILIES = 64
 MAX_PLAN_BYTES = 1024 * 1024
 MAX_SOURCE_REFERENCES = 128
 MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024
+_HASH_CHUNK_BYTES = 1024 * 1024
 
 EvidenceContext = Literal[
     "historical_engineering",
@@ -100,6 +101,8 @@ def _safe_identifier(value: str, field: str) -> str:
 def sha256_file(path: str | Path, *, max_bytes: int = MAX_SOURCE_BYTES) -> str:
     """Hash one bounded regular file without following a symlink."""
 
+    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
+        raise Sprint3DecisionError("max_bytes must be a positive integer")
     source = Path(path)
     if source.is_symlink() or not source.is_file():
         raise Sprint3DecisionError(f"evidence source must be a regular file: {source}")
@@ -107,9 +110,17 @@ def sha256_file(path: str | Path, *, max_bytes: int = MAX_SOURCE_BYTES) -> str:
     if not 0 < size <= max_bytes:
         raise Sprint3DecisionError(f"evidence source has invalid byte length {size}: {source}")
     digest = hashlib.sha256()
+    total = 0
     with source.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+        while chunk := stream.read(min(_HASH_CHUNK_BYTES, max_bytes - total + 1)):
+            total += len(chunk)
+            if total > max_bytes:
+                raise Sprint3DecisionError(
+                    f"evidence source exceeds maximum byte length {max_bytes}: {source}"
+                )
             digest.update(chunk)
+    if total != size:
+        raise Sprint3DecisionError(f"evidence source byte length changed during hashing: {source}")
     return digest.hexdigest()
 
 
@@ -499,7 +510,7 @@ class _GlobalEvidenceSpec(_StrictPlanModel):
 
 @dataclass(frozen=True)
 class ProtocolDimension:
-    """Evidence-backed status of one required pre-evaluation dimension."""
+    """Evidence-backed status of one required synthesis-protocol dimension."""
 
     status: Literal["frozen", "deferred"]
     reason: str
@@ -678,7 +689,7 @@ def load_sprint_3_evaluation_plan(
 
     The plan is itself content addressed. Every constituent source hash is
     checked during load so configuration validation fails immediately after a
-    source report, aggregate table, or pre-registered protocol changes.
+    source report, aggregate table, or declared synthesis-protocol changes.
     """
 
     repository_input = Path(repository_root)
@@ -749,6 +760,7 @@ def load_sprint_3_evaluation_plan(
         total_source_bytes += verified.stat().st_size
         if total_source_bytes > MAX_TOTAL_SOURCE_BYTES:
             raise Sprint3DecisionError(f"source byte total exceeds {MAX_TOTAL_SOURCE_BYTES}")
+    verified_non_plan_sources = set(verified_sources) - {plan.config_source.path}
     allowed_protocol_sources = set(unique_sources) | {plan.config_source.path}
     for name in (
         "configurations",
@@ -766,6 +778,13 @@ def load_sprint_3_evaluation_plan(
             raise Sprint3DecisionError(
                 f"protocol dimension {name!r} references undeclared sources: "
                 f"{sorted(undeclared)}"
+            )
+        if dimension.status == "frozen" and not (
+            set(dimension.source_paths) & verified_non_plan_sources
+        ):
+            raise Sprint3DecisionError(
+                f"frozen protocol dimension {name!r} requires at least one "
+                "verified non-plan source"
             )
     for family in plan.families:
         for support in family.gate_support:
@@ -906,7 +925,7 @@ def plot_gate_matrix(families: tuple[FamilyEvidence, ...], output: str | Path) -
         "Signal Foundry Sprint 3 evidence coverage\n"
         "1 = reported evidence; 0 = missing gate (not a model-performance score)"
     )
-    axis.set_xlabel("Pre-registered evidence gate")
+    axis.set_xlabel("Governed synthesis evidence gate")
     axis.set_ylabel("Representation / decision family")
     axis.tick_params(axis="x", rotation=35)
     axis.tick_params(axis="y", rotation=0)
@@ -1046,7 +1065,7 @@ def publish_sprint_3_decision(
             f"Decision: **{decision.decision}**.\n\n"
             f"Frozen plan: `{plan.config_source.path}` "
             f"(`{plan.plan_id}`).\n\n"
-            "The heatmap reports whether each family produced the pre-registered "
+            "The heatmap reports whether each family produced the governed synthesis "
             "evidence category. It is not a performance score, and families from "
             "different data contexts are not ranked against one another.\n\n"
             "![Sprint 3 evidence coverage](plots/evidence_coverage.png)\n\n"
