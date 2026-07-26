@@ -49,6 +49,15 @@ Important limitations:
 - Deterministic fitting, convergence evidence, and agreement with numerical
   references establish implementation behavior only. They do not establish a
   tradable signal, cross-platform bitwise identity, or persistence of an edge.
+- The Sprint 2 seven-candidate study uses a small number of matched
+  walk-forward folds. Its one-sided Student-t tests are low-power and rely on
+  fold-level sampling assumptions; Holm correction controls the declared
+  family but cannot eliminate research-selection risk outside that family.
+- OOF regression calibration slope/intercept are descriptive diagnostics, not
+  probability calibration or evidence of stable forecast calibration.
+- The no-cost WIKI study ends in 2018 and lacks complete point-in-time universe,
+  revision, delisting, and corporate-action evidence. It must reject paper/live
+  advancement regardless of a favorable historical metric.
 - Label diagnostics quantify overlap, autocorrelation, class balance, temporal
   drift, and parameter sensitivity but do not prove that a target is
   predictable. Daily-close triple barriers cannot establish intraday hit
