@@ -67,6 +67,70 @@ class DecisionPolicyStudyConfig:
     protected_holdout_access: bool
     broker_access: bool
 
+    def __post_init__(self) -> None:
+        """Reject invalid direct construction before allocation or arithmetic."""
+        if not isinstance(self.thresholds, DecisionThresholds):
+            raise TypeError("thresholds must be DecisionThresholds")
+        if self.schema_version != STUDY_SCHEMA_VERSION:
+            raise ValueError(f"schema_version must be {STUDY_SCHEMA_VERSION!r}")
+        if self.scope != "synthetic_engineering_only":
+            raise ValueError("scope must be 'synthetic_engineering_only'")
+        if self.baselines != ("always_trade", "never_trade"):
+            raise ValueError("baselines must be frozen as always_trade, never_trade")
+        _bounded_integer("seed", self.seed, minimum=0, maximum=(1 << 64) - 1)
+        _bounded_integer("observation_count", self.observation_count, minimum=100, maximum=100_000)
+        _bounded_integer("period_count", self.period_count, minimum=2, maximum=10_000)
+        if self.period_count > self.observation_count:
+            raise ValueError("period_count cannot exceed observation_count")
+        if self.observation_count > self.thresholds.maximum_batch_size:
+            raise ValueError("observation_count cannot exceed thresholds.maximum_batch_size")
+        _aware_datetime("anchor_time", self.anchor_time)
+        _finite_in_range(
+            "expected_return_scale", self.expected_return_scale, 0.0, 0.10, lower_open=True
+        )
+        _finite_in_range("realized_noise_scale", self.realized_noise_scale, 0.0, 0.10)
+        for name in (
+            "minimum_expected_cost",
+            "maximum_expected_cost",
+            "cost_uncertainty_scale",
+            "prediction_uncertainty_scale",
+            "disagreement_scale",
+            "regime_uncertainty_scale",
+            "unsupported_regime_probability",
+            "stale_probability",
+            "future_probability",
+            "drift_probability",
+        ):
+            _finite_in_range(name, getattr(self, name), 0.0, 1.0)
+        if self.minimum_expected_cost >= self.maximum_expected_cost:
+            raise ValueError("minimum_expected_cost must be below maximum_expected_cost")
+        if self.stale_probability + self.future_probability > 1.0:
+            raise ValueError("stale_probability and future_probability cannot sum above one")
+        _finite_in_range("unit_turnover", self.unit_turnover, 0.0, 10.0, lower_open=True)
+        _positive_finite("unit_notional", self.unit_notional)
+        _positive_finite("period_capacity", self.period_capacity)
+        maximum_capacity_demand = self.observation_count * self.unit_notional / self.period_capacity
+        if not np.isfinite(maximum_capacity_demand):
+            raise ValueError("unit_notional / period_capacity can overflow aggregate evidence")
+        if (
+            not isinstance(self.interpretation, str)
+            or not self.interpretation
+            or self.interpretation != self.interpretation.strip()
+            or len(self.interpretation) > 512
+        ):
+            raise ValueError(
+                "interpretation must be non-empty, trimmed, and at most 512 characters"
+            )
+        if self.protected_holdout_access is not False:
+            raise ValueError("protected_holdout_access must remain false")
+        if self.broker_access is not False:
+            raise ValueError("broker_access must remain false")
+        try:
+            self.anchor_time + timedelta(days=self.period_count - 1)
+            self.anchor_time - timedelta(seconds=2 * self.thresholds.maximum_data_age_seconds)
+        except OverflowError as exc:
+            raise ValueError("anchor_time cannot support the configured study horizon") from exc
+
     @property
     def study_id(self) -> str:
         """Return a stable identity over policy, generator, and baselines."""
@@ -81,6 +145,13 @@ class DecisionStudyObservation:
     period: int
     realized_return: float
     realized_cost: float
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.signal, DecisionSignal):
+            raise TypeError("signal must be DecisionSignal")
+        _bounded_integer("period", self.period, minimum=0, maximum=99_999)
+        _finite_number("realized_return", self.realized_return)
+        _nonnegative_finite("realized_cost", self.realized_cost)
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,10 +307,16 @@ def evaluate_decision_policy_study(
     tuple[tuple[DecisionReason, int], ...],
 ]:
     """Evaluate policy and frozen baselines without exposing realized labels."""
+    if not isinstance(config, DecisionPolicyStudyConfig):
+        raise TypeError("config must be DecisionPolicyStudyConfig")
+    if not isinstance(observations, tuple):
+        raise TypeError("observations must be a tuple")
     if len(observations) != config.observation_count:
         raise ValueError("observation count does not match frozen study configuration")
     if any(not isinstance(item, DecisionStudyObservation) for item in observations):
         raise TypeError("observations must contain only DecisionStudyObservation")
+    if any(item.period >= config.period_count for item in observations):
+        raise ValueError("observation period exceeds the frozen period_count")
     policy = DecisionPolicy(config.thresholds)
     decisions = policy.evaluate_many(item.signal for item in observations)
     selected_ids = {
@@ -273,6 +350,8 @@ def run_decision_policy_study(
     output_dir: str | Path,
 ) -> DecisionPolicyStudyResult:
     """Generate and atomically publish aggregate-only synthetic evidence."""
+    if not isinstance(config, DecisionPolicyStudyConfig):
+        raise TypeError("config must be DecisionPolicyStudyConfig")
     destination = Path(output_dir)
     if destination.exists():
         raise FileExistsError(f"study destination already exists: {destination}")
@@ -501,3 +580,51 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _bounded_integer(name: str, value: int, *, minimum: int, maximum: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{name} must be an integer")
+    if not minimum <= value <= maximum:
+        raise ValueError(f"{name} must be in [{minimum}, {maximum}]")
+
+
+def _finite_in_range(
+    name: str,
+    value: float,
+    lower: float,
+    upper: float,
+    *,
+    lower_open: bool = False,
+) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError(f"{name} must be numeric")
+    number = float(value)
+    lower_ok = number > lower if lower_open else number >= lower
+    if not np.isfinite(number) or not lower_ok or number > upper:
+        opening = "(" if lower_open else "["
+        raise ValueError(f"{name} must be finite and in {opening}{lower}, {upper}]")
+
+
+def _positive_finite(name: str, value: float) -> None:
+    _finite_number(name, value)
+    if value <= 0:
+        raise ValueError(f"{name} must be finite and positive")
+
+
+def _nonnegative_finite(name: str, value: float) -> None:
+    _finite_number(name, value)
+    if value < 0:
+        raise ValueError(f"{name} must be finite and non-negative")
+
+
+def _finite_number(name: str, value: float) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError(f"{name} must be numeric")
+    if not np.isfinite(float(value)):
+        raise ValueError(f"{name} must be finite")
+
+
+def _aware_datetime(name: str, value: datetime) -> None:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{name} must be a timezone-aware datetime")

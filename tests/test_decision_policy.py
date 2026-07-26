@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import FrozenInstanceError
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 
 import pytest
 
@@ -20,6 +20,19 @@ from alphaforge.decision import (
 )
 
 NOW = datetime(2026, 7, 26, 12, 0, tzinfo=UTC)
+
+
+class _UndefinedOffset(tzinfo):
+    """Timezone object that is present structurally but defines no UTC offset."""
+
+    def utcoffset(self, dt: datetime | None) -> None:
+        return None
+
+    def dst(self, dt: datetime | None) -> None:
+        return None
+
+    def tzname(self, dt: datetime | None) -> str:
+        return "undefined"
 
 
 def _thresholds(**overrides: object) -> DecisionThresholds:
@@ -294,6 +307,8 @@ def test_batch_resource_and_uniqueness_bounds_fail_before_unbounded_work() -> No
 def test_structural_input_and_threshold_errors_are_rejected() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         _signal(decision_time=datetime(2026, 7, 26))
+    with pytest.raises(ValueError, match="timezone-aware"):
+        _signal(decision_time=datetime(2026, 7, 26, tzinfo=_UndefinedOffset()))
     with pytest.raises(ValueError, match="safe ASCII"):
         _signal(signal_id="../unsafe")
     with pytest.raises(TypeError, match="RegimeSupport"):

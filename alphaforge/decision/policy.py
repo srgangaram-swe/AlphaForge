@@ -459,7 +459,7 @@ def _identifier(name: str, value: str) -> None:
 
 
 def _aware_datetime(name: str, value: datetime) -> None:
-    if not isinstance(value, datetime) or value.tzinfo is None:
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{name} must be a timezone-aware datetime")
 
 

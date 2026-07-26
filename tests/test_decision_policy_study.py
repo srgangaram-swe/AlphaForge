@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
@@ -38,6 +39,24 @@ def test_committed_config_is_strict_bounded_and_immutable() -> None:
     assert config.study_id.startswith("decision-study-")
     with pytest.raises(FrozenInstanceError):
         config.seed = 1
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"observation_count": 100_001}, "observation_count"),
+        ({"period_count": 1}, "period_count"),
+        ({"unit_notional": math.inf}, "unit_notional"),
+        ({"interpretation": ""}, "interpretation"),
+        ({"protected_holdout_access": True}, "protected_holdout_access"),
+        ({"broker_access": True}, "broker_access"),
+    ],
+)
+def test_direct_study_config_construction_cannot_bypass_bounds(
+    changes: dict[str, object], message: str
+) -> None:
+    with pytest.raises((TypeError, ValueError), match=message):
+        replace(_config(), **changes)
 
 
 @pytest.mark.parametrize(
@@ -89,6 +108,20 @@ def test_synthetic_reference_is_deterministic_bounded_and_input_label_separated(
     signal_fields = set(first[0].signal.__dataclass_fields__)
     assert signal_fields.isdisjoint({"realized_return", "realized_cost", "target", "label"})
     assert all(item.realized_cost >= 0.0 for item in first)
+
+
+def test_observation_values_and_periods_fail_before_aggregation() -> None:
+    config = _config()
+    observations = build_synthetic_decision_reference(config)
+
+    with pytest.raises(ValueError, match="realized_return"):
+        replace(observations[0], realized_return=math.nan)
+    invalid_period = replace(observations[0], period=config.period_count)
+    with pytest.raises(ValueError, match="period"):
+        evaluate_decision_policy_study(
+            (invalid_period, *observations[1:]),
+            config,
+        )
 
 
 def test_realized_labels_cannot_change_policy_decisions_or_reason_counts() -> None:
