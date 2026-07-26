@@ -27,6 +27,12 @@
 - **IC-weighted ensemble**: members are fit on the first 80% of the training
   window (chronological, never shuffled), scored by rank IC on the held-out
   tail, weighted by max(IC, 0) + floor, then refit on the full window.
+- **Regime and change-point contracts** (`alphaforge/regimes/`, SF-S3-MR4):
+  rule-based, GMM, K-state HMM, CUSUM, and Bayesian online change-point
+  models behind one causal contract, plus retrospective segmenters that are
+  deliberately not usable as features, and an incremental-value harness that
+  measures a regime against a no-regime baseline. See
+  [Regime contracts](regimes.md).
 - **Gaussian HMM regime model** (`alphaforge/models/regime.py`): 2-state
   Baum-Welch EM from scratch. Used causally — expanding parameter refits and
   filtered (never smoothed) state probabilities — as a feature

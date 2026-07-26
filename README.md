@@ -132,6 +132,9 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [regime and change-point contract](docs/regimes.md) defines causal state
+models, canonical labelling, and incremental-value evidence against a no-regime
+baseline.
 The [governed benchmark model contract](docs/governed_benchmark_models.md)
 documents the bounded linear, robust, tree, boosting, and small-MLP families,
 their deterministic termination evidence, and the remaining barriers to
