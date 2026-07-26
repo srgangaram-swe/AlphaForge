@@ -11,19 +11,31 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Public market data engineering with yfinance, CSV, and synthetic sources.
 - Independent validation of immutable Signalattice bundles: contract version,
   semantic identity, content hashes, temporal availability, license policy, and
-  explicit point-in-time limitations.
+  explicit point-in-time limitations, including schema 1.1 historical-universe
+  and corporate-action records with fail-closed revision visibility.
 - Leak-safe feature engineering on a canonical `(date, symbol, OHLCV)` panel.
 - A 2-state Gaussian HMM regime engine (custom Baum-Welch EM) used strictly causally:
   expanding parameter refits + filtered (never smoothed) state probabilities.
-- Multi-horizon labels such as forward returns, direction, ranks, and excess returns.
-- Walk-forward model training with an embargo at least as large as the longest label horizon.
-- Purged K-Fold and Combinatorial Purged CV (CPCV) splitters for overlap-safe evaluation.
+- Versioned financial-label contracts spanning regression, classification,
+  threshold, quantile, triple-barrier, volatility-scaled, and meta-label
+  definitions, with explicit future intervals, holdout protection, dependence,
+  balance, stability, and sensitivity diagnostics.
+- Explicit train/validation/test/final-holdout plans with rolling or expanding
+  histories, session gaps, exact label-interval purging, immutable fold
+  identities, and inspectable Seaborn fold evidence.
+- Purged K-Fold and Combinatorial Purged CV (CPCV) splitters with exact
+  heterogeneous event intervals for overlap-safe evaluation.
 - Baselines, linear models, tree models, optional torch models, and an IC-weighted ensemble.
 - A neural temporal alpha model (dilated causal TCN + attention pooling, composite
   Huber + cross-sectional IC loss) with a real training loop — early stopping on
   validation rank IC, checkpointing, persisted history — via `make train` (ADR 0002).
-- Evaluation plots (training curves, IC time series/decay, quantile returns,
-  model comparison) rendered into every run and embedded in the report.
+- Reproducible Seaborn evaluation plots (training curves, IC time
+  series/decay, quantile returns, model comparison) rendered with an accessible
+  palette and embedded in the report.
+- Strict frozen configuration schemas for every supported YAML entry point;
+  unknown, unused, unsafe, and cross-field-invalid settings fail before work.
+- Versioned, atomic, non-executable JSON Table Schema artifacts replace implicit
+  pickle interchange across the local research pipeline.
 - Overfitting statistics: Probabilistic and Deflated Sharpe Ratios, Probability of
   Backtest Overfitting (CSCV), and Newey-West IC t-statistics.
 - Backtests that use out-of-sample predictions only.
@@ -48,7 +60,7 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 flowchart LR
     A[Signalattice bundle / public / synthetic] --> B[Validation and quality report]
     B --> C[Leak-safe feature engineering]
-    C --> D[Multi-horizon forward labels]
+    C --> D[Versioned future-event label contracts]
     D --> E[Walk-forward splits with embargo]
     E --> F[Model training and OOS predictions]
     F --> G[Signal construction]
@@ -61,18 +73,21 @@ flowchart LR
 Signalattice and AlphaForge are separate repositories joined only by the
 versioned `signal-foundry-market-data` contract. AlphaForge does not trust
 producer code: it independently checks the manifest, every partition hash,
-the exact schema, temporal semantics, license policy, and adjustment state
-before research begins.
+the exact schema, temporal semantics, license policy, adjustment state, and
+schema 1.1 universe/action record families before research begins.
 
 ## Quickstart
 
-Requires Python 3.12–3.14. The synthetic demo is offline and does not require
+Requires Python 3.12–3.14 and
+[uv](https://docs.astral.sh/uv/). The committed lockfile is the supported
+dependency resolution; the synthetic demo is offline and does not require
 market-data credentials.
 
 ```bash
 make install
-make test
-make demo
+uv run make config-check
+uv run make test
+uv run make demo
 ```
 
 The demo is fully offline. It generates synthetic market data, trains a small walk-forward experiment, runs an out-of-sample backtest, and writes a markdown report under `runs/`.
@@ -82,9 +97,12 @@ Useful commands:
 ```bash
 make download-data      # yfinance / CSV / synthetic per configs/data.yaml
 make build-features     # feature and label panels
+make label-evidence OUTPUT=/tmp/alphaforge-label-evidence
+make temporal-evidence OUTPUT=/tmp/alphaforge-temporal-evidence
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
 make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
+make signal-foundry-evidence RUN=/absolute/run BUNDLE=/absolute/bundle OUTPUT=/new/path
 make paper              # simulated paper-trading replay only
 make report             # markdown report
 make dashboard          # Streamlit dashboard
@@ -97,6 +115,19 @@ rubric in `configs/signal_foundry_research.yaml` separates development-only
 model selection from a purged final holdout. Its result can authorize only
 zero-capital shadow evaluation; it cannot authorize broker access, orders, or
 capital deployment. See [the Signal Foundry operator guide](docs/signal_foundry.md).
+The separate `configs/signal_foundry_wiki_bootstrap.yaml` profile fixes a
+2017-01-03 holdout before evaluating the stale WIKI engineering bundle. Its
+incomplete point-in-time declarations must produce `NOT_READY`.
+Every governed run also writes a versioned, content-addressed experiment
+manifest. See [Reproducibility and experiment provenance](docs/reproducibility.md)
+for the identity, seed, environment, artifact, and credential-redaction
+contracts.
+
+Supply-chain and release controls are documented in
+[Release and security governance](docs/release_security.md).
+The [Sprint 1 evidence report](docs/sprint_1_report.md) records the final
+`NOT_READY` result and its reproducible Seaborn evidence without publishing
+licensed rows.
 
 ## Low-Latency Execution Core (C++)
 
@@ -135,9 +166,13 @@ make bench-native  # pure C++ benchmark with latency percentiles
 Backtest results are only as good as the validation that produced them.
 AlphaForge ships the modern anti-overfitting toolkit and wires it into every run:
 
+- **Temporal validation plans** ([contract and mathematics](docs/temporal_validation.md)):
+  explicit train, validation, test, purge, embargo, overlap, and inaccessible
+  final-holdout roles; interval crossings fail closed on irregular calendars.
 - **Purged K-Fold & CPCV** (`alphaforge/training/purged_cv.py`): overlapping
-  labels demand purging around test blocks plus an embargo; CPCV evaluates all
-  C(n, k) test-group combinations to produce many OOS paths instead of one.
+  labels demand exact event-interval purging around every contiguous test block
+  plus an embargo; CPCV evaluates all C(n, k) test-group combinations to
+  produce many OOS paths instead of one.
 - **Deflated Sharpe Ratio** (`alphaforge/evaluation/overfitting.py`): P(true
   Sharpe > 0) after correcting for multiple testing (best-of-N selection),
   sample length, skew, and fat tails. Reported in every backtest summary with
@@ -167,10 +202,11 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 
 - `alphaforge/data`: loaders, schema validation, quality reports, synthetic data.
 - `alphaforge/features`: technical, cross-sectional, benchmark-relative, and regime features.
-- `alphaforge/labels`: multi-horizon forward labels.
+- `alphaforge/labels`: versioned future-event labels and statistical diagnostics.
 - `alphaforge/models`: baselines, sklearn wrappers, torch wrappers, IC-weighted ensemble,
   Gaussian HMM regime model, registry.
-- `alphaforge/training`: walk-forward splitting, purged K-Fold, CPCV, OOS prediction panels.
+- `alphaforge/training`: interval-aware temporal plans, walk-forward splitting,
+  purged K-Fold, CPCV, and OOS prediction panels.
 - `alphaforge/evaluation`: IC analytics, PSR/DSR, PBO, Newey-West inference.
 - `alphaforge/signals`: rank, long-short, top-k, threshold, confidence-weighted,
   and regime-filtered signals.
@@ -195,6 +231,7 @@ After `make demo`, inspect:
 
 - `runs/latest_run.txt`
 - `model_metrics.csv`
+- `panel.table.json` / `features.table.json` / `predictions.table.json`
 - `walk_forward_windows.csv`
 - `equity_curve.csv`
 - `orders.csv` / `fills.csv` / `pnl_attribution.csv`

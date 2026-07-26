@@ -172,7 +172,7 @@ def stress_test_summary(
     scenarios: list[dict] | None = None,
     betas: pd.Series | None = None,
 ) -> pd.DataFrame:
-    """First-order scenario PnL: shock propagated through per-name betas.
+    """First-order scenario PnL and volatility multiplier diagnostics.
 
     ``betas``: per-symbol beta to the benchmark (e.g. the latest rolling-beta
     feature). Without betas, every name is assumed beta 1 and the estimate
@@ -195,12 +195,14 @@ def stress_test_summary(
     rows = []
     for scenario in scenarios:
         shock = float(scenario.get("market_shock", 0.0))
+        volatility_multiplier = float(scenario.get("vol_multiplier", 1.0))
         rows.append(
             {
                 "scenario": scenario.get("name", "scenario"),
                 "market_shock": shock,
                 "portfolio_beta": portfolio_beta,
                 "estimated_portfolio_return": portfolio_beta * shock,
+                "volatility_multiplier": volatility_multiplier,
                 "gross_exposure": gross,
                 "net_exposure": net,
             }

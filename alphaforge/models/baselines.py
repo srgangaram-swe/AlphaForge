@@ -44,6 +44,7 @@ class MomentumBaseline(AlphaModel):
     """
 
     name = "momentum_baseline"
+    requires_raw_features = True
 
     def __init__(self, feature: str = "momentum_20", scale: float = 0.05):
         self.feature = feature

@@ -5,8 +5,9 @@
 - Zero, historical mean, and momentum baselines — every ML model must beat these.
 - Linear regression, ridge, lasso, and elastic net (imputation + scaling
   embedded in the pipeline, so statistics are always train-window-only).
-- Random forest and gradient boosting (LightGBM when installed, sklearn
-  HistGradientBoosting otherwise).
+- Random forest and gradient boosting. Gradient boosting pins an explicit
+  `sklearn` or `lightgbm` backend in configuration; installing an optional
+  package never silently changes estimator semantics.
 - Optional PyTorch MLP, GRU, and temporal CNN with causal per-symbol sequence
   construction and time-ordered early-stopping splits.
 - **TemporalAlphaNet** (`alphaforge/models/temporal.py`, ADR 0002): the
@@ -33,10 +34,14 @@ test rows.
 
 - **Walk-forward** (primary): expanding or rolling windows with an embargo
   at least as long as the longest label horizon.
+- **Interval-aware development plan**: explicit train, validation, test,
+  purge, embargo, overlap, and final-holdout roles. Exact label-event ends must
+  precede the next protected boundary; crossing samples are excluded. See
+  [Temporal validation contract](temporal_validation.md).
 - **Purged K-Fold / CPCV** (`alphaforge/training/purged_cv.py`): purging
-  removes train dates whose label intervals overlap a test block; the embargo
-  kills serial-correlation leakage from trailing-window features. CPCV
-  evaluates every C(n, k) test-group combination, producing many OOS paths.
+  removes train dates whose exact label intervals overlap each contiguous test
+  block; the embargo limits trailing-window dependence. CPCV evaluates every
+  C(n, k) test-group combination, producing many OOS paths.
 
 ## Overfitting statistics (alphaforge/evaluation/overfitting.py)
 
