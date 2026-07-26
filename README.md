@@ -60,6 +60,10 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - A deeply immutable hypothesis and trial-family plan, append-only hash-chained
   research ledger, complete-family Holm/BH corrections, and frozen kill
   criteria that retain failures and rejected evaluation attempts.
+- A bounded, content-addressed ten-family Sprint 3 evidence synthesis with
+  semantic source locators, an independently verifiable Signalattice receipt,
+  aggregate-only Seaborn coverage evidence, and a fail-closed `NOT_READY`
+  decision that cannot authorize paper or live execution.
 - Backtests that use out-of-sample predictions only.
 - Close-decision → next-open execution with a self-financing cash/share ledger,
   drifted holdings, causal lagged-liquidity inputs, partial fills, and reconciled P&L.
@@ -126,6 +130,7 @@ make time-frequency-evidence OUTPUT=/tmp/alphaforge-time-frequency-evidence
 make latent-representation-evidence OUTPUT=/tmp/alphaforge-latent-evidence
 make ensemble-evidence OUTPUT=/tmp/alphaforge-ensemble-evidence
 make decision-policy-evidence OUTPUT=/tmp/alphaforge-decision-policy-evidence
+make sprint-3-decision-evidence OUTPUT=/tmp/alphaforge-sprint-3-decision
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
 make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
@@ -211,6 +216,13 @@ turnover/costs, uncertainty, abstentions, and residual market-evidence gap.
 The [Sprint 3 MR10 abstention report](docs/sprint_3_abstention_policy_report.md)
 publishes the honest synthetic coverage-risk, turnover, capacity,
 missed-opportunity, and net-value comparison with always-trade and never-trade.
+The [final Sprint 3 report](docs/sprint_3_report.md) preserves the ten
+heterogeneous evidence contexts, records five rejected and five deferred
+families with zero advanced, and explains why the release remains `NOT_READY`.
+Its [governed decision](docs/multi_representation_decision.md),
+[aggregate evidence](docs/evidence/signal_foundry_sprint_3/decision/README.md),
+and [ADR 0008](docs/adr/0008-context-preserving-sprint-3-synthesis.md) define
+the content-addressed provenance and strict evidence-only, no-order boundary.
 
 ## Low-Latency Execution Core (C++)
 
@@ -306,7 +318,8 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
   separately scoped Python/C++ order-book implementations.
 - `alphaforge/paper`: simulated replay using the same execution and ledger contract.
 - `alphaforge/research`: governed selection, immutable holdout, aggregate
-  ensemble evidence, stress, and dossier workflow.
+  ensemble evidence, strict cross-repository provenance, content-addressed
+  Sprint 3 synthesis, stress, and dossier workflows.
 - `cpp/`: C++17 order book, pybind11 bindings, CMake project, native benchmark.
 - `scripts`: command-line pipeline entry points.
 - `apps`: Streamlit and FastAPI entry points.

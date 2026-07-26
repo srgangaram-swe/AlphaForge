@@ -92,6 +92,13 @@ paper or order authority through this component. A later paper-readiness
 decision requires its own reviewed contract, current point-in-time evidence,
 operational rehearsal, and human approval.
 
+Architecturally, the publisher is an evidence-only leaf from the research
+governance boundary. It reads the strict plan and content-addressed source
+artifacts and writes only the bounded aggregate allowlist. It neither imports
+nor invokes signal generation, portfolio construction, paper controls,
+execution, broker connectivity, credential handling, or capital state. There
+is intentionally no supported path from a synthesis disposition to an order.
+
 ## Security, data, and reproducibility
 
 - Sources and the plan are regular repository-relative files; symlinks, parent
@@ -119,3 +126,5 @@ work instead of disappearing.
 Rollback removes the standalone plan, publisher, receipt verifier, aggregate
 decision evidence, and report. It does not mutate constituent Sprint 2/3
 evidence, model implementations, execution contracts, or local vendor data.
+The released interpretation and reproduction procedure are recorded in the
+[final Sprint 3 report](../sprint_3_report.md).

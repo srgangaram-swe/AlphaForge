@@ -20,6 +20,8 @@ flowchart TD
     calibration --> metrics[Contract-bound unified metrics]
     metrics --> governance[Frozen family + append-only research ledger]
     governance --> overfit
+    governance --> synthesis[Context-preserving Sprint 3 evidence synthesis]
+    synthesis --> decisionEvidence[Aggregate NOT_READY evidence + provenance]
     preds --> overfit[Overfitting stats: DSR, PBO, NW t-stats]
     preds --> signals[Signals + regime filter]
     signals --> portfolio[Portfolio construction]
@@ -116,6 +118,16 @@ Two implementation layers sit beside the Python pipeline:
   head receipt; conservative failed-trial accounting; exact-family Holm/BH
   corrections; and predeclared kill decisions. See
   [Append-only research governance](research_governance.md).
+- **Sprint 3 synthesis boundary**
+  (`alphaforge/research/sprint_3_decision.py`,
+  `alphaforge/research/cross_repository_provenance.py`): strict,
+  content-addressed plans and receipts preserve ten heterogeneous evidence
+  contexts; bounded semantic locators distinguish reported from missing gates;
+  atomic aggregate-only publication emits a `NOT_READY` report, manifest, and
+  Seaborn coverage plot. This is an evidence-only leaf with no dependency path
+  to signals, portfolios, paper controls, execution, brokers, credentials, or
+  capital. See [the final Sprint 3 report](sprint_3_report.md) and
+  [ADR 0008](adr/0008-context-preserving-sprint-3-synthesis.md).
 - **Governed baseline study** (`alphaforge/research/baseline_study.py`,
   `alphaforge/research/baseline_study_evidence.py`): freezes the exact
   seven-candidate family before execution, binds every trial to the append-only

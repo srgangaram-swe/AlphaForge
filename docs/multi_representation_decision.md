@@ -159,3 +159,18 @@ Publication is atomic and refuses overwrite. The committed reference contains
 only aggregate CSV/JSON, a manifest, explanatory Markdown, and a Seaborn
 evidence-coverage plot. Licensed rows, targets, predictions, fitted state,
 weights, tensors, credentials, orders, and positions remain absent.
+
+## Published reference
+
+The [final Sprint 3 report](sprint_3_report.md) records the release outcome,
+validation procedure, security boundary, and residual gates. The
+[decision-evidence index](evidence/signal_foundry_sprint_3/decision/README.md)
+links the exact aggregate payload:
+
+- [family dispositions and source identities](evidence/signal_foundry_sprint_3/decision/family_evidence.csv);
+- [gate coverage and semantic locators](evidence/signal_foundry_sprint_3/decision/gate_matrix.csv);
+- [semantic-review receipt](evidence/signal_foundry_sprint_3/decision/semantic_review.json);
+- [machine-readable outcome](evidence/signal_foundry_sprint_3/decision/summary.json); and
+- [content manifest](evidence/signal_foundry_sprint_3/decision/manifest.json).
+
+![Sprint 3 evidence coverage](evidence/signal_foundry_sprint_3/decision/plots/evidence_coverage.png)
