@@ -85,8 +85,9 @@ separate from the deterministic offline suite.
 Every supported YAML surface has a dedicated frozen Pydantic schema under
 `alphaforge.config`. Unknown keys, untyped model parameters, unsafe configured
 paths, invalid ranges, and cross-field contradictions fail before network,
-artifact, or model work begins. `make config-check` validates all seven
-committed configurations. The generic permissive YAML loader has been retired;
+artifact, or model work begins. `make config-check` validates every canonical
+configuration plus the pre-registered WIKI bootstrap profile. The generic
+permissive YAML loader has been retired;
 adding a new YAML surface requires a named schema and negative tests.
 
 ## Safe tabular artifacts
@@ -115,3 +116,20 @@ report, and labeled honestly as synthetic, historical backtest, paper, or live
 evidence. Restricted market observations remain local; only licensed-safe
 aggregates, synthetic fixtures, and their reproducible generation instructions
 may be committed.
+
+The label reference workflow uses `make label-evidence OUTPUT=<new-directory>`.
+It records the complete semantic label contract, deterministic synthetic seed
+and dimensions, predeclared sensitivity scales, aggregate CSV evidence, plot
+hashes, and explicit non-market limitations. Publication refuses to overwrite
+an existing evidence root. See [Financial label contracts and
+diagnostics](label_design.md).
+
+The governed real-data workflow uses
+`make signal-foundry-evidence RUN=<run> BUNDLE=<bundle> OUTPUT=<new-directory>`.
+Its publication boundary independently matches the bundle identity against the
+run and dossier, requires the aggregate-only license flag, copies only an
+explicit field allowlist, hashes every output, and refuses overwrite or
+symlinked inputs. The committed WIKI profile and aggregate evidence can be
+replayed from the verified local cache with zero provider requests. Licensed
+rows and row-level predictions, orders, fills, positions, and returns remain
+ignored and local.

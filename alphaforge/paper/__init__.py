@@ -1,3 +1,4 @@
+from alphaforge.paper.audit import audit_offline_paper_controls
 from alphaforge.paper.controls import (
     PaperControlDecision,
     PaperControlState,
@@ -9,5 +10,6 @@ __all__ = [
     "PaperControlDecision",
     "PaperControlState",
     "PaperRiskLimits",
+    "audit_offline_paper_controls",
     "simulate_paper_trading",
 ]

@@ -111,7 +111,29 @@ class MacdConfig(StrictConfig):
         return self
 
 
+class FittedTransformConfig(StrictConfig):
+    """Configuration for preprocessing learned exclusively from a training fold."""
+
+    version: Literal["1.0.0"] = "1.0.0"
+    enabled: bool = False
+    imputation: Literal["median", "mean"] = "median"
+    standardize: bool = True
+    variance_threshold: NonNegativeFloat | None = None
+    pca_components: PositiveInt | OpenUnitFloat | None = None
+    pca_whiten: bool = False
+    min_fit_rows: PositiveInt = 64
+
+    @model_validator(mode="after")
+    def validate_transform(self) -> FittedTransformConfig:
+        if self.pca_whiten and self.pca_components is None:
+            raise ValueError("pca_whiten requires pca_components")
+        return self
+
+
 class FeatureConfig(StrictConfig):
+    registry_version: Literal["1.0.0"] = "1.0.0"
+    cache_dir: str | None = None
+    fitted_transform: FittedTransformConfig = Field(default_factory=FittedTransformConfig)
     return_lags: list[int]
     vol_windows: list[int]
     ma_windows: list[int]
@@ -138,7 +160,7 @@ class FeatureConfig(StrictConfig):
     def validate_window_lists(cls, values: list[int], info: Any) -> list[int]:
         return _ordered_unique(values, field_name=info.field_name)
 
-    @field_validator("output_dir")
+    @field_validator("cache_dir", "output_dir")
     @classmethod
     def validate_output_dir(cls, value: str | None) -> str | None:
         return None if value is None else _safe_relative_path(value)
@@ -149,6 +171,157 @@ class FeatureConfig(StrictConfig):
             raise ValueError("regime_trend_fast must be smaller than regime_trend_slow")
         if self.hmm_regime and self.hmm_min_train < self.hmm_refit_every:
             raise ValueError("hmm_min_train must be at least hmm_refit_every")
+        return self
+
+
+class LabelSpecConfig(StrictConfig):
+    """One versioned financial-label definition."""
+
+    version: Literal["1.0.0"] = "1.0.0"
+    name: str
+    kind: Literal[
+        "regression",
+        "classification",
+        "threshold",
+        "quantile",
+        "triple_barrier",
+        "volatility_scaled",
+        "meta_label",
+    ]
+    horizon: Annotated[int, Field(gt=0, le=2520)]
+    timing: Literal["close_to_close"] = "close_to_close"
+    price_field: Literal["close"] = "close"
+    overlap_policy: Literal["allow", "non_overlapping"] = "allow"
+    threshold: NonNegativeFloat | None = None
+    quantiles: Annotated[int, Field(ge=2, le=20)] | None = None
+    upper_barrier: PositiveFloat | None = None
+    lower_barrier: PositiveFloat | None = None
+    volatility_window: Annotated[int, Field(ge=2)] | None = None
+    side_source: Literal["lagged_return", "column"] | None = None
+    side_column: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if (
+            not value
+            or value != value.strip()
+            or not value.isascii()
+            or not all(character.isalnum() or character == "_" for character in value)
+        ):
+            raise ValueError(
+                "label name must be an ASCII identifier containing letters, numbers, "
+                "or underscores"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def validate_parameters(self) -> LabelSpecConfig:
+        supplied = {
+            name
+            for name, value in {
+                "threshold": self.threshold,
+                "quantiles": self.quantiles,
+                "upper_barrier": self.upper_barrier,
+                "lower_barrier": self.lower_barrier,
+                "volatility_window": self.volatility_window,
+                "side_source": self.side_source,
+                "side_column": self.side_column,
+            }.items()
+            if value is not None
+        }
+        allowed = {
+            "regression": set(),
+            "classification": set(),
+            "threshold": {"threshold"},
+            "quantile": {"quantiles"},
+            "triple_barrier": {"upper_barrier", "lower_barrier"},
+            "volatility_scaled": {"volatility_window"},
+            "meta_label": {"threshold", "side_source", "side_column"},
+        }
+        required = {
+            "regression": set(),
+            "classification": set(),
+            "threshold": {"threshold"},
+            "quantile": {"quantiles"},
+            "triple_barrier": {"upper_barrier", "lower_barrier"},
+            "volatility_scaled": {"volatility_window"},
+            "meta_label": {"threshold", "side_source"},
+        }
+        unexpected = supplied - allowed[self.kind]
+        missing = required[self.kind] - supplied
+        if unexpected:
+            raise ValueError(f"{self.kind} label has unsupported parameters: {sorted(unexpected)}")
+        if missing:
+            raise ValueError(f"{self.kind} label requires parameters: {sorted(missing)}")
+        if self.side_source == "column":
+            if (
+                not self.side_column
+                or self.side_column != self.side_column.strip()
+                or not self.side_column.isascii()
+            ):
+                raise ValueError(
+                    "side_source='column' requires a non-empty trimmed ASCII side_column"
+                )
+        elif self.side_column is not None:
+            raise ValueError("side_column is only valid when side_source='column'")
+        return self
+
+
+class LabelDiagnosticsConfig(StrictConfig):
+    """Bounded statistical-evidence settings for label diagnostics."""
+
+    autocorrelation_lag: PositiveInt = 1
+    temporal_periods: Annotated[int, Field(ge=2, le=12)] = 4
+    sensitivity_scales: Annotated[list[PositiveFloat], Field(min_length=1, max_length=9)] = Field(
+        default_factory=lambda: [0.5, 1.0, 2.0]
+    )
+
+    @field_validator("sensitivity_scales")
+    @classmethod
+    def validate_scales(cls, values: list[float]) -> list[float]:
+        if not values or values != sorted(set(values)):
+            raise ValueError("sensitivity_scales must be strictly increasing and unique")
+        if 1.0 not in values:
+            raise ValueError("sensitivity_scales must include the 1.0 baseline")
+        return values
+
+
+class LabelsConfig(StrictConfig):
+    """Strict YAML contract for governed financial-label materialization."""
+
+    version: Literal["1.0.0"] = "1.0.0"
+    benchmark_symbol: str
+    missing_price_policy: Literal["raise"] = "raise"
+    protected_boundaries: Annotated[list[str], Field(max_length=64)] = Field(default_factory=list)
+    labels: Annotated[list[LabelSpecConfig], Field(min_length=1, max_length=64)]
+    diagnostics: LabelDiagnosticsConfig = Field(default_factory=LabelDiagnosticsConfig)
+
+    @field_validator("benchmark_symbol")
+    @classmethod
+    def validate_benchmark(cls, value: str) -> str:
+        if not value or value != value.strip() or not value.isascii():
+            raise ValueError("benchmark_symbol must be non-empty, trimmed ASCII")
+        return value
+
+    @field_validator("protected_boundaries")
+    @classmethod
+    def validate_boundaries(cls, values: list[str]) -> list[str]:
+        try:
+            parsed = [date.fromisoformat(value) for value in values]
+        except ValueError as exc:
+            raise ValueError("protected_boundaries must contain ISO-8601 calendar dates") from exc
+        if parsed != sorted(set(parsed)):
+            raise ValueError("protected_boundaries must be strictly increasing and unique")
+        return values
+
+    @model_validator(mode="after")
+    def validate_label_contract(self) -> LabelsConfig:
+        names = [label.name for label in self.labels]
+        if not names:
+            raise ValueError("labels must contain at least one definition")
+        if len(names) != len(set(names)):
+            raise ValueError("label names must be unique")
         return self
 
 
@@ -175,6 +348,7 @@ MODEL_PARAMETER_FIELDS: dict[str, frozenset[str]] = {
     ),
     "gradient_boosting": frozenset(
         {
+            "backend",
             "loss",
             "learning_rate",
             "max_iter",
@@ -504,6 +678,7 @@ class SignalFoundryResearchConfig(StrictConfig):
 ConfigModel = (
     DataConfig
     | FeatureConfig
+    | LabelsConfig
     | ModelsConfig
     | BacktestConfig
     | StandalonePortfolioConfig
@@ -514,6 +689,7 @@ ConfigModel = (
 SCHEMAS: Mapping[str, type[ConfigModel]] = {
     "data": DataConfig,
     "features": FeatureConfig,
+    "labels": LabelsConfig,
     "models": ModelsConfig,
     "backtest": BacktestConfig,
     "portfolio": StandalonePortfolioConfig,
@@ -553,6 +729,10 @@ def load_data_config(path: str | Path) -> dict[str, Any]:
 
 def load_feature_config(path: str | Path) -> dict[str, Any]:
     return load_config(path, "features")
+
+
+def load_labels_config(path: str | Path) -> dict[str, Any]:
+    return load_config(path, "labels")
 
 
 def load_models_config(path: str | Path) -> dict[str, Any]:

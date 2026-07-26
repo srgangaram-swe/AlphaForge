@@ -10,9 +10,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from alphaforge.config import load_signal_foundry_research_config
 from alphaforge.data import SignalFoundryDataset, SyntheticMarketConfig, generate_synthetic_market
 from alphaforge.evaluation import NOT_READY, ReadinessThresholds
 from alphaforge.research import GovernedResearchConfig, run_governed_signal_foundry_research
+from alphaforge.research.signal_foundry import _capacity_config
 
 
 def _dataset(tmp_path: Path) -> SignalFoundryDataset:
@@ -44,15 +46,22 @@ def _dataset(tmp_path: Path) -> SignalFoundryDataset:
     )
 
 
-def _run(tmp_path: Path):
+def _run(tmp_path: Path, *, fitted_transform: bool = False):
     dataset = _dataset(tmp_path)
     dates = sorted(dataset.panel["date"].unique())
     return run_governed_signal_foundry_research(
         dataset=dataset,
-        model_specs=[
-            {"name": "momentum_baseline", "params": {"feature": "momentum_20", "scale": 0.05}},
-            {"name": "ridge", "params": {"alpha": 10.0}},
-        ],
+        model_specs=(
+            [{"name": "ridge", "params": {"alpha": 10.0}}]
+            if fitted_transform
+            else [
+                {
+                    "name": "momentum_baseline",
+                    "params": {"feature": "momentum_20", "scale": 0.05},
+                },
+                {"name": "ridge", "params": {"alpha": 10.0}},
+            ]
+        ),
         feature_config={
             "return_lags": [1, 5],
             "vol_windows": [5, 20],
@@ -71,6 +80,16 @@ def _run(tmp_path: Path):
             "regime_trend_slow": 20,
             "hmm_regime": False,
             "cross_sectional": True,
+            "fitted_transform": {
+                "version": "1.0.0",
+                "enabled": fitted_transform,
+                "imputation": "median",
+                "standardize": True,
+                "variance_threshold": None,
+                "pca_components": 0.95 if fitted_transform else None,
+                "pca_whiten": False,
+                "min_fit_rows": 64,
+            },
         },
         walk_forward_config={
             "scheme": "expanding",
@@ -164,6 +183,16 @@ def test_governed_run_is_transactional_auditable_and_not_ready_on_missing_pit(
     assert ledger[0]["previous_hash"] == "0" * 64
     assert ledger[1]["previous_hash"] == ledger[0]["record_hash"]
     assert result.dossier["gates"]["missing_price_halt"]
+    assert result.dossier["gates"]["paper_controls"]
+    assert result.dossier["paper_controls"]["all_controls_passed"]
+    assert result.dossier["paper_controls"]["broker_adapter_present"] is False
+    assert result.dossier["paper_controls"]["executable_orders_emitted"] is False
+    assert (
+        result.dossier["metrics"]["gross_annual_return"]
+        >= result.dossier["metrics"]["annual_return"]
+    )
+    assert result.dossier["concentration"]["gross_exposure"] >= 0.0
+    assert all(scenario["accounting_reconciled"] for scenario in result.dossier["scenarios"])
     assert result.dossier["uncertainty"]["available"]
     assert result.dossier["year_stability"]
     assert result.dossier["regime_stability"]
@@ -192,3 +221,27 @@ def test_clean_output_roots_produce_byte_identical_evidence(tmp_path: Path) -> N
         for path in second.run_dir.iterdir()
     }
     assert first_hashes == second_hashes
+
+
+def test_governed_holdout_records_development_only_fitted_state(tmp_path: Path) -> None:
+    result = _run(tmp_path, fitted_transform=True)
+
+    development_path = result.run_dir / "development_fitted_transformations.csv"
+    holdout_path = result.run_dir / "final_holdout_fitted_transformation.json"
+    assert development_path.is_file()
+    assert holdout_path.is_file()
+    holdout_state = json.loads(holdout_path.read_text(encoding="utf-8"))
+    assert pd.Timestamp(holdout_state["fit_end"]) <= pd.Timestamp(result.dossier["development_end"])
+    assert pd.Timestamp(holdout_state["fit_end"]) < pd.Timestamp(result.dossier["holdout_start"])
+    assert len(holdout_state["state_id"]) == 64
+
+
+def test_committed_wiki_profile_maps_the_complete_capacity_contract() -> None:
+    profile = load_signal_foundry_research_config("configs/signal_foundry_wiki_bootstrap.yaml")
+
+    capacity, minimum_fill_ratio = _capacity_config(dict(profile["backtest"]))
+
+    assert capacity.reference_aum == 1_000_000.0
+    assert capacity.impact_exponent == 0.5
+    assert capacity.variable_cost_fraction == 0.5
+    assert minimum_fill_ratio == 0.95
