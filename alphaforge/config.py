@@ -8,6 +8,7 @@ return normalized dictionaries for the existing domain APIs.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from datetime import date
 from pathlib import Path, PurePosixPath
@@ -755,6 +756,79 @@ class MetricSuitePolicyConfig(StrictConfig):
         return self
 
 
+class MultipleTestingPolicyConfig(StrictConfig):
+    """Frozen complete-family correction policy for research governance."""
+
+    method: Literal["holm_bonferroni", "benjamini_hochberg"]
+    alpha: OpenUnitFloat
+    family_size: Annotated[int, Field(ge=1, le=10_000)]
+    assumptions: Annotated[list[str], Field(min_length=1, max_length=64)]
+    failed_trial_p_value: Annotated[float, Field(ge=1.0, le=1.0)] = 1.0
+
+    @field_validator("assumptions")
+    @classmethod
+    def validate_assumptions(cls, values: list[str]) -> list[str]:
+        if len(values) != len(set(values)) or any(
+            not value or value != value.strip() for value in values
+        ):
+            raise ValueError("assumptions must be unique non-empty declarations")
+        return values
+
+
+class KillCriterionConfig(StrictConfig):
+    """One predeclared candidate rejection condition."""
+
+    name: str
+    metric: str
+    operator: Literal["lt", "le", "gt", "ge"]
+    threshold: float
+
+    @field_validator("name", "metric")
+    @classmethod
+    def validate_identifier(cls, value: str) -> str:
+        if (
+            not value
+            or len(value) > 128
+            or value != value.strip()
+            or not value.isascii()
+            or not all(character.isalnum() or character in "._-" for character in value)
+        ):
+            raise ValueError("research-governance identifiers must be safe ASCII")
+        return value
+
+    @field_validator("threshold")
+    @classmethod
+    def validate_threshold(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("kill-criterion threshold must be finite")
+        return value
+
+
+class ResearchLedgerResourceConfig(StrictConfig):
+    """Bounded local append-only ledger resource policy."""
+
+    max_records: Annotated[int, Field(ge=10, le=1_000_000)]
+    max_bytes: Annotated[int, Field(ge=4096, le=1_073_741_824)]
+
+
+class ResearchGovernanceConfig(StrictConfig):
+    """Strict configuration surface for SF-S2-MR8."""
+
+    version: Literal["1.0.0"]
+    correction: MultipleTestingPolicyConfig
+    kill_criteria: Annotated[list[KillCriterionConfig], Field(min_length=1, max_length=64)]
+    ledger: ResearchLedgerResourceConfig
+
+    @model_validator(mode="after")
+    def validate_governance(self) -> ResearchGovernanceConfig:
+        names = [criterion.name for criterion in self.kill_criteria]
+        if len(names) != len(set(names)):
+            raise ValueError("kill-criterion names must be unique")
+        if self.ledger.max_records < self.correction.family_size * 4 + 2:
+            raise ValueError("ledger.max_records cannot hold the minimum trial event family")
+        return self
+
+
 class ResearchConfig(StrictConfig):
     holdout_start: str
     benchmark_symbol: str
@@ -822,6 +896,7 @@ ConfigModel = (
     | RiskAnalyticsConfig
     | CalibrationUncertaintyConfig
     | MetricSuitePolicyConfig
+    | ResearchGovernanceConfig
     | SignalFoundryResearchConfig
 )
 
@@ -834,6 +909,7 @@ SCHEMAS: Mapping[str, type[ConfigModel]] = {
     "calibration": CalibrationUncertaintyConfig,
     "metrics": MetricSuitePolicyConfig,
     "portfolio": StandalonePortfolioConfig,
+    "research_governance": ResearchGovernanceConfig,
     "risk": RiskAnalyticsConfig,
     "signal_foundry_research": SignalFoundryResearchConfig,
 }
@@ -898,6 +974,10 @@ def load_calibration_config(path: str | Path) -> dict[str, Any]:
 
 def load_metrics_config(path: str | Path) -> dict[str, Any]:
     return load_config(path, "metrics")
+
+
+def load_research_governance_config(path: str | Path) -> dict[str, Any]:
+    return load_config(path, "research_governance")
 
 
 def load_signal_foundry_research_config(path: str | Path) -> dict[str, Any]:

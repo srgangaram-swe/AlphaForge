@@ -107,6 +107,15 @@ the actual elapsed calendar span, so irregular calendars do not silently
 inherit a 252-session assumption. See [Metric governance and time-series
 distributions](metric_governance.md).
 
+The canonical `configs/research_governance.yaml` surface freezes the eligible
+family size, multiple-testing method and assumptions, failed-trial treatment,
+candidate kill criteria, and ledger resource bounds. The plan and every ledger
+event use canonical JSON and SHA-256 chaining; an independently updated head
+receipt detects mutation and truncation before any supported append. Missing,
+extra, failed, interrupted, or nonterminal candidates cannot be silently
+excluded from family correction. See
+[Append-only research governance](research_governance.md).
+
 ## Safe tabular artifacts
 
 Pipeline tables use the `1.0.0` `*.table.json` contract in

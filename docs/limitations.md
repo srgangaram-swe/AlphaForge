@@ -25,6 +25,11 @@ Important limitations:
   microstructure calibration or the paper replay's source of truth.
 - DSR/PBO correct for the trials the platform knows about; they cannot correct
   for ideas discarded before they were coded.
+- The append-only research ledger detects mutation or truncation against its
+  local head receipt, but it is not digitally signed. An actor who can rewrite
+  both files can manufacture another internally consistent history; durable
+  operation requires externally anchored immutable receipts and access logs.
+  Its lock is a fail-closed single-writer boundary, not distributed consensus.
 - Probability calibration and interval coverage can fail under prevalence
   drift, regime changes, or changed model/feature policy. ECE depends on its
   declared bins; moving-block bootstrap intervals require local stationarity
