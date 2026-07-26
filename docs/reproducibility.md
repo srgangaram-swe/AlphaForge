@@ -159,3 +159,15 @@ symlinked inputs. The committed WIKI profile and aggregate evidence can be
 replayed from the verified local cache with zero provider requests. Licensed
 rows and row-level predictions, orders, fills, positions, and returns remain
 ignored and local.
+
+The Sprint 2 baseline study uses
+`configs/signal_foundry_sprint_2_study.yaml` together with
+`configs/research_governance.yaml`. Run
+`scripts/run_sprint_2_study.py` under `/usr/bin/time -l`, then pass its
+immutable study/run directories and the bounded time profile to
+`scripts/publish_sprint_2_evidence.py`. The plan hash includes the seeded
+candidate configurations, folds, holdout, costs, correction, and kill policy.
+The aggregate publisher refuses an existing destination, symlinked input,
+identity mismatch, incomplete family, unequal fold set, or source license that
+does not require aggregate-only publication. Full commands and assumptions are
+in [Governed seven-candidate baseline study](governed_baseline_study.md).

@@ -7,6 +7,12 @@ from alphaforge.research.artifacts import (
     read_frame_artifact,
     write_frame_artifact,
 )
+from alphaforge.research.baseline_study import (
+    NAIVE_CANDIDATE,
+    SPRINT_2_CANDIDATES,
+    BaselineStudyResult,
+    run_governed_baseline_study,
+)
 from alphaforge.research.governance import (
     GOVERNANCE_SCHEMA_VERSION,
     HEAD_FILE_NAME,
@@ -45,6 +51,7 @@ __all__ = [
     "TABLE_ARTIFACT_FORMAT",
     "TABLE_ARTIFACT_VERSION",
     "ArtifactValidationError",
+    "BaselineStudyResult",
     "DuplicateTrialError",
     "ExperimentManifest",
     "FamilyEvaluation",
@@ -59,9 +66,11 @@ __all__ = [
     "LedgerIntegrityError",
     "ManifestValidationError",
     "MultipleTestingPolicy",
+    "NAIVE_CANDIDATE",
     "ROOT_TRIAL_ID",
     "ResearchGovernanceError",
     "ResearchLedger",
+    "SPRINT_2_CANDIDATES",
     "TrialSpec",
     "adjust_p_values",
     "capture_environment",
@@ -71,6 +80,7 @@ __all__ = [
     "read_frame_artifact",
     "refresh_experiment_manifest",
     "redact_cli_arguments",
+    "run_governed_baseline_study",
     "run_governed_signal_foundry_research",
     "write_experiment_manifest",
     "write_frame_artifact",
