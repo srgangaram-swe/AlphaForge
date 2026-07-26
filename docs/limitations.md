@@ -13,6 +13,11 @@ Important limitations:
 - Synthetic data verifies engineering behavior but is not market evidence; its
   embedded edge is deliberately faint but still far cleaner than real markets,
   so demo Sharpe ratios overstate what identical code would earn live.
+- The SF-S3-MR7 time-frequency vision reference is synthetic engineering
+  evidence. Its small CNN failed the frozen validation gate, so ResNet and ViT
+  were correctly blocked. This rejection does not establish that image models
+  fail on licensed point-in-time data; it establishes only that larger models
+  were unjustified on the declared reference.
 - Backtests are daily-bar approximations. The close-decision/next-open ledger
   prevents pre-fill gap capture and lets holdings drift, but bars cannot reveal
   queue position, auction dynamics, intraday path, or order-book state.

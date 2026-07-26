@@ -26,6 +26,9 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Purged K-Fold and Combinatorial Purged CV (CPCV) splitters with exact
   heterogeneous event intervals for overlap-safe evaluation.
 - Baselines, linear models, tree models, optional torch models, and an IC-weighted ensemble.
+- A fail-closed time-frequency progression from LightGBM descriptors to a
+  mandatory small CNN, conditional ResNet, and conditional ViT, with
+  validation-only tamper-evident gates and aggregate Seaborn evidence.
 - A neural temporal alpha model (dilated causal TCN + attention pooling, composite
   Huber + cross-sectional IC loss) with a real training loop — early stopping on
   validation rank IC, checkpointing, persisted history — via `make train` (ADR 0002).
@@ -108,6 +111,7 @@ make download-data      # yfinance / CSV / synthetic per configs/data.yaml
 make build-features     # feature and label panels
 make label-evidence OUTPUT=/tmp/alphaforge-label-evidence
 make temporal-evidence OUTPUT=/tmp/alphaforge-temporal-evidence
+make time-frequency-evidence OUTPUT=/tmp/alphaforge-time-frequency-evidence
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
 make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
@@ -139,6 +143,11 @@ The [governed benchmark model contract](docs/governed_benchmark_models.md)
 documents the bounded linear, robust, tree, boosting, and small-MLP families,
 their deterministic termination evidence, and the remaining barriers to
 paper or live use.
+The [gated time-frequency vision contract](docs/time_frequency_vision_models.md)
+documents Signalattice tensor alignment, train-only normalization,
+meaning-preserving perturbations, bounded CNN/ResNet/ViT implementations, and
+validation-only progression. Its committed synthetic reference rejected the
+small CNN and therefore blocked both larger architectures.
 The [calibration and uncertainty contract](docs/calibration_uncertainty.md)
 documents OOF provenance, mathematical assumptions, deterministic
 configuration, JSON-safe persistence, and failure behavior.
