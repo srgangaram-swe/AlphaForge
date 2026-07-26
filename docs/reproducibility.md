@@ -64,7 +64,7 @@ is excluded from its artifact inventory to avoid a recursive hash.
 
 `uv.lock` is the committed universal resolution for Python 3.12–3.14 and all
 declared extras. CI pins the `setup-uv` action by full commit SHA and uv itself
-to `0.9.7`; the container uses the same uv version and lockfile. CI exercises
+to `0.11.28`; the container uses the same uv version and lockfile. CI exercises
 the base environment on every supported Python version, the native and torch
 boundaries, and separate locked import checks for the data, ML, and application
 extras.

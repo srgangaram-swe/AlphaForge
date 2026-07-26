@@ -58,5 +58,11 @@ Two implementation layers sit beside the Python pipeline:
   `(t,t+h]` future intervals, protected-boundary rejection, strict price/side
   availability, and dependence/balance/stability/sensitivity evidence. See
   [Financial label contracts and diagnostics](label_design.md).
+- **Model governance boundary** (`alphaforge/models/base.py`,
+  `alphaforge/models/sklearn_models.py`): typed resource bounds,
+  train-fold-only estimator pipelines, explicit optional backends, immutable
+  termination evidence, deterministic seed injection, and trusted-only binary
+  deserialization. See
+  [Governed benchmark models](governed_benchmark_models.md).
 - **Capacity evaluation** (`alphaforge/evaluation/capacity.py`): auditable AUM,
   participation, fill-ratio, and cost sensitivities using supplied lagged ADV.

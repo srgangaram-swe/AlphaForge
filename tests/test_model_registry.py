@@ -65,8 +65,32 @@ def test_model_catalog_filters_by_declared_task_without_optional_imports() -> No
     classification = available_models(task="classification")
 
     assert "random_forest" in regression
+    assert {
+        "huber",
+        "extra_trees",
+        "lightgbm",
+        "xgboost",
+        "catboost",
+        "small_mlp",
+    }.issubset(regression)
     assert "equal_probability" not in regression
     assert classification == ["equal_probability"]
     assert set(regression) | set(classification) == set(available_models())
     with pytest.raises(ValueError, match="task must be"):
         available_models(task="ranking")
+
+
+def test_seed_injection_covers_every_stochastic_governed_backend() -> None:
+    names = [
+        "random_forest",
+        "extra_trees",
+        "gradient_boosting",
+        "lightgbm",
+        "xgboost",
+        "catboost",
+        "small_mlp",
+    ]
+
+    seeded = seed_model_specs([{"name": name, "params": {}} for name in names], 2026)
+
+    assert all(spec["params"]["random_state"] == 2026 for spec in seeded)

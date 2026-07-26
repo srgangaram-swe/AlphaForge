@@ -108,6 +108,45 @@ def test_model_parameter_names_are_not_an_untyped_escape_hatch(tmp_path: Path) -
         load_config(path, "models")
 
 
+def test_governed_model_parameter_surfaces_are_explicit(tmp_path: Path) -> None:
+    config = yaml.safe_load(Path("configs/models.yaml").read_text(encoding="utf-8"))
+    config["models"] = [
+        {"name": "huber", "params": {"epsilon": 1.35, "max_iter": 100}},
+        {
+            "name": "extra_trees",
+            "params": {"n_estimators": 20, "n_jobs": 1, "random_state": 42},
+        },
+        {
+            "name": "lightgbm",
+            "params": {"n_estimators": 20, "n_jobs": 1, "random_state": 42},
+        },
+        {
+            "name": "xgboost",
+            "params": {"n_estimators": 20, "min_child_weight": 1.0, "n_jobs": 1},
+        },
+        {
+            "name": "catboost",
+            "params": {"n_estimators": 20, "min_samples_leaf": 2, "n_jobs": 1},
+        },
+        {
+            "name": "small_mlp",
+            "params": {"hidden_layer_sizes": [8], "max_iter": 20, "random_state": 42},
+        },
+    ]
+    path = _write_yaml(tmp_path / "models.yaml", config)
+
+    loaded = load_config(path, "models")
+
+    assert [spec["name"] for spec in loaded["models"]] == [
+        "huber",
+        "extra_trees",
+        "lightgbm",
+        "xgboost",
+        "catboost",
+        "small_mlp",
+    ]
+
+
 def test_label_configuration_rejects_invalid_semantics(tmp_path: Path) -> None:
     config = yaml.safe_load(Path("configs/labels.yaml").read_text(encoding="utf-8"))
     barrier = next(label for label in config["labels"] if label["kind"] == "triple_barrier")

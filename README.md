@@ -123,6 +123,11 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [governed benchmark model contract](docs/governed_benchmark_models.md)
+documents the bounded linear, robust, tree, boosting, and small-MLP families,
+their deterministic termination evidence, and the remaining barriers to
+paper or live use.
+
 Supply-chain and release controls are documented in
 [Release and security governance](docs/release_security.md).
 The [Sprint 1 evidence report](docs/sprint_1_report.md) records the final

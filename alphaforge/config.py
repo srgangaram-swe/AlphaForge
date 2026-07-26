@@ -329,17 +329,25 @@ MODEL_PARAMETER_FIELDS: dict[str, frozenset[str]] = {
     "zero_baseline": frozenset(),
     "historical_mean": frozenset(),
     "momentum_baseline": frozenset({"feature", "scale"}),
-    "linear": frozenset({"fit_intercept"}),
+    "linear": frozenset({"fit_intercept", "positive"}),
     "ridge": frozenset({"alpha", "fit_intercept", "max_iter", "tol"}),
-    "lasso": frozenset({"alpha", "fit_intercept", "max_iter", "tol", "selection"}),
-    "elastic_net": frozenset(
-        {"alpha", "l1_ratio", "fit_intercept", "max_iter", "tol", "selection"}
-    ),
+    "lasso": frozenset({"alpha", "fit_intercept", "max_iter", "tol"}),
+    "elastic_net": frozenset({"alpha", "l1_ratio", "fit_intercept", "max_iter", "tol"}),
+    "huber": frozenset({"epsilon", "alpha", "max_iter", "tol"}),
     "random_forest": frozenset(
         {
             "n_estimators",
             "max_depth",
-            "min_samples_split",
+            "min_samples_leaf",
+            "max_features",
+            "n_jobs",
+            "random_state",
+        }
+    ),
+    "extra_trees": frozenset(
+        {
+            "n_estimators",
+            "max_depth",
             "min_samples_leaf",
             "max_features",
             "n_jobs",
@@ -349,13 +357,55 @@ MODEL_PARAMETER_FIELDS: dict[str, frozenset[str]] = {
     "gradient_boosting": frozenset(
         {
             "backend",
-            "loss",
             "learning_rate",
             "max_iter",
-            "max_leaf_nodes",
             "max_depth",
             "min_samples_leaf",
             "l2_regularization",
+            "random_state",
+        }
+    ),
+    "lightgbm": frozenset(
+        {
+            "n_estimators",
+            "max_depth",
+            "learning_rate",
+            "min_samples_leaf",
+            "l2_regularization",
+            "n_jobs",
+            "random_state",
+        }
+    ),
+    "xgboost": frozenset(
+        {
+            "n_estimators",
+            "max_depth",
+            "learning_rate",
+            "min_child_weight",
+            "l2_regularization",
+            "n_jobs",
+            "random_state",
+        }
+    ),
+    "catboost": frozenset(
+        {
+            "n_estimators",
+            "max_depth",
+            "learning_rate",
+            "min_samples_leaf",
+            "l2_regularization",
+            "n_jobs",
+            "random_state",
+        }
+    ),
+    "small_mlp": frozenset(
+        {
+            "hidden_layer_sizes",
+            "alpha",
+            "learning_rate_init",
+            "batch_size",
+            "max_iter",
+            "tol",
             "random_state",
         }
     ),
