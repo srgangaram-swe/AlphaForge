@@ -71,9 +71,10 @@ an already-completed constituent experiment; only that experiment's original
 configuration, ledger, or source artifact can establish pre-execution intent.
 Protocol dimensions that were not completed are recorded as `deferred` with an
 explicit reason and follow-up scope; they are not self-attested as frozen.
-Feature and parameter ablations continue under Sprint 4 issue #41, temporal and
-year/regime robustness under #42, and randomized perturbation controls under
-#43.
+Feature and parameter ablations, feature permutation, randomized-label controls,
+and representation placebos continue under Sprint 4 issue #41. Matched temporal
+and year/regime robustness with dependence-aware uncertainty continues under
+issue #42.
 
 Cross-repository Signalattice claims use a strict receipt pinned to repository,
 origin, commit, Git blob, byte length, and SHA-256. A local verifier reads the

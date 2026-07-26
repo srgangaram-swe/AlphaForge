@@ -60,7 +60,7 @@ year stability, and compute accounting.
 | Deep sequence | Historical WIKI development fold | Reject current advancement evidence | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Time-frequency vision | Synthetic chronological holdout | Reject progression; small-CNN gate failed | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 | Latent representations | Synthetic chronological holdout | Reject learned-representation promotion | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
-| Governed ensembles | Synthetic chronological holdout | Defer market evaluation | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 0 | 0 |
+| Governed ensembles | Synthetic chronological holdout | Defer market evaluation | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | Abstention policy | Synthetic policy mechanics | Reject current thresholds as an improvement | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 |
 
 The detailed interpretation is deliberately conservative:
