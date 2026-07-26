@@ -60,6 +60,11 @@ def test_wiki_bootstrap_profile_has_a_strict_pre_registered_boundary() -> None:
             lambda cfg: cfg["readiness"].update({"unknown_gate": True}),
             "unknown_gate",
         ),
+        (
+            "research_governance",
+            lambda cfg: cfg["correction"].update({"failed_trial_p_value": 0.5}),
+            "failed_trial_p_value",
+        ),
     ],
 )
 def test_invalid_or_unknown_settings_fail_before_execution(

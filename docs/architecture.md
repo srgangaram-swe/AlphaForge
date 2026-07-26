@@ -14,7 +14,8 @@ flowchart TD
     models --> preds[Out-of-sample prediction panel]
     preds --> calibration[OOF calibration + dependence-aware uncertainty]
     calibration --> metrics[Contract-bound unified metrics]
-    metrics --> overfit
+    metrics --> governance[Frozen family + append-only research ledger]
+    governance --> overfit
     preds --> overfit[Overfitting stats: DSR, PBO, NW t-stats]
     preds --> signals[Signals + regime filter]
     signals --> portfolio[Portfolio construction]
@@ -80,5 +81,11 @@ Two implementation layers sit beside the Python pipeline:
   cost/capacity measures, and deterministic moving-block distributions with
   published variance and assumptions. See
   [Metric governance and time-series distributions](metric_governance.md).
+- **Research governance boundary** (`alphaforge/research/governance.py`):
+  deeply immutable hypothesis, mechanism, dataset, test, threshold, candidate,
+  and lineage plans; a bounded hash-chained trial state machine with an atomic
+  head receipt; conservative failed-trial accounting; exact-family Holm/BH
+  corrections; and predeclared kill decisions. See
+  [Append-only research governance](research_governance.md).
 - **Capacity evaluation** (`alphaforge/evaluation/capacity.py`): auditable AUM,
   participation, fill-ratio, and cost sensitivities using supplied lagged ADV.

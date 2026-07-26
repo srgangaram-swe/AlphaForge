@@ -44,6 +44,9 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Contract-bound predictive, IC, calibration, return, drawdown, turnover,
   exposure, capacity, benchmark, and cost metrics with elapsed-time
   annualization and moving-block sampling distributions.
+- A deeply immutable hypothesis and trial-family plan, append-only hash-chained
+  research ledger, complete-family Holm/BH corrections, and frozen kill
+  criteria that retain failures and rejected evaluation attempts.
 - Backtests that use out-of-sample predictions only.
 - Close-decision → next-open execution with a self-financing cash/share ledger,
   drifted holdings, causal lagged-liquidity inputs, partial fills, and reconciled P&L.
@@ -139,6 +142,10 @@ configuration, JSON-safe persistence, and failure behavior.
 The [metric governance contract](docs/metric_governance.md) defines units,
 annualization, benchmarks, missingness, invalid states, and dependence-aware
 distributions for the unified research scorecard.
+The [append-only research governance contract](docs/research_governance.md)
+defines frozen hypothesis/lineage plans, trial state transitions, tamper and
+truncation detection, complete-family corrections, kill criteria, recovery
+behavior, and its external-receipt limitation.
 
 Supply-chain and release controls are documented in
 [Release and security governance](docs/release_security.md).
