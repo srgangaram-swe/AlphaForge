@@ -163,7 +163,8 @@ def _render_backtest_workspace(st: Any) -> None:
         default=["zero_baseline", "historical_mean", "momentum_baseline"],
     )
     strategy = st.sidebar.selectbox(
-        "Signal strategy", ["long_short", "long_only_topk", "rank_weighted", "confidence"]
+        "Signal strategy",
+        ["long_short", "long_only_topk", "rank_weighted", "confidence_weighted"],
     )
     cost_bps = st.sidebar.slider("Transaction cost (bps)", 0.0, 20.0, 1.0, step=0.5)
     seed = int(st.sidebar.number_input("Seed", min_value=0, value=42, step=1))

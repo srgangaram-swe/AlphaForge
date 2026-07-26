@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -17,12 +17,13 @@ from alphaforge.research import read_frame_artifact
 
 try:
     from fastapi import FastAPI, HTTPException
-    from pydantic import BaseModel, Field
+    from pydantic import BaseModel, ConfigDict, Field
 except ImportError as exc:  # pragma: no cover
     raise RuntimeError("Install app extras with: pip install -e '.[app]'") from exc
 
 from alphaforge.service import (
     BacktestRequest,
+    BacktestResourceNotFoundError,
     BacktestServiceError,
     available_baselines,
     available_strategy_models,
@@ -163,40 +164,123 @@ def metrics() -> dict[str, Any]:
 class BacktestSpec(BaseModel):
     """Request body for an on-demand backtest (mirrors the service contract)."""
 
-    data_source: str = "synthetic"
-    bundle_dir: str | None = None
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    data_source: Literal["synthetic", "signal_foundry"] = "synthetic"
+    bundle_dir: str | None = Field(default=None, min_length=1, max_length=4096)
     n_symbols: int = Field(default=8, ge=2, le=100)
     n_days: int = Field(default=600, ge=120, le=5000)
-    benchmark_symbol: str = "BENCH"
-    model: str = "random_forest"
-    model_params: dict[str, Any] = Field(default_factory=dict)
+    benchmark_symbol: str = Field(default="BENCH", min_length=1, max_length=32)
+    model: str = Field(default="random_forest", min_length=1, max_length=128)
+    model_params: dict[str, Any] = Field(default_factory=dict, max_length=64)
     baselines: list[str] = Field(
-        default_factory=lambda: ["zero_baseline", "historical_mean", "momentum_baseline"]
+        default_factory=lambda: ["zero_baseline", "historical_mean", "momentum_baseline"],
+        max_length=8,
     )
     horizon: int = Field(default=1, ge=1, le=60)
-    strategy: str = "long_short"
+    strategy: Literal["long_short", "long_only_topk", "rank_weighted", "confidence_weighted"] = (
+        "long_short"
+    )
     cost_bps: float = Field(default=1.0, ge=0.0, le=100.0)
-    seed: int = Field(default=42, ge=0)
-    min_train_days: int = Field(default=252, ge=20)
-    test_days: int = Field(default=63, ge=1)
-    step_days: int = Field(default=63, ge=1)
-    embargo_days: int = Field(default=10, ge=0)
+    seed: int = Field(default=42, ge=0, le=2**32 - 1)
+    min_train_days: int = Field(default=252, ge=20, le=5000)
+    test_days: int = Field(default=63, ge=1, le=5000)
+    step_days: int = Field(default=63, ge=1, le=5000)
+    embargo_days: int = Field(default=10, ge=0, le=1000)
 
 
-@app.get("/catalog")
+class EquityPointSpec(BaseModel):
+    """One dated point in the simulated strategy evidence."""
+
+    date: str
+    strategy_cum: float | None
+    benchmark_cum: float | None
+    drawdown: float | None
+
+
+class StrategyOutcomeSpec(BaseModel):
+    """Typed API representation of one model or baseline outcome."""
+
+    name: str
+    is_headline: bool
+    is_baseline: bool
+    metrics: dict[str, float | None]
+    equity_curve: list[EquityPointSpec]
+
+
+class ComparisonSpec(BaseModel):
+    """Typed comparison row with the service's governed metric set."""
+
+    name: str
+    is_baseline: bool
+    total_return: float | None = None
+    annual_return: float | None = None
+    annual_volatility: float | None = None
+    sharpe: float | None = None
+    sortino: float | None = None
+    max_drawdown: float | None = None
+    calmar: float | None = None
+    hit_rate: float | None = None
+    average_turnover: float | None = None
+
+
+class BacktestResponse(BaseModel):
+    """OpenAPI response schema for a completed simulated backtest."""
+
+    request: dict[str, Any]
+    data_id: str
+    benchmark_symbol: str
+    n_observations: int
+    n_windows: int
+    headline: StrategyOutcomeSpec
+    comparison: list[ComparisonSpec]
+    trades_tail: list[dict[str, Any]]
+    reproducibility: dict[str, Any]
+    disclaimer: str
+
+
+class CatalogResponse(BaseModel):
+    """OpenAPI response schema for supported interactive resources."""
+
+    models: list[str]
+    baselines: list[str]
+    strategies: list[str]
+    data_sources: list[str]
+    bundles: list[str]
+    disclaimer: str
+
+
+_BUNDLES_ROOT = Path("data/signal-foundry-bundles")
+
+
+def _resolve_api_bundle(bundle_dir: str) -> str:
+    """Resolve a cataloged bundle without allowing arbitrary filesystem reads."""
+    root = _BUNDLES_ROOT.resolve()
+    candidate = Path(bundle_dir).resolve()
+    if candidate.parent != root or not (candidate / "manifest.json").is_file():
+        raise BacktestResourceNotFoundError("selected Signal Foundry bundle was not found")
+    return str(candidate)
+
+
+@app.get("/catalog", response_model=CatalogResponse)
 def catalog() -> dict[str, Any]:
     """Available models, baselines, strategies, and discoverable data bundles."""
     return {
         "models": available_strategy_models(),
         "baselines": available_baselines(),
-        "strategies": ["long_short", "long_only_topk", "rank_weighted", "confidence"],
+        "strategies": [
+            "long_short",
+            "long_only_topk",
+            "rank_weighted",
+            "confidence_weighted",
+        ],
         "data_sources": ["synthetic", "signal_foundry"],
         "bundles": discover_bundles(),
         "disclaimer": DISCLAIMER,
     }
 
 
-@app.post("/backtests")
+@app.post("/backtests", response_model=BacktestResponse)
 def create_backtest(spec: BacktestSpec) -> dict[str, Any]:
     """Run a leakage-safe walk-forward backtest for a model and its baselines.
 
@@ -204,8 +288,15 @@ def create_backtest(spec: BacktestSpec) -> dict[str, Any]:
     Signal Foundry bundle produced by Signalattice — not live or executable.
     """
     try:
-        request = BacktestRequest(**spec.model_dump())
+        if spec.model not in available_strategy_models():
+            raise BacktestResourceNotFoundError(f"unknown model {spec.model!r}")
+        payload = spec.model_dump()
+        if spec.data_source == "signal_foundry" and spec.bundle_dir is not None:
+            payload["bundle_dir"] = _resolve_api_bundle(spec.bundle_dir)
+        request = BacktestRequest(**payload)
         result = run_backtest_service(request)
+    except BacktestResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except BacktestServiceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except FileNotFoundError as exc:

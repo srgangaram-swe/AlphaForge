@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
+import numpy as np
 import pytest
 
+import alphaforge.service.backtest_service as service_module
+from alphaforge.data.synthetic import SyntheticMarketConfig, generate_synthetic_market
 from alphaforge.service import (
     BacktestRequest,
+    BacktestResourceNotFoundError,
     BacktestResult,
     BacktestServiceError,
     available_baselines,
@@ -57,11 +63,20 @@ def test_catalog_helpers() -> None:
         {"data_source": "mars"},
         {"data_source": "signal_foundry"},  # missing bundle_dir
         {"strategy": "bogus"},
+        {"strategy": "confidence"},
         {"horizon": 0},
+        {"horizon": 11, "embargo_days": 10},
         {"cost_bps": -1.0},
+        {"cost_bps": float("nan")},
         {"seed": -1},
+        {"seed": True},
         {"n_symbols": 1},
+        {"n_symbols": True},
+        {"n_days": 5001},
         {"min_train_days": 0},
+        {"model": "equal_probability"},
+        {"baselines": ("equal_probability",)},
+        {"bundle_dir": "not-allowed-for-synthetic"},
     ],
 )
 def test_invalid_requests_fail_closed(overrides: dict) -> None:
@@ -75,6 +90,25 @@ def test_baselines_dedupe_and_drop_headline() -> None:
         baselines=("zero_baseline", "momentum_baseline", "momentum_baseline"),
     )
     assert request.baselines == ("momentum_baseline",)  # headline removed, deduped
+
+
+def test_request_bounds_json_model_parameters() -> None:
+    with pytest.raises(BacktestServiceError, match="finite"):
+        BacktestRequest(**{**FAST, "model_params": {"alpha": np.inf}})
+    with pytest.raises(BacktestServiceError, match="service limit"):
+        BacktestRequest(**{**FAST, "model_params": {"n_estimators": 2_001}})
+    with pytest.raises(BacktestServiceError, match="JSON-compatible"):
+        BacktestRequest(**{**FAST, "model_params": {"callback": object()}})
+
+
+def test_request_copies_and_deeply_freezes_model_parameters() -> None:
+    source: dict[str, Any] = {"members": [{"name": "ridge", "params": {"alpha": 2.0}}]}
+    request = BacktestRequest(**{**FAST, "model_params": source})
+    source["members"][0]["params"]["alpha"] = 999.0
+
+    assert request.to_dict()["model_params"]["members"][0]["params"]["alpha"] == 2.0
+    with pytest.raises(TypeError):
+        request.model_params["members"] = ()  # type: ignore[index]
 
 
 def test_config_hash_is_stable_and_sensitive() -> None:
@@ -149,3 +183,66 @@ def test_deterministic_replay() -> None:
     assert a.headline.metrics == b.headline.metrics
     assert a.comparison == b.comparison
     assert a.reproducibility["config_hash"] == b.reproducibility["config_hash"]
+
+
+def test_signal_foundry_bundle_source_runs_identical_pipeline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercise the bundle service path at the verified loader seam.
+
+    The data loader has its own adversarial manifest/parquet integration suite;
+    here a producer-shaped dataset proves the service composes that boundary
+    through features, walk-forward training, and the backtester.
+    """
+    bundle = tmp_path / ("a" * 64)
+    bundle.mkdir()
+    (bundle / "manifest.json").write_text("{}", encoding="utf-8")
+    panel = generate_synthetic_market(SyntheticMarketConfig(n_symbols=5, n_days=440, seed=13))
+    monkeypatch.setattr(
+        service_module,
+        "load_signal_foundry_dataset",
+        lambda path: SimpleNamespace(panel=panel, bundle_id="a" * 64),
+    )
+
+    request = BacktestRequest(
+        **{
+            **FAST,
+            "data_source": "signal_foundry",
+            "bundle_dir": str(bundle),
+            "benchmark_symbol": "BENCH",
+        }
+    )
+    bundle_result = run_backtest_service(request)
+
+    assert bundle_result.data_id == f"bundle:{'a' * 64}"
+    assert bundle_result.n_observations == len(panel)
+    assert bundle_result.headline.name == FAST["model"]
+    assert bundle_result.n_windows >= 1
+
+
+def test_missing_signal_foundry_bundle_is_typed_resource_error(tmp_path: Path) -> None:
+    request = BacktestRequest(
+        **{
+            **FAST,
+            "data_source": "signal_foundry",
+            "bundle_dir": str(tmp_path / "missing"),
+            "benchmark_symbol": "BENCH",
+        }
+    )
+    with pytest.raises(BacktestResourceNotFoundError, match="not found"):
+        run_backtest_service(request)
+
+
+def test_model_configuration_failure_is_mapped_to_service_error() -> None:
+    request = BacktestRequest(
+        **{**FAST, "model": "ridge", "model_params": {"not_a_ridge_parameter": 1}}
+    )
+    with pytest.raises(BacktestServiceError, match="could not be completed") as exc:
+        run_backtest_service(request)
+    assert isinstance(exc.value.__cause__, TypeError)
+
+
+def test_confidence_weighted_strategy_is_wired_to_signal_contract() -> None:
+    request = BacktestRequest(**{**FAST, "strategy": "confidence_weighted"})
+    confidence_result = run_backtest_service(request)
+    assert confidence_result.headline.equity_curve

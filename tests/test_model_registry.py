@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from alphaforge.models.registry import create_model, seed_model_specs
+from alphaforge.models.registry import available_models, create_model, seed_model_specs
 from alphaforge.models.sklearn_models import SklearnModel
 
 
@@ -58,3 +58,15 @@ def test_gradient_boosting_backend_is_explicit_and_environment_independent() -> 
     assert isinstance(model.pipeline.named_steps["model"], HistGradientBoostingRegressor)
     with pytest.raises(ValueError, match="backend must be"):
         create_model("gradient_boosting", backend="automatic")
+
+
+def test_model_catalog_filters_by_declared_task_without_optional_imports() -> None:
+    regression = available_models(task="regression")
+    classification = available_models(task="classification")
+
+    assert "random_forest" in regression
+    assert "equal_probability" not in regression
+    assert classification == ["equal_probability"]
+    assert set(regression) | set(classification) == set(available_models())
+    with pytest.raises(ValueError, match="task must be"):
+        available_models(task="ranking")

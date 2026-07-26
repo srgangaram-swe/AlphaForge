@@ -3,8 +3,9 @@
 An interactive **configure → run → evidence** workflow that lets a user pick data
 and a model, run a leakage-safe walk-forward backtest, and compare it to naive
 baselines — the point where **Signalattice and AlphaForge complement one
-another**: Signalattice supplies point-in-time data (a Signal Foundry bundle),
-AlphaForge turns it into simulated evidence.
+another**: Signalattice supplies verified, versioned market data with explicit
+temporal limitations (a Signal Foundry bundle), and AlphaForge turns it into
+simulated evidence.
 
 Everything here is **simulated research, not live inference or executable orders**.
 
@@ -20,7 +21,9 @@ Three layers, thinnest on top:
    run on identical data, splits, and costs.
 2. **API** — [`apps/api.py`](../apps/api.py). `GET /catalog` (models, baselines,
    strategies, discoverable bundles) and `POST /backtests` (a `BacktestSpec` →
-   result). Pydantic-validated; invalid input `400`, missing bundle `404`.
+   typed `BacktestResponse`). Pydantic rejects malformed payloads with `422`;
+   unknown models and missing bundles return `404`; valid but incompatible
+   configurations return `400`.
 3. **Dashboard** — [`apps/dashboard.py`](../apps/dashboard.py). A Streamlit
    "Run a backtest" view: a configuration sidebar, a Run button, and results —
    metric tiles, an equity-vs-benchmark curve, drawdown, a model-vs-baselines
@@ -37,6 +40,15 @@ baselines to compare, the signal strategy, transaction cost (bps), the seed, and
 the walk-forward window sizes. It validates on construction and **fails closed**
 with `BacktestServiceError` on unknown models/baselines/strategies, a missing
 bundle, or out-of-range values.
+
+The synchronous service is intentionally bounded: at most 100 symbols, 5,000
+dates, 500,000 panel rows, eight baselines, 60 days of forecast horizon, 100 bps
+of modeled transaction cost, and a finite, bounded JSON model-parameter tree.
+Common training resource controls (including estimator count, epochs, tree
+depth, jobs, batch size, and lookback) have explicit ceilings. The service
+accepts only regression models because its target is a forward return; the
+classification baseline is excluded before training. Every model specification
+receives the recorded root seed unless it contains an explicit seed.
 
 `BacktestResult` carries the config echo, a `data_id` (synthetic descriptor or
 `bundle:<bundle-id>`), the headline strategy's equity/benchmark/drawdown series
@@ -64,6 +76,13 @@ Signalattice bundles are discovered under `data/signal-foundry-bundles/`; select
 one in the sidebar (or pass `data_source="signal_foundry", bundle_dir=...`) and a
 benchmark symbol from the bundle universe.
 
+The HTTP API resolves bundle paths only when they name an immediate child of
+that configured bundle root. This prevents an unauthenticated local client from
+using the endpoint as an arbitrary filesystem reader. Direct Python callers may
+select another local bundle root deliberately; the Signal Foundry loader still
+verifies the manifest identity, declared Parquet files, hashes, schema, temporal
+fields, and policy before semantic use.
+
 ## Design and accessibility
 
 Following current backtesting-UI practice, the **equity curve vs benchmark** leads,
@@ -90,9 +109,16 @@ credential, licensed observation, bundle, or run artifact is committed.
 * **Simulated only.** No live data, order routing, or paper/live controls; the
   disclaimer is on every surface.
 * **Synthetic default.** The default data source is the deterministic synthetic
-  market; real evidence requires a Signalattice bundle, whose own limitations
-  (stale/current-vintage engineering data) still apply.
+  market. The current no-cost Nasdaq WIKI bootstrap is stale through 2018,
+  current-vintage, and does not prove point-in-time universe membership,
+  revision completeness, or complete corporate actions. It qualifies pipeline
+  mechanics and historical research only—not paper/live readiness.
 * **Compute.** Each run trains the model and baselines across walk-forward
-  windows; keep the synthetic universe/horizon modest for interactive latency.
-* **Sprint 1 dependency.** Built on current `dev`; final integration with the
-  Sprint 1 data/config/validation contracts follows as they land.
+  windows. Input and common hyperparameter bounds contain work but do not
+  constitute tenant isolation, a latency SLO, authentication, rate limiting, or
+  a background job system; do not expose this local research endpoint to an
+  untrusted network.
+* **Trading gate.** A backtest is not evidence of persistent profit. Licensed
+  point-in-time data, realistic execution/borrow/funding models, multiple-testing
+  governance, a locked final holdout, paper trading, operational controls, and
+  explicit owner approval remain mandatory before any bounded live use.

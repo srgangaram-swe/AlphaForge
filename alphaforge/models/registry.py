@@ -76,6 +76,14 @@ MODEL_REGISTRY: dict[str, Callable[..., AlphaModel]] = {
     "ensemble": _make_ensemble,
 }
 
+# Registry-level task metadata lets callers reject an incompatible model before
+# instantiation. Keep this explicit: importing optional model ecosystems merely
+# to discover their task would make catalog operations environment-dependent.
+MODEL_TASKS: dict[str, str] = {
+    name: "classification" if name == "equal_probability" else "regression"
+    for name in MODEL_REGISTRY
+}
+
 
 def create_model(name: str, **params: Any) -> AlphaModel:
     if name not in MODEL_REGISTRY:
@@ -85,8 +93,11 @@ def create_model(name: str, **params: Any) -> AlphaModel:
     return model
 
 
-def available_models() -> list[str]:
-    return sorted(MODEL_REGISTRY)
+def available_models(*, task: str | None = None) -> list[str]:
+    """Return deterministic registry names, optionally filtered by model task."""
+    if task is not None and task not in {"regression", "classification"}:
+        raise ValueError("task must be 'regression', 'classification', or None")
+    return sorted(name for name in MODEL_REGISTRY if task is None or MODEL_TASKS[name] == task)
 
 
 def seed_model_specs(model_specs: list[dict[str, Any]], root_seed: int) -> list[dict[str, Any]]:
