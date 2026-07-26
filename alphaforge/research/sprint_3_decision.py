@@ -211,6 +211,8 @@ class EvidenceGateSupport:
         self,
         repository_root: str | Path,
         sources: tuple[SourceArtifact, ...],
+        *,
+        verified_sources: Mapping[str, Path] | None = None,
     ) -> None:
         """Verify that the declared source contains the addressed evidence."""
 
@@ -219,7 +221,15 @@ class EvidenceGateSupport:
             raise Sprint3DecisionError(
                 f"gate {self.gate!r} references undeclared source {self.source_path!r}"
             )
-        path = by_path[self.source_path].verify(repository_root)
+        if verified_sources is None:
+            path = by_path[self.source_path].verify(repository_root)
+        else:
+            cached_path = verified_sources.get(self.source_path)
+            if cached_path is None:
+                raise Sprint3DecisionError(
+                    f"gate {self.gate!r} source has not passed content verification"
+                )
+            path = cached_path
         if self.locator_kind == "json_pointer":
             try:
                 value: Any = json.loads(path.read_text(encoding="utf-8"))
@@ -725,6 +735,7 @@ def load_sprint_3_evaluation_plan(
         raise Sprint3DecisionError(f"source reference count exceeds {MAX_SOURCE_REFERENCES}")
     unique_sources: dict[str, str] = {}
     counted_paths: set[str] = set()
+    verified_sources: dict[str, Path] = {}
     total_source_bytes = 0
     for source in references:
         previous = unique_sources.setdefault(source.path, source.sha256)
@@ -734,7 +745,10 @@ def load_sprint_3_evaluation_plan(
             continue
         counted_paths.add(source.path)
         verified = source.verify(repository)
+        verified_sources[source.path] = verified
         total_source_bytes += verified.stat().st_size
+        if total_source_bytes > MAX_TOTAL_SOURCE_BYTES:
+            raise Sprint3DecisionError(f"source byte total exceeds {MAX_TOTAL_SOURCE_BYTES}")
     allowed_protocol_sources = set(unique_sources) | {plan.config_source.path}
     for name in (
         "configurations",
@@ -753,11 +767,13 @@ def load_sprint_3_evaluation_plan(
                 f"protocol dimension {name!r} references undeclared sources: "
                 f"{sorted(undeclared)}"
             )
-    if total_source_bytes > MAX_TOTAL_SOURCE_BYTES:
-        raise Sprint3DecisionError(f"source byte total exceeds {MAX_TOTAL_SOURCE_BYTES}")
     for family in plan.families:
         for support in family.gate_support:
-            support.verify(repository, family.sources)
+            support.verify(
+                repository,
+                family.sources,
+                verified_sources=verified_sources,
+            )
     return plan
 
 
@@ -955,9 +971,19 @@ def publish_sprint_3_decision(
     plan.config_source.verify(repository)
     families = plan.families
     global_evidence = plan.global_evidence
+    verified_source_digests: dict[str, str] = {}
+    reverified_source_paths: set[str] = set()
     for family in families:
         for source in family.sources:
+            previous = verified_source_digests.setdefault(source.path, source.sha256)
+            if previous != source.sha256:
+                raise Sprint3DecisionError(
+                    f"source artifact {source.path!r} has conflicting digests"
+                )
+            if source.path in reverified_source_paths:
+                continue
             source.verify(repository)
+            reverified_source_paths.add(source.path)
     decision = evaluate_sprint_3(
         families,
         global_evidence,

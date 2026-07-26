@@ -422,6 +422,26 @@ def test_plan_loader_bounds_source_references_and_total_bytes(
         _write_plan(tmp_path, families)
 
 
+def test_plan_loader_hashes_each_unique_source_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from alphaforge.research import sprint_3_decision as module
+
+    source = _source(tmp_path)
+    calls: list[str] = []
+    original = module.SourceArtifact.verify
+
+    def recording_verify(self: SourceArtifact, repository_root: str | Path) -> Path:
+        calls.append(self.path)
+        return original(self, repository_root)
+
+    monkeypatch.setattr(module.SourceArtifact, "verify", recording_verify)
+    _write_plan(tmp_path, _complete_families(source))
+
+    assert calls == ["evidence.json"]
+
+
 def test_publisher_is_atomic_content_addressed_and_aggregate_only(tmp_path: Path) -> None:
     source = _source(tmp_path)
     plan = _write_plan(tmp_path, _complete_families(source))
