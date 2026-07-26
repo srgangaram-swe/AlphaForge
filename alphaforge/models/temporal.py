@@ -42,7 +42,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from alphaforge.models.base import AlphaModel
+from alphaforge.models.base import AlphaModel, ModelError
 from alphaforge.models.torch_models import TORCH_AVAILABLE, _build_sequences, _require_torch
 
 if TORCH_AVAILABLE:
@@ -390,7 +390,13 @@ class TemporalAlphaModel(AlphaModel):
         )
 
     @classmethod
-    def load(cls, path: str | Path) -> TemporalAlphaModel:
+    def load(cls, path: str | Path, *, trusted: bool = False) -> TemporalAlphaModel:
+        """Load a checkpoint after an explicit executable-artifact trust decision."""
+        if not trusted:
+            raise ModelError(
+                "refusing to deserialize an executable torch checkpoint; "
+                "pass trusted=True only for a verified, trusted artifact"
+            )
         _require_torch()
         payload = torch.load(Path(path), map_location="cpu", weights_only=False)
         model = cls(**payload["config"])
@@ -402,6 +408,9 @@ class TemporalAlphaModel(AlphaModel):
         model.n_outputs_ = payload["n_outputs"]
         model.net = _TemporalAlphaNet(len(model.columns_), model.cfg, model.n_outputs_)
         model.net.load_state_dict(payload["state_dict"])
+        # A restored model is fitted under the shared AlphaModel contract.
+        model._feature_names = tuple(str(c) for c in model.columns_)
+        model._is_fitted = True
         return model
 
     def _scale_x(self, values: np.ndarray) -> np.ndarray:

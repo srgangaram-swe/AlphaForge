@@ -207,7 +207,13 @@ def run_walk_forward(
             y_train = train[target].astype(float)
             y_test = test[target].astype(float)
 
-            model.fit(X_train, y_train)
+            fit_target = y_train
+            if getattr(model, "needs_sequence_index", False):
+                # Sequence matrices replace the row index with the temporal
+                # (date, symbol) identity. Carry the identical index onto the
+                # positional target before crossing the model contract.
+                fit_target = y_train.set_axis(X_train.index)
+            model.fit(X_train, fit_target)
             pred = pd.Series(model.predict(X_test), index=test.index, dtype=float)
 
             block = test[ID_COLUMNS + [target]].copy()
