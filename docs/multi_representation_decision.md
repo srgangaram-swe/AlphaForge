@@ -101,10 +101,12 @@ actually recorded them; it does not claim that the final plan preregistered
 experiments that had already completed. Two planned dimensions were not
 completed and are therefore explicitly re-scoped rather than claimed:
 
-- matched feature and parameter ablations continue under Sprint 4 issue #41;
-- randomized perturbation/placebo controls continue under Sprint 4 issue #43.
+- matched feature/parameter ablations and feature-permutation,
+  randomized-label, and representation-placebo controls continue under Sprint
+  4 issue #41;
+- matched year and temporal/regime stability with dependence-aware uncertainty
+  continues under Sprint 4 issue #42.
 
-Year and temporal/regime stability evidence continues under Sprint 4 issue #42.
 These gaps remain visible in the final matrix and are readiness failures.
 
 Signalattice’s hierarchical Bayesian, temporal-graph, and posterior-scenario
