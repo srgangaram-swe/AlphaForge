@@ -668,6 +668,66 @@ class RiskAnalyticsConfig(StrictConfig):
         return self
 
 
+class ProbabilityCalibrationConfig(StrictConfig):
+    """Governed probability-calibration settings."""
+
+    method: Literal["platt", "isotonic"]
+    reliability_bins: Annotated[int, Field(ge=2, le=100)]
+
+
+class BootstrapUncertaintyConfig(StrictConfig):
+    """Bounded moving-block bootstrap settings."""
+
+    n_resamples: Annotated[int, Field(ge=100, le=100_000)]
+    block_length: Annotated[int, Field(ge=2, le=10_000_000)]
+    confidence_level: OpenUnitFloat
+    seed: NonNegativeInt
+    circular: bool
+
+
+class ConformalUncertaintyConfig(StrictConfig):
+    """Block-conformal residual interval settings."""
+
+    alpha: OpenUnitFloat
+    block_length: Annotated[int, Field(ge=2, le=10_000_000)]
+    min_blocks: Annotated[int, Field(ge=3, le=10_000)]
+
+
+class QuantileRegressionUncertaintyConfig(StrictConfig):
+    """Bounded linear quantile-regression settings."""
+
+    lower_quantile: OpenUnitFloat
+    upper_quantile: OpenUnitFloat
+    alpha: NonNegativeFloat
+    max_iter: Annotated[int, Field(ge=100, le=1_000_000)]
+    max_samples: Annotated[int, Field(ge=10, le=10_000_000)]
+    max_features: Annotated[int, Field(ge=1, le=10_000)]
+
+    @model_validator(mode="after")
+    def validate_quantiles(self) -> QuantileRegressionUncertaintyConfig:
+        if not self.lower_quantile < 0.5 < self.upper_quantile:
+            raise ValueError("quantiles must satisfy lower_quantile < 0.5 < upper_quantile")
+        return self
+
+
+class CalibrationUncertaintyConfig(StrictConfig):
+    """Strict configuration surface for SF-S2-MR6."""
+
+    version: Literal["1.0.0"]
+    probability: ProbabilityCalibrationConfig
+    bootstrap: BootstrapUncertaintyConfig
+    conformal: ConformalUncertaintyConfig
+    quantile_regression: QuantileRegressionUncertaintyConfig
+
+    @model_validator(mode="after")
+    def validate_temporal_blocks(self) -> CalibrationUncertaintyConfig:
+        if self.bootstrap.block_length != self.conformal.block_length:
+            raise ValueError(
+                "bootstrap and conformal block lengths must match the predeclared dependence policy"
+            )
+        return self
+
+
 class ResearchConfig(StrictConfig):
     holdout_start: str
     benchmark_symbol: str
@@ -733,6 +793,7 @@ ConfigModel = (
     | BacktestConfig
     | StandalonePortfolioConfig
     | RiskAnalyticsConfig
+    | CalibrationUncertaintyConfig
     | SignalFoundryResearchConfig
 )
 
@@ -742,6 +803,7 @@ SCHEMAS: Mapping[str, type[ConfigModel]] = {
     "labels": LabelsConfig,
     "models": ModelsConfig,
     "backtest": BacktestConfig,
+    "calibration": CalibrationUncertaintyConfig,
     "portfolio": StandalonePortfolioConfig,
     "risk": RiskAnalyticsConfig,
     "signal_foundry_research": SignalFoundryResearchConfig,
@@ -799,6 +861,10 @@ def load_portfolio_config(path: str | Path) -> dict[str, Any]:
 
 def load_risk_config(path: str | Path) -> dict[str, Any]:
     return load_config(path, "risk")
+
+
+def load_calibration_config(path: str | Path) -> dict[str, Any]:
+    return load_config(path, "calibration")
 
 
 def load_signal_foundry_research_config(path: str | Path) -> dict[str, Any]:
