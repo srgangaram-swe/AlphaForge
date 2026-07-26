@@ -11,8 +11,11 @@ flowchart TD
     cache --> labels[Versioned label contracts + normalized event intervals]
     labels --> splits[Walk-forward / Purged K-Fold / CPCV splits]
     splits --> representations[Fold-local raw / latent representations]
-    representations --> models[Model training incl. IC-weighted ensemble]
+    representations --> models[Expert model training]
     models --> preds[Out-of-sample prediction panel]
+    preds --> ensembles[Immutable temporal-OOF ensemble boundary]
+    ensembles --> combined[Target-free frozen ensemble inference]
+    combined --> calibration
     preds --> calibration[OOF calibration + dependence-aware uncertainty]
     calibration --> metrics[Contract-bound unified metrics]
     metrics --> governance[Frozen family + append-only research ledger]
@@ -77,6 +80,14 @@ Two implementation layers sit beside the Python pipeline:
   aggregate-only atomic evidence. See
   [Leakage-safe latent representations](latent_representations.md) and
   [ADR 0005](adr/0005-leakage-safe-latent-representations.md).
+- **Ensemble governance boundary**
+  (`alphaforge/models/ensemble_contracts.py`,
+  `alphaforge/models/ensemble.py`): complete-date temporal-OOF prediction and
+  target contracts, final-holdout exclusion, target-free inference, static,
+  rank/vote, ridge-stacking, Bayesian, causal-dynamic, and regime-gated
+  policies, stable JSON identities, bounded causal audit records, and explicit
+  abstention. See [Governed temporal-OOF ensembles](governed_ensembles.md) and
+  [ADR 0006](adr/0006-governed-temporal-oof-ensembles.md).
 - **Calibration and uncertainty boundary**
   (`alphaforge/evaluation/calibration.py`,
   `alphaforge/evaluation/uncertainty.py`): training-OOF-only provenance,
