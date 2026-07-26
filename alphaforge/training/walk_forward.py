@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from typing import Any
 
 import pandas as pd
 
@@ -207,7 +208,13 @@ def run_walk_forward(
             y_train = train[target].astype(float)
             y_test = test[target].astype(float)
 
-            model.fit(X_train, y_train)
+            fit_target = y_train
+            if getattr(model, "needs_sequence_index", False):
+                # Sequence matrices replace the row index with the temporal
+                # (date, symbol) identity. Carry the identical index onto the
+                # positional target before crossing the model contract.
+                fit_target = y_train.set_axis(X_train.index)
+            model.fit(X_train, fit_target)
             pred = pd.Series(model.predict(X_test), index=test.index, dtype=float)
 
             block = test[ID_COLUMNS + [target]].copy()
@@ -218,8 +225,20 @@ def run_walk_forward(
             block["window_id"] = window.window_id
             pred_frames.append(block)
 
-            metrics = regression_metrics(y_test, pred)
+            metrics: dict[str, Any] = dict(regression_metrics(y_test, pred))
             metrics.update({"model": name, "window_id": window.window_id})
+            diagnostics = model.training_diagnostics()
+            if diagnostics is not None:
+                metrics.update(
+                    {
+                        "training_backend": diagnostics.backend,
+                        "training_status": diagnostics.status,
+                        "training_iterations": diagnostics.iterations,
+                        "training_iteration_limit": diagnostics.iteration_limit,
+                        "training_seed": diagnostics.seed,
+                        "training_warning_count": len(diagnostics.warnings),
+                    }
+                )
             metric_rows.append(metrics)
 
             importance = model.feature_importance()

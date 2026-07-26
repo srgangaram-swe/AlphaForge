@@ -12,6 +12,10 @@ flowchart TD
     labels --> splits[Walk-forward / Purged K-Fold / CPCV splits]
     splits --> models[Model training incl. IC-weighted ensemble]
     models --> preds[Out-of-sample prediction panel]
+    preds --> calibration[OOF calibration + dependence-aware uncertainty]
+    calibration --> metrics[Contract-bound unified metrics]
+    metrics --> governance[Frozen family + append-only research ledger]
+    governance --> overfit
     preds --> overfit[Overfitting stats: DSR, PBO, NW t-stats]
     preds --> signals[Signals + regime filter]
     signals --> portfolio[Portfolio construction]
@@ -58,5 +62,37 @@ Two implementation layers sit beside the Python pipeline:
   `(t,t+h]` future intervals, protected-boundary rejection, strict price/side
   availability, and dependence/balance/stability/sensitivity evidence. See
   [Financial label contracts and diagnostics](label_design.md).
+- **Model governance boundary** (`alphaforge/models/base.py`,
+  `alphaforge/models/sklearn_models.py`): typed resource bounds,
+  train-fold-only estimator pipelines, explicit optional backends, immutable
+  termination evidence, deterministic seed injection, and trusted-only binary
+  deserialization. See
+  [Governed benchmark models](governed_benchmark_models.md).
+- **Calibration and uncertainty boundary**
+  (`alphaforge/evaluation/calibration.py`,
+  `alphaforge/evaluation/uncertainty.py`): training-OOF-only provenance,
+  post-fit evaluation periods, strict probability metrics, JSON-safe
+  Platt/isotonic state, moving-block bootstrap intervals, conservative
+  block-conformal residual intervals, and bounded linear quantile regression.
+  See [Calibration and uncertainty contracts](calibration_uncertainty.md).
+- **Metric governance boundary** (`alphaforge/evaluation/metric_suite.py`):
+  immutable interpretation contracts, explicit undefined states,
+  elapsed-calendar-time annualization, benchmark semantics, reconciled
+  cost/capacity measures, and deterministic moving-block distributions with
+  published variance and assumptions. See
+  [Metric governance and time-series distributions](metric_governance.md).
+- **Research governance boundary** (`alphaforge/research/governance.py`):
+  deeply immutable hypothesis, mechanism, dataset, test, threshold, candidate,
+  and lineage plans; a bounded hash-chained trial state machine with an atomic
+  head receipt; conservative failed-trial accounting; exact-family Holm/BH
+  corrections; and predeclared kill decisions. See
+  [Append-only research governance](research_governance.md).
+- **Governed baseline study** (`alphaforge/research/baseline_study.py`,
+  `alphaforge/research/baseline_study_evidence.py`): freezes the exact
+  seven-candidate family before execution, binds every trial to the append-only
+  ledger, computes matched-fold/multiplicity/economic/calibration aggregates,
+  and exposes only non-reconstructive evidence to Seaborn plotting. The
+  development runner opens the final holdout only for the selected candidate.
+  See [Governed seven-candidate baseline study](governed_baseline_study.md).
 - **Capacity evaluation** (`alphaforge/evaluation/capacity.py`): auditable AUM,
   participation, fill-ratio, and cost sensitivities using supplied lagged ADV.
