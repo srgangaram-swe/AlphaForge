@@ -25,6 +25,10 @@ still evolve between minor releases.
   invocation arguments, and hashed artifact inventories.
 - A committed universal `uv.lock` plus locked CI and container installation for
   reproducible dependency resolution across supported Python versions.
+- A leakage-safe latent-representation layer with raw/PCA controls, bounded
+  optional autoencoder and causal contrastive families, stable fitted-state and
+  PCA-subspace identities, validation-only selection, downstream transfer
+  diagnostics, and aggregate synthetic Seaborn evidence.
 
 ### Changed
 

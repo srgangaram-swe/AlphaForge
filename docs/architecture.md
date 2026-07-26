@@ -10,7 +10,8 @@ flowchart TD
     features --> cache[Validated content-addressed feature cache]
     cache --> labels[Versioned label contracts + normalized event intervals]
     labels --> splits[Walk-forward / Purged K-Fold / CPCV splits]
-    splits --> models[Model training incl. IC-weighted ensemble]
+    splits --> representations[Fold-local raw / latent representations]
+    representations --> models[Model training incl. IC-weighted ensemble]
     models --> preds[Out-of-sample prediction panel]
     preds --> calibration[OOF calibration + dependence-aware uncertainty]
     calibration --> metrics[Contract-bound unified metrics]
@@ -68,6 +69,14 @@ Two implementation layers sit beside the Python pipeline:
   termination evidence, deterministic seed injection, and trusted-only binary
   deserialization. See
   [Governed benchmark models](governed_benchmark_models.md).
+- **Representation trust boundary** (`alphaforge/representations/`,
+  `alphaforge/research/representation_study.py`): target-free aligned batches,
+  train-only normalization and learned state, causal per-symbol windows,
+  sign-canonical and subspace-invariant PCA identities, bounded optional Torch
+  encoders, explicit reconstruction capability, validation-only selection, and
+  aggregate-only atomic evidence. See
+  [Leakage-safe latent representations](latent_representations.md) and
+  [ADR 0005](adr/0005-leakage-safe-latent-representations.md).
 - **Calibration and uncertainty boundary**
   (`alphaforge/evaluation/calibration.py`,
   `alphaforge/evaluation/uncertainty.py`): training-OOF-only provenance,

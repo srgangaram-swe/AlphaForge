@@ -6,6 +6,7 @@ from pathlib import Path
 
 from alphaforge.config import SCHEMAS, load_config
 from alphaforge.research.deep_sequence_study import load_deep_sequence_study_config
+from alphaforge.research.representation_study import load_representation_study_config
 from alphaforge.research.time_frequency_study import load_time_frequency_study_config
 
 
@@ -27,6 +28,9 @@ def main() -> None:
     time_frequency_path = Path("configs/time_frequency_vision_benchmark.yaml")
     load_time_frequency_study_config(time_frequency_path)
     print(f"validated time_frequency_study: {time_frequency_path}")
+    representation_path = Path("configs/latent_representation_benchmark.yaml")
+    load_representation_study_config(representation_path)
+    print(f"validated representation_study: {representation_path}")
 
 
 if __name__ == "__main__":
