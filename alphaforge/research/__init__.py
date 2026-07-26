@@ -53,6 +53,15 @@ from alphaforge.research.signal_foundry import (
     GovernedResearchResult,
     run_governed_signal_foundry_research,
 )
+from alphaforge.research.time_frequency_study import (
+    TIME_FREQUENCY_CANDIDATES,
+    TimeFrequencyStudyConfig,
+    TimeFrequencyStudyResult,
+    build_synthetic_time_frequency_reference,
+    load_time_frequency_study_config,
+    run_synthetic_time_frequency_study,
+    run_time_frequency_study,
+)
 
 __all__ = [
     "TABLE_ARTIFACT_FORMAT",
@@ -82,18 +91,25 @@ __all__ = [
     "ResearchLedger",
     "SPRINT_2_CANDIDATES",
     "TrialSpec",
+    "TIME_FREQUENCY_CANDIDATES",
+    "TimeFrequencyStudyConfig",
+    "TimeFrequencyStudyResult",
     "adjust_p_values",
     "capture_environment",
     "capture_git_context",
     "derive_seed_map",
     "inventory_artifacts",
+    "build_synthetic_time_frequency_reference",
     "load_deep_sequence_study_config",
+    "load_time_frequency_study_config",
     "read_frame_artifact",
     "refresh_experiment_manifest",
     "redact_cli_arguments",
     "run_governed_baseline_study",
     "run_governed_signal_foundry_research",
     "run_deep_sequence_study",
+    "run_synthetic_time_frequency_study",
+    "run_time_frequency_study",
     "write_experiment_manifest",
     "write_frame_artifact",
 ]

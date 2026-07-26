@@ -6,6 +6,7 @@ from pathlib import Path
 
 from alphaforge.config import SCHEMAS, load_config
 from alphaforge.research.deep_sequence_study import load_deep_sequence_study_config
+from alphaforge.research.time_frequency_study import load_time_frequency_study_config
 
 
 def main() -> None:
@@ -23,6 +24,9 @@ def main() -> None:
     deep_sequence_path = Path("configs/deep_sequence_benchmark.yaml")
     load_deep_sequence_study_config(deep_sequence_path)
     print(f"validated deep_sequence_study: {deep_sequence_path}")
+    time_frequency_path = Path("configs/time_frequency_vision_benchmark.yaml")
+    load_time_frequency_study_config(time_frequency_path)
+    print(f"validated time_frequency_study: {time_frequency_path}")
 
 
 if __name__ == "__main__":
