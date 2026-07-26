@@ -112,6 +112,24 @@ def test_summary_is_matched_and_reports_resources_only_when_measured() -> None:
     assert (summary["net_mean_daily_return"] < summary["gross_mean_daily_return"]).all()
 
 
+def test_runtime_capture_does_not_import_optional_native_packages(monkeypatch) -> None:
+    observed: list[str] = []
+
+    def fake_version(name: str) -> str:
+        observed.append(name)
+        if name == "lightgbm":
+            raise study.PackageNotFoundError
+        return f"{name}-version"
+
+    monkeypatch.setattr(study, "version", fake_version)
+
+    environment = study._runtime_environment()
+
+    assert observed == ["torch", "lightgbm"]
+    assert environment["torch"] == "torch-version"
+    assert environment["lightgbm"] == "unavailable"
+
+
 def test_aggregate_publication_is_atomic_seaborn_based_and_excludes_rows(
     tmp_path: Path,
     monkeypatch,

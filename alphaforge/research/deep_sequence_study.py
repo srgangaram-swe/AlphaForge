@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 from dataclasses import asdict, dataclass
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -252,9 +253,6 @@ def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
 
 def _runtime_environment() -> dict[str, Any]:
     """Record the minimum environment needed to interpret compute evidence."""
-    import lightgbm
-    import torch
-
     return {
         "python": platform.python_version(),
         "python_implementation": platform.python_implementation(),
@@ -266,12 +264,20 @@ def _runtime_environment() -> dict[str, Any]:
         "numpy": np.__version__,
         "pandas": pd.__version__,
         "seaborn": sns.__version__,
-        "torch": torch.__version__,
-        "lightgbm": lightgbm.__version__,
+        "torch": _installed_version("torch"),
+        "lightgbm": _installed_version("lightgbm"),
         "reference_device": "cpu",
         "warmup_runs": 0,
         "measurement_samples_per_fit": 1,
     }
+
+
+def _installed_version(distribution: str) -> str:
+    """Return package metadata without importing an optional native runtime."""
+    try:
+        return version(distribution)
+    except PackageNotFoundError:
+        return "unavailable"
 
 
 def run_deep_sequence_study(
