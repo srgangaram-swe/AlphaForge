@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -101,7 +102,7 @@ def test_committed_receipt_is_network_free_and_semantically_bound(
     def reject_subprocess(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("committed receipt loading must not invoke Git or a network path")
 
-    monkeypatch.setattr(provenance_module.subprocess, "run", reject_subprocess)
+    monkeypatch.setattr(provenance_module.subprocess, "Popen", reject_subprocess)
     receipt_path = (
         Path(__file__).resolve().parents[1]
         / "docs/evidence/signal_foundry_sprint_3/cross_repository_provenance.json"
@@ -217,3 +218,173 @@ def test_verifier_rejects_symlinked_checkout(tmp_path: Path) -> None:
 
     with pytest.raises(CrossRepositoryProvenanceError, match="symlink"):
         verify_cross_repository_receipt(receipt, checkout=link)
+
+
+def test_verifier_ignores_git_replace_refs(tmp_path: Path) -> None:
+    repository, receipt, document = _fixture(tmp_path)
+    claimed_commit = document["commit"]
+    evidence = repository / "docs" / "evidence.json"
+    replacement_content = b'{"scope":"replacement-only"}\n'
+    evidence.write_bytes(replacement_content)
+    _git(repository, "add", "docs/evidence.json")
+    _git(repository, "commit", "-m", "Add replacement-only evidence")
+    replacement_commit = _git(repository, "rev-parse", "HEAD")
+    replacement_blob = _git(
+        repository,
+        "rev-parse",
+        f"{replacement_commit}:docs/evidence.json",
+    )
+    document["sources"][0].update(
+        {
+            "git_blob_sha1": replacement_blob,
+            "bytes": len(replacement_content),
+            "sha256": hashlib.sha256(replacement_content).hexdigest(),
+        }
+    )
+    receipt.write_text(json.dumps(document), encoding="utf-8")
+    _git(repository, "replace", claimed_commit, replacement_commit)
+
+    with pytest.raises(CrossRepositoryProvenanceError, match="Git blob mismatch"):
+        verify_cross_repository_receipt(receipt, checkout=repository)
+
+
+def test_verifier_rejects_symlink_and_executable_tree_modes(tmp_path: Path) -> None:
+    repository, receipt, document = _fixture(tmp_path)
+    evidence = repository / "docs" / "evidence.json"
+    evidence.unlink()
+    evidence.symlink_to("../../outside.json")
+    _git(repository, "add", "docs/evidence.json")
+    _git(repository, "commit", "-m", "Replace evidence with a symlink")
+    symlink_commit = _git(repository, "rev-parse", "HEAD")
+    symlink_blob = _git(repository, "rev-parse", f"{symlink_commit}:docs/evidence.json")
+    symlink_content = b"../../outside.json"
+    document["commit"] = symlink_commit
+    document["sources"][0].update(
+        {
+            "git_blob_sha1": symlink_blob,
+            "bytes": len(symlink_content),
+            "sha256": hashlib.sha256(symlink_content).hexdigest(),
+        }
+    )
+    receipt.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(CrossRepositoryProvenanceError, match="regular blob"):
+        verify_cross_repository_receipt(receipt, checkout=repository)
+
+    evidence.unlink()
+    evidence.write_text('{"scope":"executable"}\n', encoding="utf-8")
+    evidence.chmod(0o755)
+    _git(repository, "add", "docs/evidence.json")
+    _git(repository, "commit", "-m", "Replace evidence with an executable")
+    executable_commit = _git(repository, "rev-parse", "HEAD")
+    executable_blob = _git(
+        repository,
+        "rev-parse",
+        f"{executable_commit}:docs/evidence.json",
+    )
+    executable_content = evidence.read_bytes()
+    document["commit"] = executable_commit
+    document["sources"][0].update(
+        {
+            "git_blob_sha1": executable_blob,
+            "bytes": len(executable_content),
+            "sha256": hashlib.sha256(executable_content).hexdigest(),
+        }
+    )
+    receipt.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(CrossRepositoryProvenanceError, match="regular blob"):
+        verify_cross_repository_receipt(receipt, checkout=repository)
+
+
+def test_receipt_parser_rejects_duplicates_deep_documents_and_boolean_counts(
+    tmp_path: Path,
+) -> None:
+    _, receipt, document = _fixture(tmp_path)
+    duplicate = receipt.read_text(encoding="utf-8").replace(
+        "{",
+        '{"repository":"example/source",',
+        1,
+    )
+    receipt.write_text(duplicate, encoding="utf-8")
+    with pytest.raises(CrossRepositoryProvenanceError, match="duplicate key"):
+        load_cross_repository_receipt(receipt)
+
+    receipt.write_text(
+        '{"nested":' + "[" * 65 + "0" + "]" * 65 + "}",
+        encoding="utf-8",
+    )
+    with pytest.raises(CrossRepositoryProvenanceError, match="depth"):
+        load_cross_repository_receipt(receipt)
+
+    document["verification"]["network_requests"] = False
+    receipt.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(CrossRepositoryProvenanceError, match="network-free"):
+        load_cross_repository_receipt(receipt)
+
+
+def test_receipt_snapshot_rejects_symlink_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, receipt, _ = _fixture(tmp_path)
+    replacement = tmp_path / "replacement.json"
+    replacement.write_bytes(receipt.read_bytes())
+    original_open = os.open
+    swapped = False
+
+    def swap_before_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if Path(path) == receipt and not swapped:
+            swapped = True
+            receipt.unlink()
+            receipt.symlink_to(replacement)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    from alphaforge.research import _bounded_io
+
+    monkeypatch.setattr(_bounded_io.os, "open", swap_before_open)
+    with pytest.raises(CrossRepositoryProvenanceError, match="non-symlink"):
+        load_cross_repository_receipt(receipt)
+    assert swapped
+
+
+def test_git_environment_disables_replacements_and_lazy_fetch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository, receipt, _ = _fixture(tmp_path)
+    observed_environments: list[dict[str, str]] = []
+    original_popen = subprocess.Popen
+
+    def recording_popen(*args: Any, **kwargs: Any) -> subprocess.Popen[bytes]:
+        observed_environments.append(dict(kwargs["env"]))
+        return original_popen(*args, **kwargs)
+
+    monkeypatch.setattr(provenance_module.subprocess, "Popen", recording_popen)
+    verify_cross_repository_receipt(receipt, checkout=repository)
+
+    assert observed_environments
+    assert all(
+        environment["GIT_NO_REPLACE_OBJECTS"] == "1" for environment in observed_environments
+    )
+    assert all(environment["GIT_NO_LAZY_FETCH"] == "1" for environment in observed_environments)
+    assert all(environment["GIT_TERMINAL_PROMPT"] == "0" for environment in observed_environments)
+
+
+def test_git_output_is_capped_while_streaming(tmp_path: Path) -> None:
+    repository, _, _ = _fixture(tmp_path)
+    _git(repository, "config", "audit.oversized", "x" * 4096)
+
+    with pytest.raises(CrossRepositoryProvenanceError, match="output bounds"):
+        provenance_module._run_git(
+            repository,
+            ["config", "--get", "audit.oversized"],
+            maximum_stdout=32,
+        )

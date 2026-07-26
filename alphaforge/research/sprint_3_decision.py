@@ -15,12 +15,13 @@ credentials are neither accepted nor published.
 from __future__ import annotations
 
 import csv
-import hashlib
+import io
 import json
 import os
 import shutil
 import tempfile
-from collections.abc import Mapping
+from collections import Counter
+from collections.abc import Mapping, MutableMapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -28,8 +29,16 @@ from typing import Annotated, Any, Literal
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
+from alphaforge.research._bounded_io import (
+    BoundedIOError,
+    RegularFileSnapshot,
+    bounded_diagnostic,
+    parse_strict_json,
+    parse_strict_yaml,
+    read_regular_file_snapshot,
+)
 
 SPRINT_3_DECISION_SCHEMA_VERSION = "1.0.0"
 MAX_SOURCE_BYTES = 32 * 1024 * 1024
@@ -37,7 +46,22 @@ MAX_FAMILIES = 64
 MAX_PLAN_BYTES = 1024 * 1024
 MAX_SOURCE_REFERENCES = 128
 MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024
-_HASH_CHUNK_BYTES = 1024 * 1024
+MAX_DOCUMENT_DEPTH = 64
+MAX_DOCUMENT_NODES = 100_000
+MAX_DIAGNOSTIC_CHARS = 4096
+MAX_SOURCE_PARSE_VARIANTS = MAX_SOURCE_REFERENCES * 3
+MAX_OUTPUT_ARTIFACTS = 7
+MAX_OUTPUT_BYTES = 32 * 1024 * 1024
+_PAYLOAD_ARTIFACTS = frozenset(
+    {
+        "README.md",
+        "family_evidence.csv",
+        "gate_matrix.csv",
+        "plots/evidence_coverage.png",
+        "semantic_review.json",
+        "summary.json",
+    }
+)
 
 EvidenceContext = Literal[
     "historical_engineering",
@@ -137,29 +161,18 @@ def _safe_identifier(value: str, field: str) -> str:
 
 
 def sha256_file(path: str | Path, *, max_bytes: int = MAX_SOURCE_BYTES) -> str:
-    """Hash one bounded regular file without following a symlink."""
+    """Hash one immutable snapshot of a bounded regular file."""
 
-    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1:
-        raise Sprint3DecisionError("max_bytes must be a positive integer")
-    source = Path(path)
-    if source.is_symlink() or not source.is_file():
-        raise Sprint3DecisionError(f"evidence source must be a regular file: {source}")
-    size = source.stat().st_size
-    if not 0 < size <= max_bytes:
-        raise Sprint3DecisionError(f"evidence source has invalid byte length {size}: {source}")
-    digest = hashlib.sha256()
-    total = 0
-    with source.open("rb") as stream:
-        while chunk := stream.read(min(_HASH_CHUNK_BYTES, max_bytes - total + 1)):
-            total += len(chunk)
-            if total > max_bytes:
-                raise Sprint3DecisionError(
-                    f"evidence source exceeds maximum byte length {max_bytes}: {source}"
-                )
-            digest.update(chunk)
-    if total != size:
-        raise Sprint3DecisionError(f"evidence source byte length changed during hashing: {source}")
-    return digest.hexdigest()
+    try:
+        return read_regular_file_snapshot(path, max_bytes=max_bytes).sha256
+    except BoundedIOError as exc:
+        raise Sprint3DecisionError(
+            bounded_diagnostic(
+                "unable to hash evidence source: ",
+                exc,
+                maximum_chars=MAX_DIAGNOSTIC_CHARS,
+            )
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -192,27 +205,36 @@ class SourceArtifact:
     def verify(self, root: str | Path) -> Path:
         """Return the verified source path or fail on mutation."""
 
+        return self.read_verified(root).path
+
+    def read_verified(self, root: str | Path) -> RegularFileSnapshot:
+        """Return the exact verified bytes without reopening the pathname."""
+
         root_path = Path(root)
         if root_path.is_symlink():
             raise Sprint3DecisionError("repository root must not be a symlink")
         repository = root_path.resolve()
-        source = repository
-        for component in Path(self.path).parts:
-            source = source / component
-            if source.is_symlink():
-                raise Sprint3DecisionError(f"source artifact path traverses a symlink: {self.path}")
-        source = source.resolve()
+        source = repository / self.path
         try:
-            source.relative_to(repository)
-        except ValueError as exc:
-            raise Sprint3DecisionError("source artifact escapes repository root") from exc
-        observed = sha256_file(source)
-        if observed != self.sha256:
+            snapshot = read_regular_file_snapshot(
+                source,
+                max_bytes=MAX_SOURCE_BYTES,
+                root=repository,
+            )
+        except BoundedIOError as exc:
+            raise Sprint3DecisionError(
+                bounded_diagnostic(
+                    "unable to verify source artifact: ",
+                    exc,
+                    maximum_chars=MAX_DIAGNOSTIC_CHARS,
+                )
+            ) from exc
+        if snapshot.sha256 != self.sha256:
             raise Sprint3DecisionError(
                 f"source artifact digest mismatch for {self.path}: "
-                f"expected {self.sha256}, observed {observed}"
+                f"expected {self.sha256}, observed {snapshot.sha256}"
             )
-        return source
+        return snapshot
 
 
 class _SourceArtifactSpec(_StrictPlanModel):
@@ -269,7 +291,8 @@ class EvidenceFact:
         repository_root: str | Path,
         sources: tuple[SourceArtifact, ...],
         *,
-        verified_sources: Mapping[str, Path] | None = None,
+        verified_sources: Mapping[str, RegularFileSnapshot] | None = None,
+        parsed_sources: MutableMapping[tuple[str, EvidenceLocatorKind], Any] | None = None,
     ) -> None:
         """Verify that the declared source contains the reviewed fact locator."""
 
@@ -279,48 +302,93 @@ class EvidenceFact:
                 f"semantic fact references undeclared source {self.source_path!r}"
             )
         if verified_sources is None:
-            path = by_path[self.source_path].verify(repository_root)
+            snapshot = by_path[self.source_path].read_verified(repository_root)
         else:
-            cached_path = verified_sources.get(self.source_path)
-            if cached_path is None:
+            cached_snapshot = verified_sources.get(self.source_path)
+            if cached_snapshot is None:
                 raise Sprint3DecisionError(
                     "semantic fact source has not passed content verification"
                 )
-            path = cached_path
+            snapshot = cached_snapshot
+        cache = parsed_sources if parsed_sources is not None else {}
+        cache_key = (self.source_path, self.locator_kind)
         if self.locator_kind == "json_pointer":
-            try:
-                value: Any = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-                raise Sprint3DecisionError("semantic fact source is not valid JSON") from exc
+            if cache_key not in cache:
+                try:
+                    cache[cache_key] = parse_strict_json(
+                        snapshot.data,
+                        maximum_depth=MAX_DOCUMENT_DEPTH,
+                        maximum_nodes=MAX_DOCUMENT_NODES,
+                    )
+                except BoundedIOError as exc:
+                    raise Sprint3DecisionError(
+                        bounded_diagnostic(
+                            "semantic fact source is not strict bounded JSON: ",
+                            exc,
+                            maximum_chars=MAX_DIAGNOSTIC_CHARS,
+                        )
+                    ) from exc
+            value: Any = cache[cache_key]
             for token in self.locator[1:].split("/"):
+                index = 0
+                while index < len(token):
+                    if token[index] == "~" and (
+                        index + 1 == len(token) or token[index + 1] not in {"0", "1"}
+                    ):
+                        raise Sprint3DecisionError(
+                            "semantic fact JSON pointer contains an invalid escape"
+                        )
+                    index += 2 if token[index] == "~" else 1
                 key = token.replace("~1", "/").replace("~0", "~")
                 if isinstance(value, dict) and key in value:
                     value = value[key]
-                elif isinstance(value, list) and key.isdigit() and int(key) < len(value):
+                elif (
+                    isinstance(value, list)
+                    and key.isdigit()
+                    and (key == "0" or not key.startswith("0"))
+                    and int(key) < len(value)
+                ):
                     value = value[int(key)]
                 else:
                     raise Sprint3DecisionError("semantic fact JSON pointer does not resolve")
         elif self.locator_kind == "csv_column":
-            try:
-                with path.open("r", encoding="utf-8", newline="") as stream:
-                    columns = next(csv.reader(stream))
-            except (OSError, UnicodeError, StopIteration, csv.Error) as exc:
-                raise Sprint3DecisionError("semantic fact source has no valid CSV header") from exc
+            if cache_key not in cache:
+                try:
+                    columns = tuple(
+                        next(csv.reader(io.StringIO(snapshot.data.decode("utf-8"), newline="")))
+                    )
+                except (UnicodeError, StopIteration, csv.Error) as exc:
+                    raise Sprint3DecisionError(
+                        "semantic fact source has no valid CSV header"
+                    ) from exc
+                duplicates = sorted(
+                    column for column, count in Counter(columns).items() if count > 1
+                )
+                if duplicates:
+                    raise Sprint3DecisionError(
+                        f"semantic fact CSV header contains duplicate columns: {duplicates[:8]}"
+                    )
+                cache[cache_key] = columns
+            columns = cache[cache_key]
             if self.locator not in columns:
                 raise Sprint3DecisionError("semantic fact CSV column does not exist")
         else:
-            try:
-                headings = {
-                    line.strip()
-                    for line in path.read_text(encoding="utf-8").splitlines()
-                    if line.startswith("#")
-                }
-            except (OSError, UnicodeError) as exc:
+            if cache_key not in cache:
+                try:
+                    cache[cache_key] = Counter(
+                        line.strip()
+                        for line in snapshot.data.decode("utf-8").splitlines()
+                        if line.startswith("#")
+                    )
+                except UnicodeError as exc:
+                    raise Sprint3DecisionError(
+                        "semantic fact source is not valid UTF-8 Markdown"
+                    ) from exc
+            headings = cache[cache_key]
+            if headings.get(self.locator, 0) != 1:
                 raise Sprint3DecisionError(
-                    "semantic fact source is not valid UTF-8 Markdown"
-                ) from exc
-            if self.locator not in headings:
-                raise Sprint3DecisionError("semantic fact Markdown heading does not exist")
+                    "semantic fact Markdown heading must resolve exactly once"
+                )
 
 
 class _EvidenceFactSpec(_StrictPlanModel):
@@ -406,7 +474,8 @@ class EvidenceGateSupport:
         repository_root: str | Path,
         sources: tuple[SourceArtifact, ...],
         *,
-        verified_sources: Mapping[str, Path] | None = None,
+        verified_sources: Mapping[str, RegularFileSnapshot] | None = None,
+        parsed_sources: MutableMapping[tuple[str, EvidenceLocatorKind], Any] | None = None,
     ) -> None:
         """Verify every independently reviewed fact against pinned source bytes."""
 
@@ -415,6 +484,7 @@ class EvidenceGateSupport:
                 repository_root,
                 sources,
                 verified_sources=verified_sources,
+                parsed_sources=parsed_sources,
             )
 
 
@@ -754,6 +824,60 @@ class _ProtocolDeclarationSpec(_StrictPlanModel):
         )
 
 
+@dataclass(frozen=True)
+class Sprint3ResourceLimits:
+    """Frozen resource ceilings that contribute to the synthesis plan identity."""
+
+    maximum_families: int
+    maximum_plan_bytes: int
+    maximum_source_bytes: int
+    maximum_source_references: int
+    maximum_total_source_bytes: int
+    maximum_document_depth: int
+    maximum_document_nodes: int
+    maximum_diagnostic_chars: int
+    maximum_source_parse_variants: int
+    maximum_output_artifacts: int
+    maximum_output_bytes: int
+
+
+def _enforced_resource_limits() -> Sprint3ResourceLimits:
+    return Sprint3ResourceLimits(
+        maximum_families=MAX_FAMILIES,
+        maximum_plan_bytes=MAX_PLAN_BYTES,
+        maximum_source_bytes=MAX_SOURCE_BYTES,
+        maximum_source_references=MAX_SOURCE_REFERENCES,
+        maximum_total_source_bytes=MAX_TOTAL_SOURCE_BYTES,
+        maximum_document_depth=MAX_DOCUMENT_DEPTH,
+        maximum_document_nodes=MAX_DOCUMENT_NODES,
+        maximum_diagnostic_chars=MAX_DIAGNOSTIC_CHARS,
+        maximum_source_parse_variants=MAX_SOURCE_PARSE_VARIANTS,
+        maximum_output_artifacts=MAX_OUTPUT_ARTIFACTS,
+        maximum_output_bytes=MAX_OUTPUT_BYTES,
+    )
+
+
+class _ResourceLimitsSpec(_StrictPlanModel):
+    """Exact resource ceilings enforced before and during publication."""
+
+    maximum_families: Literal[64]
+    maximum_plan_bytes: Literal[1_048_576]
+    maximum_source_bytes: Literal[33_554_432]
+    maximum_source_references: Literal[128]
+    maximum_total_source_bytes: Literal[67_108_864]
+    maximum_document_depth: Literal[64]
+    maximum_document_nodes: Literal[100_000]
+    maximum_diagnostic_chars: Literal[4_096]
+    maximum_source_parse_variants: Literal[384]
+    maximum_output_artifacts: Literal[7]
+    maximum_output_bytes: Literal[33_554_432]
+
+    def to_domain(self) -> Sprint3ResourceLimits:
+        """Return immutable resource limits included in the plan."""
+
+        return Sprint3ResourceLimits(**self.model_dump())
+
+
 class _SynthesisPolicy(_StrictPlanModel):
     """Fail-closed policy for comparing evidence without ranking contexts."""
 
@@ -773,6 +897,7 @@ class _Sprint3PlanSpec(_StrictPlanModel):
     study_id: str
     issue_number: Literal[37]
     frozen_at_utc: str
+    resource_limits: _ResourceLimitsSpec
     protocol_dimensions: _ProtocolDeclarationSpec
     synthesis_policy: _SynthesisPolicy
     families: Annotated[list[_FamilyEvidenceSpec], Field(min_length=1, max_length=MAX_FAMILIES)]
@@ -781,6 +906,8 @@ class _Sprint3PlanSpec(_StrictPlanModel):
     @model_validator(mode="after")
     def validate_complete_plan(self) -> _Sprint3PlanSpec:
         _safe_identifier(self.study_id, "study_id")
+        if self.resource_limits.to_domain() != _enforced_resource_limits():
+            raise ValueError("resource_limits must exactly match the enforced ceilings")
         try:
             parsed = pd.Timestamp(self.frozen_at_utc)
         except ValueError as exc:
@@ -812,6 +939,7 @@ class Sprint3EvaluationPlan:
     issue_number: int
     frozen_at_utc: str
     config_source: SourceArtifact
+    resource_limits: Sprint3ResourceLimits
     protocol_dimensions: ProtocolDeclaration
     family_order: tuple[str, ...]
     families: tuple[FamilyEvidence, ...]
@@ -862,36 +990,45 @@ def load_sprint_3_evaluation_plan(
         relative_path = lexical_path.relative_to(repository)
     except ValueError as exc:
         raise Sprint3DecisionError("Sprint 3 plan must remain inside repository_root") from exc
-    config_path = repository
-    for component in relative_path.parts:
-        config_path = config_path / component
-        if config_path.is_symlink():
-            raise Sprint3DecisionError("Sprint 3 plan path must not traverse a symlink")
-    config_path = config_path.resolve()
     relative = relative_path.as_posix()
-    if not config_path.is_file():
-        raise Sprint3DecisionError("Sprint 3 plan must be a regular file")
-    size = config_path.stat().st_size
-    if not 0 < size <= MAX_PLAN_BYTES:
-        raise Sprint3DecisionError(
-            f"Sprint 3 plan has invalid byte length {size}; maximum is {MAX_PLAN_BYTES}"
-        )
     try:
-        document = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
-        raise Sprint3DecisionError(f"unable to parse Sprint 3 plan: {exc}") from exc
+        config_snapshot = read_regular_file_snapshot(
+            lexical_path,
+            max_bytes=MAX_PLAN_BYTES,
+            root=repository,
+        )
+        document = parse_strict_yaml(
+            config_snapshot.data,
+            maximum_depth=MAX_DOCUMENT_DEPTH,
+            maximum_nodes=MAX_DOCUMENT_NODES,
+        )
+    except BoundedIOError as exc:
+        raise Sprint3DecisionError(
+            bounded_diagnostic(
+                "unable to load strict Sprint 3 plan: ",
+                exc,
+                maximum_chars=MAX_DIAGNOSTIC_CHARS,
+            )
+        ) from exc
     if not isinstance(document, Mapping):
         raise Sprint3DecisionError("Sprint 3 plan root must be a mapping")
     try:
         spec = _Sprint3PlanSpec.model_validate(document)
     except ValidationError as exc:
-        raise Sprint3DecisionError(f"invalid Sprint 3 plan: {exc}") from exc
+        raise Sprint3DecisionError(
+            bounded_diagnostic(
+                "invalid Sprint 3 plan: ",
+                exc,
+                maximum_chars=MAX_DIAGNOSTIC_CHARS,
+            )
+        ) from exc
     plan = Sprint3EvaluationPlan(
         schema_version=spec.schema_version,
         study_id=spec.study_id,
         issue_number=spec.issue_number,
         frozen_at_utc=spec.frozen_at_utc,
-        config_source=SourceArtifact(path=relative, sha256=sha256_file(config_path)),
+        config_source=SourceArtifact(path=relative, sha256=config_snapshot.sha256),
+        resource_limits=spec.resource_limits.to_domain(),
         protocol_dimensions=spec.protocol_dimensions.to_domain(),
         family_order=tuple(spec.synthesis_policy.family_order),
         families=tuple(family.to_domain() for family in spec.families),
@@ -902,7 +1039,8 @@ def load_sprint_3_evaluation_plan(
         raise Sprint3DecisionError(f"source reference count exceeds {MAX_SOURCE_REFERENCES}")
     unique_sources: dict[str, str] = {}
     counted_paths: set[str] = set()
-    verified_sources: dict[str, Path] = {}
+    verified_sources: dict[str, RegularFileSnapshot] = {}
+    parsed_sources: dict[tuple[str, EvidenceLocatorKind], Any] = {}
     total_source_bytes = 0
     for source in references:
         previous = unique_sources.setdefault(source.path, source.sha256)
@@ -911,9 +1049,9 @@ def load_sprint_3_evaluation_plan(
         if source.path in counted_paths:
             continue
         counted_paths.add(source.path)
-        verified = source.verify(repository)
+        verified = source.read_verified(repository)
         verified_sources[source.path] = verified
-        total_source_bytes += verified.stat().st_size
+        total_source_bytes += verified.size
         if total_source_bytes > MAX_TOTAL_SOURCE_BYTES:
             raise Sprint3DecisionError(f"source byte total exceeds {MAX_TOTAL_SOURCE_BYTES}")
     verified_non_plan_sources = set(verified_sources) - {plan.config_source.path}
@@ -948,7 +1086,12 @@ def load_sprint_3_evaluation_plan(
                 repository,
                 family.sources,
                 verified_sources=verified_sources,
+                parsed_sources=parsed_sources,
             )
+            if len(parsed_sources) > MAX_SOURCE_PARSE_VARIANTS:
+                raise Sprint3DecisionError(
+                    f"source parse variants exceed {MAX_SOURCE_PARSE_VARIANTS}"
+                )
     return plan
 
 
@@ -1180,13 +1323,70 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     )
 
 
+def _payload_manifest_records(staging: Path) -> tuple[dict[str, dict[str, Any]], int]:
+    """Hash the exact bounded publication allowlist from immutable snapshots."""
+
+    observed_directories = {
+        path.relative_to(staging).as_posix()
+        for path in staging.rglob("*")
+        if path.is_dir() and not path.is_symlink()
+    }
+    if observed_directories != {"plots"}:
+        raise Sprint3DecisionError(
+            f"publication directory mismatch: observed={sorted(observed_directories)}"
+        )
+    observed_paths = {
+        path.relative_to(staging).as_posix()
+        for path in staging.rglob("*")
+        if not path.is_dir() or path.is_symlink()
+    }
+    if observed_paths != _PAYLOAD_ARTIFACTS:
+        raise Sprint3DecisionError(
+            f"publication payload mismatch: "
+            f"missing={sorted(_PAYLOAD_ARTIFACTS - observed_paths)}, "
+            f"extra={sorted(observed_paths - _PAYLOAD_ARTIFACTS)}"
+        )
+    if len(observed_paths) + 1 > MAX_OUTPUT_ARTIFACTS:
+        raise Sprint3DecisionError(f"publication artifact count exceeds {MAX_OUTPUT_ARTIFACTS}")
+    artifacts: dict[str, dict[str, Any]] = {}
+    total_bytes = 0
+    for relative in sorted(observed_paths):
+        try:
+            snapshot = read_regular_file_snapshot(
+                staging / relative,
+                max_bytes=MAX_OUTPUT_BYTES,
+                root=staging,
+            )
+        except BoundedIOError as exc:
+            raise Sprint3DecisionError(
+                bounded_diagnostic(
+                    "unable to verify publication payload: ",
+                    exc,
+                    maximum_chars=MAX_DIAGNOSTIC_CHARS,
+                )
+            ) from exc
+        total_bytes += snapshot.size
+        if total_bytes > MAX_OUTPUT_BYTES:
+            raise Sprint3DecisionError(f"publication payload exceeds {MAX_OUTPUT_BYTES} bytes")
+        artifacts[relative] = {
+            "bytes": snapshot.size,
+            "sha256": snapshot.sha256,
+        }
+    return artifacts, total_bytes
+
+
 def publish_sprint_3_decision(
     *,
     repository_root: str | Path,
     plan: Sprint3EvaluationPlan,
     output_dir: str | Path,
 ) -> Path:
-    """Verify sources and atomically publish aggregate Sprint 3 evidence."""
+    """Verify sources and atomically publish aggregate Sprint 3 evidence.
+
+    Atomic no-overwrite behavior assumes a cooperative single writer. A local
+    adversary able to mutate the destination parent concurrently remains
+    outside this repository-local research publisher's trust boundary.
+    """
 
     repository_input = Path(repository_root)
     if repository_input.is_symlink():
@@ -1262,6 +1462,7 @@ def publish_sprint_3_decision(
                     "plan_id": plan.plan_id,
                     "plan_path": plan.config_source.path,
                     "frozen_at_utc": plan.frozen_at_utc,
+                    "resource_limits": asdict(plan.resource_limits),
                     "protocol_dimensions": asdict(plan.protocol_dimensions),
                     "explicitly_deferred_protocol_dimensions": list(
                         plan.protocol_dimensions.deferred_dimensions
@@ -1309,20 +1510,14 @@ def publish_sprint_3_decision(
             "missing gates, dispositions, and residual readiness limitations.\n",
             encoding="utf-8",
         )
-        artifacts = {
-            path.relative_to(staging).as_posix(): {
-                "bytes": path.stat().st_size,
-                "sha256": sha256_file(path),
-            }
-            for path in sorted(staging.rglob("*"))
-            if path.is_file()
-        }
+        artifacts, payload_bytes = _payload_manifest_records(staging)
         _write_json(
             staging / "manifest.json",
             {
                 "schema_version": SPRINT_3_DECISION_SCHEMA_VERSION,
                 "artifacts": artifacts,
                 "plan": asdict(plan.config_source),
+                "resource_limits": asdict(plan.resource_limits),
                 "source_artifacts": [
                     {"family": family.family, **asdict(source)}
                     for family in families
@@ -1330,6 +1525,39 @@ def publish_sprint_3_decision(
                 ],
             },
         )
+        try:
+            manifest_snapshot = read_regular_file_snapshot(
+                staging / "manifest.json",
+                max_bytes=MAX_OUTPUT_BYTES,
+                root=staging,
+            )
+        except BoundedIOError as exc:
+            raise Sprint3DecisionError(
+                bounded_diagnostic(
+                    "unable to verify publication manifest: ",
+                    exc,
+                    maximum_chars=MAX_DIAGNOSTIC_CHARS,
+                )
+            ) from exc
+        if payload_bytes + manifest_snapshot.size > MAX_OUTPUT_BYTES:
+            raise Sprint3DecisionError(f"publication output exceeds {MAX_OUTPUT_BYTES} bytes")
+        final_artifacts = {
+            path.relative_to(staging).as_posix()
+            for path in staging.rglob("*")
+            if not path.is_dir() or path.is_symlink()
+        }
+        final_directories = {
+            path.relative_to(staging).as_posix()
+            for path in staging.rglob("*")
+            if path.is_dir() and not path.is_symlink()
+        }
+        expected_final = _PAYLOAD_ARTIFACTS | {"manifest.json"}
+        if (
+            final_artifacts != expected_final
+            or final_directories != {"plots"}
+            or len(final_artifacts) > MAX_OUTPUT_ARTIFACTS
+        ):
+            raise Sprint3DecisionError("publication artifact set changed before commit")
         os.replace(staging, destination)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)

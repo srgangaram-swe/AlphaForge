@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
@@ -119,6 +120,19 @@ def _write_plan(
         "study_id": "signal-foundry-sprint-3-final",
         "issue_number": 37,
         "frozen_at_utc": "2026-07-26T18:00:00Z",
+        "resource_limits": {
+            "maximum_families": 64,
+            "maximum_plan_bytes": 1_048_576,
+            "maximum_source_bytes": 33_554_432,
+            "maximum_source_references": 128,
+            "maximum_total_source_bytes": 67_108_864,
+            "maximum_document_depth": 64,
+            "maximum_document_nodes": 100_000,
+            "maximum_diagnostic_chars": 4_096,
+            "maximum_source_parse_variants": 384,
+            "maximum_output_artifacts": 7,
+            "maximum_output_bytes": 33_554_432,
+        },
         "protocol_dimensions": {
             name: {
                 "status": "frozen",
@@ -180,33 +194,92 @@ def test_source_artifact_detects_mutation_and_path_escape(tmp_path: Path) -> Non
         linked.verify(tmp_path)
 
 
+def test_source_artifact_rejects_symlink_swap_before_descriptor_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_path = tmp_path / "source.json"
+    replacement = tmp_path / "replacement.json"
+    source_path.write_text('{"scope":"original"}\n', encoding="utf-8")
+    replacement.write_text('{"scope":"external"}\n', encoding="utf-8")
+    source = SourceArtifact(path=source_path.name, sha256=sha256_file(replacement))
+    from alphaforge.research import _bounded_io
+
+    original_open = _bounded_io.os.open
+    swapped = False
+
+    def swap_before_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if Path(path) == source_path and not swapped:
+            swapped = True
+            source_path.unlink()
+            source_path.symlink_to(replacement)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(_bounded_io.os, "open", swap_before_open)
+    with pytest.raises(Sprint3DecisionError, match="symlink"):
+        source.verify(tmp_path)
+    assert swapped
+
+
 def test_sha256_file_bounds_growth_after_initial_stat(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = tmp_path / "growing.json"
     source.write_bytes(b"12345678")
-    original_open = Path.open
+    from alphaforge.research import _bounded_io
+
+    original_read = _bounded_io.os.read
     grew_after_stat = False
 
-    def open_after_growth(
-        path: Path,
-        mode: str = "r",
-        *args: Any,
-        **kwargs: Any,
-    ) -> Any:
+    def read_after_growth(descriptor: int, maximum: int) -> bytes:
         nonlocal grew_after_stat
-        if path == source and mode == "rb" and not grew_after_stat:
+        if not grew_after_stat:
             grew_after_stat = True
-            with original_open(path, "ab") as writer:
+            with source.open("ab") as writer:
                 writer.write(b"x" * 4096)
-        return original_open(path, mode, *args, **kwargs)
+        return original_read(descriptor, maximum)
 
-    monkeypatch.setattr(Path, "open", open_after_growth)
+    monkeypatch.setattr(_bounded_io.os, "read", read_after_growth)
 
-    with pytest.raises(Sprint3DecisionError, match="exceeds maximum byte length"):
+    with pytest.raises(Sprint3DecisionError, match="exceeds 8 bytes"):
         sha256_file(source, max_bytes=8)
     assert grew_after_stat
+
+
+def test_semantic_fact_parses_the_content_verified_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source(tmp_path)
+    fact = EvidenceFact(
+        roles=("result",),
+        source_path=source.path,
+        locator_kind="json_pointer",
+        locator="/aggregate",
+        observed="the verified snapshot reports the aggregate field",
+    )
+    original = SourceArtifact.read_verified
+
+    def mutate_after_snapshot(
+        artifact: SourceArtifact,
+        repository_root: str | Path,
+    ) -> Any:
+        snapshot = original(artifact, repository_root)
+        (tmp_path / artifact.path).write_text('{"changed":true}\n', encoding="utf-8")
+        return snapshot
+
+    monkeypatch.setattr(SourceArtifact, "read_verified", mutate_after_snapshot)
+    fact.verify(tmp_path, (source,))
+
+    assert json.loads((tmp_path / source.path).read_text(encoding="utf-8")) == {"changed": True}
 
 
 def test_semantic_facts_resolve_json_csv_and_markdown_locators(tmp_path: Path) -> None:
@@ -246,6 +319,47 @@ def test_semantic_facts_resolve_json_csv_and_markdown_locators(tmp_path: Path) -
         locator="## Limitations",
         observed="the report has an explicit limitations boundary",
     ).verify(tmp_path, (markdown_source,))
+
+
+def test_semantic_fact_locators_reject_ambiguous_sources(tmp_path: Path) -> None:
+    json_path = tmp_path / "duplicate.json"
+    json_path.write_text('{"aggregate":true,"aggregate":false}\n', encoding="utf-8")
+    json_source = SourceArtifact(path=json_path.name, sha256=sha256_file(json_path))
+    with pytest.raises(Sprint3DecisionError, match="duplicate key"):
+        EvidenceFact(
+            roles=("result",),
+            source_path=json_source.path,
+            locator_kind="json_pointer",
+            locator="/aggregate",
+            observed="ambiguous duplicate JSON member",
+        ).verify(tmp_path, (json_source,))
+
+    csv_path = tmp_path / "duplicate.csv"
+    csv_path.write_text("rank_ic,rank_ic\n0.1,0.2\n", encoding="utf-8")
+    csv_source = SourceArtifact(path=csv_path.name, sha256=sha256_file(csv_path))
+    with pytest.raises(Sprint3DecisionError, match="duplicate columns"):
+        EvidenceFact(
+            roles=("result",),
+            source_path=csv_source.path,
+            locator_kind="csv_column",
+            locator="rank_ic",
+            observed="ambiguous duplicate CSV header",
+        ).verify(tmp_path, (csv_source,))
+
+    markdown_path = tmp_path / "duplicate.md"
+    markdown_path.write_text("## Result\n\nA\n\n## Result\n\nB\n", encoding="utf-8")
+    markdown_source = SourceArtifact(
+        path=markdown_path.name,
+        sha256=sha256_file(markdown_path),
+    )
+    with pytest.raises(Sprint3DecisionError, match="exactly once"):
+        EvidenceFact(
+            roles=("result",),
+            source_path=markdown_source.path,
+            locator_kind="markdown_heading",
+            locator="## Result",
+            observed="ambiguous repeated Markdown heading",
+        ).verify(tmp_path, (markdown_source,))
 
 
 def test_positive_gate_requires_complete_independent_semantic_substantiation(
@@ -477,6 +591,8 @@ def test_plan_loader_freezes_order_gates_and_content_hashes(tmp_path: Path) -> N
 
     assert plan.family_order == SPRINT_3_FAMILIES
     assert plan.plan_id == sha256_file(tmp_path / "sprint_3_decision.yaml")
+    assert plan.resource_limits.maximum_source_bytes == 33_554_432
+    assert plan.resource_limits.maximum_output_artifacts == 7
     assert plan.protocol_dimensions.deferred_dimensions == ("randomized_controls",)
 
     document = yaml.safe_load((tmp_path / "sprint_3_decision.yaml").read_text(encoding="utf-8"))
@@ -490,6 +606,52 @@ def test_plan_loader_freezes_order_gates_and_content_hashes(tmp_path: Path) -> N
             tmp_path / "sprint_3_decision.yaml",
             repository_root=tmp_path,
         )
+
+
+@pytest.mark.parametrize(
+    "document",
+    (
+        "schema_version: 1.0.0\nschema_version: 1.0.0\n",
+        "anchor: &shared value\nalias: *shared\n",
+        "nested: " + "[" * 65 + "0" + "]" * 65 + "\n",
+    ),
+)
+def test_plan_loader_rejects_duplicate_alias_and_deep_yaml(
+    tmp_path: Path,
+    document: str,
+) -> None:
+    path = tmp_path / "sprint_3_decision.yaml"
+    path.write_text(document, encoding="utf-8")
+
+    with pytest.raises(Sprint3DecisionError):
+        load_sprint_3_evaluation_plan(path, repository_root=tmp_path)
+
+
+def test_plan_content_address_freezes_every_resource_ceiling(tmp_path: Path) -> None:
+    source = _source(tmp_path)
+    _write_plan(tmp_path, _complete_families(source))
+    path = tmp_path / "sprint_3_decision.yaml"
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    payload["resource_limits"]["maximum_source_bytes"] -= 1
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(Sprint3DecisionError, match="maximum_source_bytes"):
+        load_sprint_3_evaluation_plan(path, repository_root=tmp_path)
+
+
+def test_plan_validation_diagnostics_are_bounded(tmp_path: Path) -> None:
+    source = _source(tmp_path)
+    _write_plan(tmp_path, _complete_families(source))
+    path = tmp_path / "sprint_3_decision.yaml"
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    payload.update({f"unknown_{index:04d}": index for index in range(500)})
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    from alphaforge.research import sprint_3_decision as module
+
+    with pytest.raises(Sprint3DecisionError) as captured:
+        load_sprint_3_evaluation_plan(path, repository_root=tmp_path)
+
+    assert len(str(captured.value)) <= module.MAX_DIAGNOSTIC_CHARS
 
 
 def test_plan_loader_rejects_unknown_fields_and_unsupported_freeze_claims(
@@ -593,6 +755,8 @@ def test_plan_loader_bounds_source_references_and_total_bytes(
 
     source = _source(tmp_path)
     families = _complete_families(source)
+    frozen_limits = module._enforced_resource_limits()
+    monkeypatch.setattr(module, "_enforced_resource_limits", lambda: frozen_limits)
     monkeypatch.setattr(module, "MAX_SOURCE_REFERENCES", 9)
     with pytest.raises(Sprint3DecisionError, match="reference count"):
         _write_plan(tmp_path, families)
@@ -611,16 +775,37 @@ def test_plan_loader_hashes_each_unique_source_once(
 
     source = _source(tmp_path)
     calls: list[str] = []
-    original = module.SourceArtifact.verify
+    original = module.SourceArtifact.read_verified
 
-    def recording_verify(self: SourceArtifact, repository_root: str | Path) -> Path:
+    def recording_verify(self: SourceArtifact, repository_root: str | Path) -> Any:
         calls.append(self.path)
         return original(self, repository_root)
 
-    monkeypatch.setattr(module.SourceArtifact, "verify", recording_verify)
+    monkeypatch.setattr(module.SourceArtifact, "read_verified", recording_verify)
     _write_plan(tmp_path, _complete_families(source))
 
     assert calls == ["evidence.json"]
+
+
+def test_plan_loader_parses_each_source_format_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from alphaforge.research import sprint_3_decision as module
+
+    source = _source(tmp_path)
+    calls = 0
+    original = module.parse_strict_json
+
+    def recording_parse(*args: Any, **kwargs: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "parse_strict_json", recording_parse)
+    _write_plan(tmp_path, _complete_families(source))
+
+    assert calls == 1
 
 
 def test_publisher_is_atomic_content_addressed_and_aggregate_only(tmp_path: Path) -> None:
@@ -659,6 +844,8 @@ def test_publisher_is_atomic_content_addressed_and_aggregate_only(tmp_path: Path
         "sha256": source.sha256,
     }
     assert manifest["plan"]["sha256"] == plan.plan_id
+    assert manifest["resource_limits"] == asdict(plan.resource_limits)
+    assert summary["study"]["resource_limits"] == asdict(plan.resource_limits)
     for relative, record in manifest["artifacts"].items():
         assert sha256_file(output / relative) == record["sha256"]
     assert tuple(pd.read_csv(output / "family_evidence.csv")["family"]) == SPRINT_3_FAMILIES
@@ -712,3 +899,45 @@ def test_publisher_cleans_staging_after_fault(
 
     assert not output.exists()
     assert not tuple(tmp_path.glob(".failed-publication.*"))
+
+
+def test_publisher_rejects_unexpected_and_oversized_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from alphaforge.research import sprint_3_decision as module
+
+    source = _source(tmp_path)
+    plan = _write_plan(tmp_path, _complete_families(source))
+    original_plot = module.plot_gate_matrix
+
+    def plot_with_unexpected_file(families: Any, output: str | Path) -> Path:
+        result = original_plot(families, output)
+        Path(output).parents[1].joinpath("unexpected.txt").write_text(
+            "not in the publication contract\n",
+            encoding="utf-8",
+        )
+        return result
+
+    monkeypatch.setattr(module, "plot_gate_matrix", plot_with_unexpected_file)
+    unexpected_output = tmp_path / "unexpected-publication"
+    with pytest.raises(Sprint3DecisionError, match="payload mismatch"):
+        publish_sprint_3_decision(
+            repository_root=tmp_path,
+            plan=plan,
+            output_dir=unexpected_output,
+        )
+    assert not unexpected_output.exists()
+
+    monkeypatch.setattr(module, "plot_gate_matrix", original_plot)
+    frozen_limits = module._enforced_resource_limits()
+    monkeypatch.setattr(module, "_enforced_resource_limits", lambda: frozen_limits)
+    monkeypatch.setattr(module, "MAX_OUTPUT_BYTES", 1_024)
+    oversized_output = tmp_path / "oversized-publication"
+    with pytest.raises(Sprint3DecisionError, match="publication"):
+        publish_sprint_3_decision(
+            repository_root=tmp_path,
+            plan=plan,
+            output_dir=oversized_output,
+        )
+    assert not oversized_output.exists()
