@@ -5,10 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from alphaforge.config import SCHEMAS, load_config
+from alphaforge.research.cross_repository_provenance import (
+    CrossRepositoryProvenanceError,
+    load_cross_repository_receipt,
+)
 from alphaforge.research.deep_sequence_study import load_deep_sequence_study_config
 from alphaforge.research.ensemble_study import load_ensemble_study_config
 from alphaforge.research.representation_study import load_representation_study_config
+from alphaforge.research.sprint_3_decision import load_sprint_3_evaluation_plan
 from alphaforge.research.time_frequency_study import load_time_frequency_study_config
+
+_SIGNALATTICE_REPOSITORY = "srgangaram-swe/Signalattice"
+_SIGNALATTICE_ORIGIN = "https://github.com/srgangaram-swe/Signalattice.git"
 
 
 def main() -> None:
@@ -36,6 +44,26 @@ def main() -> None:
     ensemble_path = Path("configs/ensemble_benchmark.yaml")
     load_ensemble_study_config(ensemble_path)
     print(f"validated ensemble_study: {ensemble_path}")
+
+    receipt_path = Path("docs/evidence/signal_foundry_sprint_3/cross_repository_provenance.json")
+    receipt = load_cross_repository_receipt(receipt_path)
+    if receipt.repository != _SIGNALATTICE_REPOSITORY or receipt.origin_url != _SIGNALATTICE_ORIGIN:
+        raise CrossRepositoryProvenanceError(
+            "committed Sprint 3 receipt must identify the governed Signalattice origin"
+        )
+    print(
+        f"validated cross_repository_receipt: {receipt_path} "
+        f"(sources={len(receipt.sources)}, bytes={sum(source.bytes for source in receipt.sources)})"
+    )
+    sprint_3_path = Path("configs/sprint_3_decision.yaml")
+    sprint_3_plan = load_sprint_3_evaluation_plan(
+        sprint_3_path,
+        repository_root=Path.cwd(),
+    )
+    print(
+        f"validated sprint_3_decision: {sprint_3_path} "
+        f"(plan_id={sprint_3_plan.plan_id}, families={len(sprint_3_plan.families)})"
+    )
 
 
 if __name__ == "__main__":

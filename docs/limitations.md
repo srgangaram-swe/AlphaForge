@@ -61,6 +61,22 @@ Important limitations:
   total net value than always-trade. Expected costs, predictive uncertainty,
   disagreement, regime support, and drift can all be jointly misspecified;
   abstention cannot guarantee against loss.
+- The final Sprint 3 synthesis spans historical WIKI engineering, multiple
+  unrelated synthetic generators, and unsupported economic questions. The
+  datasets, targets, splits, costs, uncertainty methods, and holdout boundaries
+  are heterogeneous, so gate coverage and dispositions cannot be interpreted
+  as a performance score or cross-family ranking. Five families are rejected
+  under current evidence, five are deferred, none advances, and the decision
+  remains `NOT_READY`.
+- Matched feature/parameter ablations, feature permutation, randomized-label
+  and representation-placebo controls remain re-scoped to issue #41. Matched
+  year and temporal/regime stability with dependence-aware uncertainty remains
+  re-scoped to issue #42. The final matrix records these omissions as failed
+  readiness evidence rather than treating them as not applicable.
+- CI can validate the committed Signalattice receipt without network access,
+  but it cannot prove the nine external blobs are present without an existing
+  local Signalattice Git object database. Signalattice issues #14–#16 remain
+  separate open work and are not completed by the AlphaForge synthesis.
 - Unified metric intervals remain conditional on the selected calendar,
   benchmark, sample, block length, and stationarity approximation. An
   undefined metric is reported explicitly, but a defined metric can still be

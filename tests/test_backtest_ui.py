@@ -16,6 +16,7 @@ pytest.importorskip("plotly")
 
 from fastapi import HTTPException  # noqa: E402
 
+import alphaforge  # noqa: E402
 import apps.api as api_module  # noqa: E402
 from alphaforge.service import BacktestRequest, BacktestResult, run_backtest_service  # noqa: E402
 from apps.api import BacktestSpec, app, catalog, create_backtest  # noqa: E402
@@ -43,6 +44,10 @@ def result() -> BacktestResult:
 
 
 # --- API ---------------------------------------------------------------------
+
+
+def test_api_version_matches_package_version() -> None:
+    assert app.version == alphaforge.__version__
 
 
 def test_catalog_lists_options() -> None:

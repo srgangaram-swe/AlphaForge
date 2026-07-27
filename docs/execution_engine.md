@@ -36,6 +36,11 @@ available. `tests/test_orderbook.py` drives both with identical random flow
 (4,000 mixed operations) and requires identical order ids, fills, depth,
 volumes, and best quotes.
 
+The extension exposes `__abi_version__ = "1"` and the loader requires the same
+`NATIVE_ABI_VERSION`. This identifier versions the Python/native execution
+boundary independently of the AlphaForge package release. An absent or
+incompatible extension fails closed to the tested Python implementation.
+
 ## Boundary with daily-bar execution
 
 Historical backtests and paper replay use `alphaforge.execution.models` plus
