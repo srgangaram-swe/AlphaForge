@@ -155,6 +155,9 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [ranking portfolio contract](docs/ranking_portfolios.md) defines allocation
+policies, the explicit constraint set, uncertainty-aware sizing, and net-of-cost
+capacity evidence.
 The [regime and change-point contract](docs/regimes.md) defines causal state
 models, canonical labelling, and incremental-value evidence against a no-regime
 baseline.
