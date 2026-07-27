@@ -25,7 +25,17 @@ AlphaForge is an educational quantitative research and ML engineering project. I
   identities, and inspectable Seaborn fold evidence.
 - Purged K-Fold and Combinatorial Purged CV (CPCV) splitters with exact
   heterogeneous event intervals for overlap-safe evaluation.
-- Baselines, linear models, tree models, optional torch models, and an IC-weighted ensemble.
+- Baselines, linear models, tree models, optional torch models, and governed
+  static, rank/vote, temporal-OOF stacking, Bayesian, causal-dynamic, and
+  regime-gated ensembles with immutable state and explicit abstention.
+- A fail-closed time-frequency progression from LightGBM descriptors to a
+  mandatory small CNN, conditional ResNet, and conditional ViT, with
+  validation-only tamper-evident gates and aggregate Seaborn evidence.
+- A target-free latent-representation boundary spanning raw features, full and
+  incremental PCA, robust-scaling PCA, dense/sequence/denoising/variational
+  autoencoders, and causal contrastive learning, with train-only fitted state,
+  stable identities, bounded optional Torch execution, and validation-only
+  selection against the raw control.
 - A neural temporal alpha model (dilated causal TCN + attention pooling, composite
   Huber + cross-sectional IC loss) with a real training loop — early stopping on
   validation rank IC, checkpointing, persisted history — via `make train` (ADR 0002).
@@ -41,12 +51,19 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Training-OOF-only Platt/isotonic probability calibration, Brier and
   reliability evidence, dependence-aware moving-block intervals, conservative
   block-conformal residual intervals, and bounded quantile regression.
+- A pure cost/uncertainty decision boundary with deterministic identities,
+  stable typed abstention reasons, freshness/disagreement/regime/drift gates,
+  and no portfolio, order, broker, or network authority.
 - Contract-bound predictive, IC, calibration, return, drawdown, turnover,
   exposure, capacity, benchmark, and cost metrics with elapsed-time
   annualization and moving-block sampling distributions.
 - A deeply immutable hypothesis and trial-family plan, append-only hash-chained
   research ledger, complete-family Holm/BH corrections, and frozen kill
   criteria that retain failures and rejected evaluation attempts.
+- A bounded, content-addressed ten-family Sprint 3 evidence synthesis with
+  semantic source locators, an independently verifiable Signalattice receipt,
+  aggregate-only Seaborn coverage evidence, and a fail-closed `NOT_READY`
+  decision that cannot authorize paper or live execution.
 - Backtests that use out-of-sample predictions only.
 - Close-decision → next-open execution with a self-financing cash/share ledger,
   drifted holdings, causal lagged-liquidity inputs, partial fills, and reconciled P&L.
@@ -74,6 +91,7 @@ flowchart LR
     E --> F[Model training and OOS predictions]
     F --> G[Signal construction]
     G --> H[Portfolio construction]
+    G -. standalone synthetic study only .-> P[Opt-in cost/uncertainty eligibility research]
     H --> I[Future-open fills + self-financing ledger]
     I --> J[Risk, P&L attribution, and capacity sensitivity]
     J --> K[Report / dashboard / API / paper sim]
@@ -108,6 +126,11 @@ make download-data      # yfinance / CSV / synthetic per configs/data.yaml
 make build-features     # feature and label panels
 make label-evidence OUTPUT=/tmp/alphaforge-label-evidence
 make temporal-evidence OUTPUT=/tmp/alphaforge-temporal-evidence
+make time-frequency-evidence OUTPUT=/tmp/alphaforge-time-frequency-evidence
+make latent-representation-evidence OUTPUT=/tmp/alphaforge-latent-evidence
+make ensemble-evidence OUTPUT=/tmp/alphaforge-ensemble-evidence
+make decision-policy-evidence OUTPUT=/tmp/alphaforge-decision-policy-evidence
+make sprint-3-decision-evidence OUTPUT=/tmp/alphaforge-sprint-3-decision
 make walk-forward       # model comparison with OOS predictions
 make backtest           # OOS portfolio backtest
 make signal-foundry BUNDLE=/absolute/path/to/<bundle-id>
@@ -132,13 +155,36 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [regime and change-point contract](docs/regimes.md) defines causal state
+models, canonical labelling, and incremental-value evidence against a no-regime
+baseline.
 The [governed benchmark model contract](docs/governed_benchmark_models.md)
 documents the bounded linear, robust, tree, boosting, and small-MLP families,
 their deterministic termination evidence, and the remaining barriers to
 paper or live use.
+The [gated time-frequency vision contract](docs/time_frequency_vision_models.md)
+documents Signalattice tensor alignment, train-only normalization,
+meaning-preserving perturbations, bounded CNN/ResNet/ViT implementations, and
+validation-only progression. Its committed synthetic reference rejected the
+small CNN and therefore blocked both larger architectures.
+The [latent-representation contract](docs/latent_representations.md) documents
+the target-free fit boundary, PCA ambiguity handling, causal sequence
+semantics, bounded autoencoders and contrastive encoder, stable state
+identities, fixed downstream diagnostics, and aggregate-only evidence. Its
+synthetic reference selected PCA on validation but found no test prediction
+improvement over raw features.
+The [governed ensemble contract](docs/governed_ensembles.md) defines the
+complete-date temporal-OOF boundary, target-free holdout inference, six
+combination policies, stable state identities, causal audits, explicit
+fallback records, and aggregate-only reference evidence. The registry's
+historic `ensemble` name remains a compatibility adapter; advanced policies
+must use the governed OOF boundary.
 The [calibration and uncertainty contract](docs/calibration_uncertainty.md)
 documents OOF provenance, mathematical assumptions, deterministic
 configuration, JSON-safe persistence, and failure behavior.
+The [cost- and uncertainty-aware decision contract](docs/decision_policy.md)
+defines conservative value arithmetic, ordered fail-closed reason codes,
+stable replay identities, resource limits, and the strict no-order boundary.
 The [metric governance contract](docs/metric_governance.md) defines units,
 annualization, benchmarks, missingness, invalid states, and dependence-aware
 distributions for the unified research scorecard.
@@ -160,6 +206,23 @@ licensed rows.
 The [Sprint 2 report](docs/sprint_2_report.md) records the governed
 seven-candidate comparison, selection correction, costed final-holdout
 rejection, compute profile, and aggregate-only Seaborn evidence.
+The [Sprint 3 latent-representation report](docs/sprint_3_latent_representation_report.md)
+records the nine-candidate synthetic engineering comparison, its mixed/negative
+predictive result, transfer and reconstruction diagnostics, compute evidence,
+and inspected Seaborn plot.
+The [Sprint 3 ensemble report](docs/sprint_3_ensemble_report.md) records the
+deterministic synthetic recovery study, correlations, marginal contributions,
+turnover/costs, uncertainty, abstentions, and residual market-evidence gap.
+The [Sprint 3 MR10 abstention report](docs/sprint_3_abstention_policy_report.md)
+publishes the honest synthetic coverage-risk, turnover, capacity,
+missed-opportunity, and net-value comparison with always-trade and never-trade.
+The [final Sprint 3 report](docs/sprint_3_report.md) preserves the ten
+heterogeneous evidence contexts, records five rejected and five deferred
+families with zero advanced, and explains why the release remains `NOT_READY`.
+Its [governed decision](docs/multi_representation_decision.md),
+[aggregate evidence](docs/evidence/signal_foundry_sprint_3/decision/README.md),
+and [ADR 0008](docs/adr/0008-context-preserving-sprint-3-synthesis.md) define
+the content-addressed provenance and strict evidence-only, no-order boundary.
 
 ## Low-Latency Execution Core (C++)
 
@@ -234,12 +297,16 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 
 - `alphaforge/data`: loaders, schema validation, quality reports, synthetic data.
 - `alphaforge/features`: technical, cross-sectional, benchmark-relative, and regime features.
+- `alphaforge/representations`: typed raw/PCA and optional neural encoders with
+  train-only state, causal sequence inputs, reconstruction, and stable identities.
 - `alphaforge/labels`: versioned future-event labels and statistical diagnostics.
-- `alphaforge/models`: baselines, sklearn wrappers, torch wrappers, IC-weighted ensemble,
-  Gaussian HMM regime model, registry.
+- `alphaforge/models`: baselines, sklearn/torch wrappers, immutable temporal-OOF
+  ensemble contracts and policies, Gaussian HMM regime model, registry.
 - `alphaforge/training`: interval-aware temporal plans, walk-forward splitting,
   purged K-Fold, CPCV, and OOS prediction panels.
 - `alphaforge/evaluation`: IC analytics, PSR/DSR, PBO, Newey-West inference.
+- `alphaforge/decision`: opt-in, standalone cost/uncertainty eligibility and
+  abstention evidence; it is not wired into the active portfolio path.
 - `alphaforge/signals`: rank, long-short, top-k, threshold, confidence-weighted,
   and regime-filtered signals.
 - `alphaforge/portfolio`: capped, inverse-vol, turnover-aware target weights.
@@ -250,7 +317,9 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - `alphaforge/execution`: typed orders/fills, causal daily-bar execution, and
   separately scoped Python/C++ order-book implementations.
 - `alphaforge/paper`: simulated replay using the same execution and ledger contract.
-- `alphaforge/research`: governed selection, immutable holdout, stress, and dossier workflow.
+- `alphaforge/research`: governed selection, immutable holdout, aggregate
+  ensemble evidence, strict cross-repository provenance, content-addressed
+  Sprint 3 synthesis, stress, and dossier workflows.
 - `cpp/`: C++17 order book, pybind11 bindings, CMake project, native benchmark.
 - `scripts`: command-line pipeline entry points.
 - `apps`: Streamlit and FastAPI entry points.

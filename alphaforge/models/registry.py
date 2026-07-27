@@ -55,6 +55,15 @@ def _make_temporal(**params: Any) -> AlphaModel:
     return TemporalAlphaModel(**params)
 
 
+def _make_deep_sequence(architecture: str) -> Callable[..., AlphaModel]:
+    def factory(**params: Any) -> AlphaModel:
+        from alphaforge.models.deep_sequence import ControlledSequenceModel
+
+        return ControlledSequenceModel(architecture, **params)  # type: ignore[arg-type]
+
+    return factory
+
+
 def _make_ensemble(members: list[dict], **kwargs: Any) -> EnsembleModel:
     built = [create_model(m["name"], **m.get("params", {})) for m in members]
     return EnsembleModel(built, **kwargs)
@@ -85,6 +94,11 @@ MODEL_REGISTRY: dict[str, Callable[..., AlphaModel]] = {
     "torch_gru": _make_torch("gru"),
     "torch_tcn": _make_torch("tcn"),
     "temporal_alpha": _make_temporal,
+    "sequence_cnn": _make_deep_sequence("cnn"),
+    "sequence_tcn": _make_deep_sequence("tcn"),
+    "sequence_lstm": _make_deep_sequence("lstm"),
+    "sequence_gru": _make_deep_sequence("gru"),
+    "sequence_transformer": _make_deep_sequence("transformer"),
     "ensemble": _make_ensemble,
 }
 
@@ -137,7 +151,17 @@ def seed_model_specs(model_specs: list[dict[str, Any]], root_seed: int) -> list[
             "small_mlp",
         }:
             params.setdefault("random_state", root_seed)
-        elif name in {"torch_mlp", "torch_gru", "torch_tcn", "temporal_alpha"}:
+        elif name in {
+            "torch_mlp",
+            "torch_gru",
+            "torch_tcn",
+            "temporal_alpha",
+            "sequence_cnn",
+            "sequence_tcn",
+            "sequence_lstm",
+            "sequence_gru",
+            "sequence_transformer",
+        }:
             params.setdefault("seed", root_seed)
         elif name == "ensemble":
             members = params.get("members")

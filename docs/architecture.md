@@ -10,15 +10,22 @@ flowchart TD
     features --> cache[Validated content-addressed feature cache]
     cache --> labels[Versioned label contracts + normalized event intervals]
     labels --> splits[Walk-forward / Purged K-Fold / CPCV splits]
-    splits --> models[Model training incl. IC-weighted ensemble]
+    splits --> representations[Fold-local raw / latent representations]
+    representations --> models[Expert model training]
     models --> preds[Out-of-sample prediction panel]
+    preds --> ensembles[Immutable temporal-OOF ensemble boundary]
+    ensembles --> combined[Target-free frozen ensemble inference]
+    combined --> calibration
     preds --> calibration[OOF calibration + dependence-aware uncertainty]
     calibration --> metrics[Contract-bound unified metrics]
     metrics --> governance[Frozen family + append-only research ledger]
     governance --> overfit
+    governance --> synthesis[Context-preserving Sprint 3 evidence synthesis]
+    synthesis --> decisionEvidence[Aggregate NOT_READY evidence + provenance]
     preds --> overfit[Overfitting stats: DSR, PBO, NW t-stats]
     preds --> signals[Signals + regime filter]
     signals --> portfolio[Portfolio construction]
+    signals -. standalone synthetic study only .-> eligibility[Opt-in eligibility research]
     portfolio --> orders[Close-time target decisions]
     orders --> execution[Next-open causal fill model]
     execution --> ledger[Self-financing cash + signed-share ledger]
@@ -68,6 +75,22 @@ Two implementation layers sit beside the Python pipeline:
   termination evidence, deterministic seed injection, and trusted-only binary
   deserialization. See
   [Governed benchmark models](governed_benchmark_models.md).
+- **Representation trust boundary** (`alphaforge/representations/`,
+  `alphaforge/research/representation_study.py`): target-free aligned batches,
+  train-only normalization and learned state, causal per-symbol windows,
+  sign-canonical and subspace-invariant PCA identities, bounded optional Torch
+  encoders, explicit reconstruction capability, validation-only selection, and
+  aggregate-only atomic evidence. See
+  [Leakage-safe latent representations](latent_representations.md) and
+  [ADR 0005](adr/0005-leakage-safe-latent-representations.md).
+- **Ensemble governance boundary**
+  (`alphaforge/models/ensemble_contracts.py`,
+  `alphaforge/models/ensemble.py`): complete-date temporal-OOF prediction and
+  target contracts, final-holdout exclusion, target-free inference, static,
+  rank/vote, ridge-stacking, Bayesian, causal-dynamic, and regime-gated
+  policies, stable JSON identities, bounded causal audit records, and explicit
+  abstention. See [Governed temporal-OOF ensembles](governed_ensembles.md) and
+  [ADR 0006](adr/0006-governed-temporal-oof-ensembles.md).
 - **Calibration and uncertainty boundary**
   (`alphaforge/evaluation/calibration.py`,
   `alphaforge/evaluation/uncertainty.py`): training-OOF-only provenance,
@@ -75,6 +98,14 @@ Two implementation layers sit beside the Python pipeline:
   Platt/isotonic state, moving-block bootstrap intervals, conservative
   block-conformal residual intervals, and bounded linear quantile regression.
   See [Calibration and uncertainty contracts](calibration_uncertainty.md).
+- **Decision eligibility boundary** (`alphaforge/decision/policy.py`): pure
+  immutable expected-value arithmetic; conservative cost and predictive
+  uncertainty charges; finite/range/freshness/disagreement/regime/drift gates;
+  deterministic IDs and ordered typed reasons; and no quantity, order, broker,
+  credential, network, or portfolio state. It is currently opt-in and exercised
+  only by its standalone synthetic study; the active signal-to-portfolio path
+  does not invoke it. See
+  [Cost- and uncertainty-aware decision policy](decision_policy.md).
 - **Metric governance boundary** (`alphaforge/evaluation/metric_suite.py`):
   immutable interpretation contracts, explicit undefined states,
   elapsed-calendar-time annualization, benchmark semantics, reconciled
@@ -87,6 +118,16 @@ Two implementation layers sit beside the Python pipeline:
   head receipt; conservative failed-trial accounting; exact-family Holm/BH
   corrections; and predeclared kill decisions. See
   [Append-only research governance](research_governance.md).
+- **Sprint 3 synthesis boundary**
+  (`alphaforge/research/sprint_3_decision.py`,
+  `alphaforge/research/cross_repository_provenance.py`): strict,
+  content-addressed plans and receipts preserve ten heterogeneous evidence
+  contexts; bounded semantic locators distinguish reported from missing gates;
+  atomic aggregate-only publication emits a `NOT_READY` report, manifest, and
+  Seaborn coverage plot. This is an evidence-only leaf with no dependency path
+  to signals, portfolios, paper controls, execution, brokers, credentials, or
+  capital. See [the final Sprint 3 report](sprint_3_report.md) and
+  [ADR 0008](adr/0008-context-preserving-sprint-3-synthesis.md).
 - **Governed baseline study** (`alphaforge/research/baseline_study.py`,
   `alphaforge/research/baseline_study_evidence.py`): freezes the exact
   seven-candidate family before execution, binds every trial to the append-only
