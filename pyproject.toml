@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alphaforge"
-version = "0.2.1"
+version = "0.3.0"
 description = "Regime-aware, multi-horizon ML alpha research platform with leakage-safe walk-forward validation and realistic backtesting."
 readme = "README.md"
 requires-python = ">=3.12"

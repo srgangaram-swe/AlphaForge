@@ -2,6 +2,8 @@
 
 from enum import Enum
 
+__abi_version__: str
+
 class Side(Enum):
     BUY = ...
     SELL = ...

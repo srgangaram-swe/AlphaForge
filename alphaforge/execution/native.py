@@ -9,12 +9,21 @@ from __future__ import annotations
 
 from alphaforge.execution import orderbook_py
 
+NATIVE_ABI_VERSION = "1"
+
+
+def _has_compatible_native_abi(module: object) -> bool:
+    """Return whether an imported extension implements the governed ABI."""
+
+    return getattr(module, "__abi_version__", None) == NATIVE_ABI_VERSION
+
+
 try:
     import alphaforge.alphaforge_native as _native
 except ImportError:
     NATIVE_AVAILABLE = False
 else:
-    NATIVE_AVAILABLE = True
+    NATIVE_AVAILABLE = _has_compatible_native_abi(_native)
 
 BUY = orderbook_py.BUY
 SELL = orderbook_py.SELL

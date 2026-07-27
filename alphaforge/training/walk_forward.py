@@ -239,6 +239,20 @@ def run_walk_forward(
                         "training_warning_count": len(diagnostics.warnings),
                     }
                 )
+            resource_evidence = getattr(model, "resource_evidence", None)
+            if callable(resource_evidence):
+                resources = resource_evidence()
+                metrics.update(
+                    {
+                        "parameter_count": resources.parameter_count,
+                        "parameter_bytes": resources.parameter_bytes,
+                        "fit_wall_seconds": resources.fit_wall_seconds,
+                        "fit_cpu_seconds": resources.fit_cpu_seconds,
+                        "peak_device_bytes": resources.peak_device_bytes,
+                        "best_epoch": resources.best_epoch,
+                        "best_validation_loss": resources.best_validation_loss,
+                    }
+                )
             metric_rows.append(metrics)
 
             importance = model.feature_importance()

@@ -6,8 +6,25 @@ still evolve between minor releases.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-26
+
 ### Added
 
+- A bounded, content-addressed Sprint 3 synthesis across ten heterogeneous
+  research families, with verified semantic evidence locators, explicit missing
+  gates, a reproducible Seaborn coverage heatmap, and a conservative outcome of
+  five rejected, five deferred, zero advanced, and `NOT_READY`.
+- A strict cross-repository provenance receipt pinned to Signalattice commit
+  `000ae12de3b409e5f409b53fb191aa003b105318`, including exact Git blobs, byte
+  lengths, SHA-256 digests, bounded network-free CI validation, and an explicit
+  local Git-object verification command.
+- A final Sprint 3 report that preserves historical, synthetic, and unsupported
+  evidence contexts without constructing a misleading cross-context
+  leaderboard or reopening a protected holdout.
+- A pure, immutable cost/uncertainty decision-policy boundary with stable
+  reason codes and identities, fail-closed freshness/disagreement/regime/drift
+  gates, strict configuration, deterministic always/never-trade aggregate
+  evidence, and no order-routing authority.
 - Schema-1.0 financial-label contracts for regression, classification,
   threshold, quantile, triple-barrier, volatility-scaled, and meta-label
   targets, with deterministic identities, normalized future-event intervals,
@@ -25,6 +42,10 @@ still evolve between minor releases.
   invocation arguments, and hashed artifact inventories.
 - A committed universal `uv.lock` plus locked CI and container installation for
   reproducible dependency resolution across supported Python versions.
+- A leakage-safe latent-representation layer with raw/PCA controls, bounded
+  optional autoencoder and causal contrastive families, stable fitted-state and
+  PCA-subspace identities, validation-only selection, downstream transfer
+  diagnostics, and aggregate synthetic Seaborn evidence.
 
 ### Changed
 
@@ -41,6 +62,8 @@ still evolve between minor releases.
 - Migrated evaluation graphics to Seaborn's plotting and theme APIs with a
   colorblind palette and explicit sprint visual-evidence guidance.
 - Added locked CI import coverage for the data, ML, and application extras.
+- Aligned package, API, lock, wheel, and container version assertions at
+  `0.3.0`.
 
 ## [0.2.1] - 2026-07-23
 

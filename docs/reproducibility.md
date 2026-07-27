@@ -116,6 +116,23 @@ extra, failed, interrupted, or nonterminal candidates cannot be silently
 excluded from family correction. See
 [Append-only research governance](research_governance.md).
 
+The canonical `configs/ensemble_benchmark.yaml` surface freezes the synthetic
+reference dimensions, temporal folds, candidate-independent seed, turnover
+cost, policy hyperparameters, fallback prediction, and record/audit ceilings.
+Its exact-schema loader rejects unknown fields and misleading interpretation
+labels. Training panels and fitted states use canonical sorted-key JSON and
+SHA-256 identities; final inference is a distinct target-free type. See
+[Governed temporal-OOF ensembles](governed_ensembles.md).
+
+The canonical `configs/sprint_3_decision.yaml` surface is the strict,
+content-addressed Sprint 3 synthesis plan. Its SHA-256 is the plan identity; it
+fixes exact resource ceilings, the ordered ten-family inventory, source
+digests, reviewed semantic locators, dispositions, protocol status, and the
+unconditional `NOT_READY` boundary. `make config-check` fails before
+publication on unknown fields, a changed family order, an unsupported positive
+gate, an unverified source, an unsafe path, a mismatched limit, or a claim of
+paper/order authority.
+
 ## Safe tabular artifacts
 
 Pipeline tables use the `1.0.0` `*.table.json` contract in
@@ -149,6 +166,60 @@ and dimensions, predeclared sensitivity scales, aggregate CSV evidence, plot
 hashes, and explicit non-market limitations. Publication refuses to overwrite
 an existing evidence root. See [Financial label contracts and
 diagnostics](label_design.md).
+
+The governed ensemble reference uses
+`make ensemble-evidence OUTPUT=<new-directory>`. It evaluates all six policies
+offline, refuses overwrite, records SHA-256 integrity hashes for each aggregate
+artifact, and commits no row prediction, target, fitted state, licensed
+observation, or model binary. The resolved config and runtime environment are
+recorded together with distinct generator/bootstrap seeds, derived named child
+streams, and the complete moving-block policy. Its Seaborn summary and
+prediction/error correlations, regime overlap, drop-one marginal
+contributions, turnover/cost, heuristic dispersion, and moving-block
+variability tables are linked from the
+[Sprint 3 ensemble report](sprint_3_ensemble_report.md).
+
+The final Sprint 3 decision uses
+`make sprint-3-decision-evidence OUTPUT=<new-repository-local-directory>`.
+The publisher re-loads the on-disk strict plan, verifies each AlphaForge source
+digest and positive semantic locator, and rejects symlinks, traversal,
+conflicting identities, resource-limit violations, malformed documents,
+unbounded diagnostics, and overwrite attempts. It publishes exactly six
+payload artifacts plus `manifest.json` through an atomic directory replace:
+aggregate family and gate CSV files, the semantic-review receipt, summary,
+README, and Seaborn coverage heatmap. The manifest records the plan plus the
+exact SHA-256 and byte length of every payload.
+
+Reproduce into ignored local storage and compare every byte with the committed
+reference:
+
+```bash
+uv run make config-check
+uv run make sprint-3-decision-evidence \
+  OUTPUT=runs/sprint-3-decision-replay
+diff -r \
+  docs/evidence/signal_foundry_sprint_3/decision \
+  runs/sprint-3-decision-replay
+```
+
+Any byte difference under the locked environment is a failed replay requiring
+investigation; do not refresh the reference blindly. The committed
+`cross_repository_provenance.json` receipt can be schema-validated without a
+sibling checkout, but external-blob verification is a separate local step.
+Given an existing Signalattice Git object database, verify the pinned commit,
+Git blobs, lengths, and SHA-256 values without fetching:
+
+```bash
+uv run python scripts/verify_sprint_3_cross_repository_sources.py \
+  --signalattice /absolute/path/to/Signalattice
+```
+
+Finally, visually inspect
+`docs/evidence/signal_foundry_sprint_3/decision/plots/evidence_coverage.png` at
+full resolution. Confirm all ten family labels and nine gate labels are
+legible, every cell matches `gate_matrix.csv`, and the title makes clear that
+`1` means reported evidence and `0` means a missing gate—not model quality or
+performance. See the [final Sprint 3 report](sprint_3_report.md).
 
 The governed real-data workflow uses
 `make signal-foundry-evidence RUN=<run> BUNDLE=<bundle> OUTPUT=<new-directory>`.
