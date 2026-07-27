@@ -48,7 +48,7 @@ jobs:
           uv run python -m build --wheel --sdist
           python -m venv /tmp/alphaforge-wheel-smoke
           /tmp/alphaforge-wheel-smoke/bin/pip install --no-deps dist/*.whl
-          /tmp/alphaforge-wheel-smoke/bin/python -c "import alphaforge; assert alphaforge.__version__ == '0.3.0'"
+          /tmp/alphaforge-wheel-smoke/bin/python -c "from importlib.metadata import version; import alphaforge; assert version('alphaforge') == alphaforge.__version__ == '0.3.0'"
 
   test:
     runs-on: ubuntu-latest

@@ -40,7 +40,7 @@ jobs:
           uv run python -m build --wheel --sdist
           python -m venv /tmp/alphaforge-release-smoke
           /tmp/alphaforge-release-smoke/bin/pip install --no-deps dist/*.whl
-          /tmp/alphaforge-release-smoke/bin/python -c "import alphaforge"
+          /tmp/alphaforge-release-smoke/bin/python -c "from importlib.metadata import version; import alphaforge; assert version('alphaforge') == alphaforge.__version__"
           shasum -a 256 dist/* > SHA256SUMS
       - name: Retain immutable release candidate artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
