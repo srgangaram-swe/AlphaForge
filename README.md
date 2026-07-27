@@ -155,6 +155,9 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [constrained Markowitz optimizer](docs/mean_variance_optimization.md) turns
+alpha and a validated risk model into feasible weights, with an independent
+feasibility audit and no-trade-baselined evidence.
 The [ranking portfolio contract](docs/ranking_portfolios.md) defines allocation
 policies, the explicit constraint set, uncertainty-aware sizing, and net-of-cost
 capacity evidence.
