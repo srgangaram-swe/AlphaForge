@@ -311,8 +311,12 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
   categorized charges without a dollar-sized tolerance floor.
 - ADV and volatility used at the open are lagged one full session. Participation
   limits create reported partial fills rather than assumed liquidity.
-- Transaction costs are decomposed into commission, half-spread, fixed
-  slippage, and impact sensitivity on traded notional.
+- Transaction costs are decomposed into commission, exchange fees, half-spread,
+  fixed/spread/participation/volatility slippage, power-law impact, financing,
+  and short borrow. Immutable declarations, logical-session latency schedules,
+  component attribution, and full-rerun adverse stress profiles preserve units,
+  provenance, and one accounting path per component. See the
+  [market-friction guide](docs/market_frictions_latency.md).
 
 ## Repository Map
 
@@ -336,8 +340,9 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
   simulator, accounting invariants, and P&L attribution.
 - `alphaforge/risk`: performance, drawdown, VaR, expected shortfall, regime tables,
   beta-aware stress tests, concentration.
-- `alphaforge/execution`: typed orders/fills, causal daily-bar execution, and
-  separately scoped Python/C++ order-book implementations.
+- `alphaforge/execution`: typed orders/fills, causal daily-bar execution,
+  bounded friction/carry/latency contracts, and separately scoped Python/C++
+  order-book implementations.
 - `alphaforge/paper`: simulated replay using the same execution and ledger contract.
 - `alphaforge/research`: governed selection, immutable holdout, aggregate
   ensemble evidence, strict cross-repository provenance, content-addressed
@@ -359,6 +364,7 @@ After `make demo`, inspect:
 - `equity_curve.csv`
 - `orders.csv` / `fills.csv` / `pnl_attribution.csv`
 - `execution_events.csv` / `accounting.csv`
+- `friction_model_manifest.csv` / `friction_attribution.csv` / `latency_schedule.csv`
 - `capacity_curve.csv` / `capacity_diagnostics.json`
 - `backtest_summary.json`
 - `report.md`

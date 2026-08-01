@@ -73,6 +73,8 @@ def main() -> None:
         costs=cfg.get("costs", {}),
         risk=cfg.get("risk", {}),
         execution=cfg.get("execution", {}),
+        latency=cfg.get("latency", {}),
+        carry=cfg.get("borrow_financing", {}),
         liquidate_at_end=bool(cfg.get("liquidate_at_end", True)),
     )
     summary = performance_summary(result.equity_curve)
@@ -98,23 +100,41 @@ def main() -> None:
     result.pnl_attribution.to_csv(run_dir / "pnl_attribution.csv", index=False)
     result.events.to_csv(run_dir / "execution_events.csv", index=False)
     result.accounting.to_csv(run_dir / "accounting.csv", index=False)
+    result.friction_model_manifest.to_csv(run_dir / "friction_model_manifest.csv", index=False)
+    result.friction_attribution.to_csv(run_dir / "friction_attribution.csv", index=False)
+    result.latency_schedule.to_csv(run_dir / "latency_schedule.csv", index=False)
     monthly_returns(result.equity_curve).to_csv(run_dir / "monthly_returns.csv", index=False)
 
     if not result.fills.empty:
         requested = float(result.fills["requested_notional"].sum())
         traded = float(result.fills["traded_notional"].sum())
+        component_totals = (
+            result.friction_attribution.groupby("component", sort=True)["amount_usd"]
+            .sum()
+            .to_dict()
+        )
+        slippage_components = (
+            "fixed_slippage",
+            "spread_slippage",
+            "participation_slippage",
+            "volatility_slippage",
+        )
         summary.update(
             {
                 "execution_orders": int(len(result.fills)),
                 "execution_fill_ratio": traded / requested if requested > 0 else 0.0,
                 "execution_partial_fill_rate": float((result.fills["status"] == "partial").mean()),
                 "execution_rejected_rate": float((result.fills["status"] == "rejected").mean()),
-                "total_trading_cost_dollars": float(result.fills["total_cost"].sum()),
-                "total_commission_dollars": float(result.fills["commission"].sum()),
-                "total_spread_cost_dollars": float(result.fills["spread_cost"].sum()),
-                "total_impact_cost_dollars": float(
-                    result.fills[["fixed_slippage_cost", "impact_cost"]].sum().sum()
+                "total_trading_cost_dollars": float(result.equity_curve["trading_cost"].sum()),
+                "total_commission_dollars": float(component_totals.get("commission", 0.0)),
+                "total_exchange_fee_dollars": float(component_totals.get("exchange_fee", 0.0)),
+                "total_spread_cost_dollars": float(component_totals.get("spread", 0.0)),
+                "total_slippage_cost_dollars": float(
+                    sum(component_totals.get(name, 0.0) for name in slippage_components)
                 ),
+                "total_impact_cost_dollars": float(component_totals.get("market_impact", 0.0)),
+                "total_financing_cost_dollars": float(component_totals.get("cash_financing", 0.0)),
+                "total_borrow_cost_dollars": float(component_totals.get("short_borrow", 0.0)),
             }
         )
 

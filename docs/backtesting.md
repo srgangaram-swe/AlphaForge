@@ -85,15 +85,22 @@ raises an exception instead of emitting results.
 
 Daily-bar fills use the next open as their reference price. The model separates:
 
-- commission, debited directly from cash;
-- half-spread and fixed slippage, embedded in the fill price; and
-- square-root impact sensitivity based on lagged volatility and participation.
+- commission and exchange fees, debited once through the fill event;
+- half-spread, fixed/spread/participation/volatility slippage, and power-law
+  impact, embedded once in the fill price; and
+- financing and short-borrow carry, debited once after DAY orders terminate
+  and before the close mark.
 
 Participation caps use average daily volume shifted one full session before
 the fill. The execution-day full volume is never available at the open and is
 never used. A DAY order above the configured cap partially fills; its residual
 quantity is reported and expires rather than being silently treated as filled.
 Missing required open or close prices fail visibly.
+
+Stage-specific data, feature, inference, submission, and fill delays use only
+positions on the frozen trading calendar. The full formulas, model identities,
+stress profiles, evidence tables, and explicit non-goals are documented in the
+[market-friction guide](market_frictions_latency.md).
 
 The impact coefficient is a documented sensitivity, not a fitted claim about
 market impact. The C++ order book is likewise an uncalibrated systems component
@@ -129,6 +136,11 @@ Each completed backtest writes:
   only (no prices or raw signal values);
 - `accounting.csv`: realized/unrealized P&L, categorized charges, gross/net
   exposure, equity, and reconciliation diagnostics at every close;
+- `friction_model_manifest.csv`: resolved units, bounds, provenance, limitations,
+  parameters, and model/configuration identities;
+- `friction_attribution.csv`: normalized fill, rejection, financing, and
+  per-symbol borrow evidence;
+- `latency_schedule.csv`: causal logical-session stages and schedule identities;
 - `capacity_curve.csv` / `capacity_scenarios.csv`: aggregate and row-level sensitivities;
 - `capacity_diagnostics.json`: data provenance and interpretation guardrails.
 
