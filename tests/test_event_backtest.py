@@ -19,11 +19,13 @@ from alphaforge.backtesting import BacktestResult, run_backtest
 from alphaforge.backtesting.event_engine import DeterministicEventEngine
 from alphaforge.backtesting.journal import InMemoryJournal, Journal, SQLiteJournal
 from alphaforge.execution.events import (
+    CashChargeAccrued,
     EngineHalted,
     FillApplied,
     PortfolioMarked,
     TargetDecided,
 )
+from alphaforge.execution.frictions import standard_stress_profiles
 
 _RUN_ID = "synthetic-event-backtest"
 _NO_COSTS = {
@@ -158,6 +160,50 @@ _ACCOUNTING_COLUMNS = [
     "reconciliation_tolerance",
     "bankrupt",
 ]
+_FRICTION_MANIFEST_COLUMNS = [
+    "model_type",
+    "model_id",
+    "version",
+    "declaration_digest",
+    "configuration_digest",
+    "parameters_json",
+    "units_json",
+    "parameter_bounds_json",
+    "calibration_provenance",
+    "domain",
+    "execution_timestamp",
+    "failure_behavior",
+    "limitations_json",
+    "stress_profile",
+]
+_FRICTION_ATTRIBUTION_COLUMNS = [
+    "date",
+    "order_id",
+    "symbol",
+    "component",
+    "accounting_path",
+    "amount_usd",
+    "rate",
+    "rate_unit",
+    "basis_usd",
+    "model_digest",
+    "record_digest",
+    "stress_profile",
+    "status",
+    "detail",
+]
+_LATENCY_COLUMNS = [
+    "origin_session",
+    "data_available_session",
+    "feature_available_session",
+    "signal_available_session",
+    "submission_session",
+    "fill_session",
+    "execution_lag_sessions",
+    "model_digest",
+    "schedule_digest",
+    "stress_profile",
+]
 
 
 def _panel(
@@ -233,12 +279,18 @@ def test_event_extension_preserves_every_legacy_table_schema() -> None:
         *_LEGACY_FIELDS,
         "events",
         "accounting",
+        "friction_model_manifest",
+        "friction_attribution",
+        "latency_schedule",
     )
     for field_name, expected_columns in _LEGACY_COLUMNS.items():
         table = getattr(result, field_name)
         assert list(table.columns) == expected_columns
     assert list(result.events.columns) == _EVENT_COLUMNS
     assert list(result.accounting.columns) == _ACCOUNTING_COLUMNS
+    assert list(result.friction_model_manifest.columns) == _FRICTION_MANIFEST_COLUMNS
+    assert list(result.friction_attribution.columns) == _FRICTION_ATTRIBUTION_COLUMNS
+    assert list(result.latency_schedule.columns) == _LATENCY_COLUMNS
 
 
 def test_two_asset_orders_are_all_submitted_before_any_execution() -> None:
@@ -358,7 +410,14 @@ def test_repeated_run_is_byte_semantic_deterministic() -> None:
     first = _run(panel, targets)
     second = _run(panel, targets)
 
-    for field_name in (*_LEGACY_FIELDS, "events", "accounting"):
+    for field_name in (
+        *_LEGACY_FIELDS,
+        "events",
+        "accounting",
+        "friction_model_manifest",
+        "friction_attribution",
+        "latency_schedule",
+    ):
         assert_frame_equal(
             getattr(first, field_name),
             getattr(second, field_name),
@@ -435,6 +494,296 @@ def test_cash_only_session_has_marks_but_no_order_and_commission_is_debited_once
     assert result.equity_curve["trading_cost"].sum() == pytest.approx(commission)
 
 
+def test_component_costs_native_carry_and_attribution_reconcile() -> None:
+    panel = _panel(("AAA", "BBB"), periods=12, volume=1_000_000.0)
+    sessions = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    for index, session in enumerate(sessions):
+        price = 100.0 + float(index % 2)
+        selector = panel["date"] == session
+        panel.loc[selector, ["open", "high", "low", "close"]] = price
+    journal = InMemoryJournal()
+    result = run_backtest(
+        panel,
+        _targets(panel, {"AAA": 1.4, "BBB": -0.4}, decision_index=5),
+        initial_capital=100_000.0,
+        costs={
+            "commission_bps": 1.0,
+            "commission_per_share_usd": 0.001,
+            "exchange_fee_bps": 0.5,
+            "half_spread_bps": 2.0,
+            "slippage_bps": 1.0,
+            "spread_slippage_multiplier": 0.5,
+            "participation_slippage_bps": 5.0,
+            "volatility_slippage_bps_per_1pct": 1.0,
+            "calibration_provenance": "predeclared synthetic integration assumptions",
+        },
+        execution={
+            "adv_lookback": 2,
+            "volatility_lookback": 2,
+            "impact_coefficient": 0.1,
+            "impact_exponent": 0.5,
+            "calibration_provenance": "predeclared synthetic integration assumptions",
+        },
+        carry={
+            "cash_financing_bps_annual": 500.0,
+            "short_borrow_bps_annual": 1_000.0,
+            "sessions_per_year": 252,
+            "calibration_provenance": "predeclared synthetic integration assumptions",
+        },
+        event_journal=journal,
+        event_run_id=_RUN_ID,
+    )
+
+    components = set(result.friction_attribution["component"])
+    assert {
+        "commission",
+        "exchange_fee",
+        "spread",
+        "fixed_slippage",
+        "spread_slippage",
+        "participation_slippage",
+        "volatility_slippage",
+        "market_impact",
+        "cash_financing",
+        "short_borrow",
+    }.issubset(components)
+    assert set(result.friction_model_manifest["model_type"]) == {
+        "fill_cost",
+        "execution_policy",
+        "carry_cost",
+        "latency",
+        "stress_profile",
+    }
+    assert result.friction_model_manifest["declaration_digest"].str.len().eq(64).all()
+    assert result.friction_model_manifest["configuration_digest"].str.len().eq(64).all()
+    daily_components = result.friction_attribution.groupby("date")["amount_usd"].sum()
+    curve_costs = result.equity_curve.set_index("date")["trading_cost"]
+    pd.testing.assert_series_equal(
+        daily_components.reindex(curve_costs.index, fill_value=0.0),
+        curve_costs,
+        check_names=False,
+        rtol=1e-12,
+        atol=1e-10,
+    )
+    latest = result.accounting.iloc[-1]
+    cash_fees = result.friction_attribution.loc[
+        result.friction_attribution["component"].isin(["commission", "exchange_fee"]),
+        "amount_usd",
+    ].sum()
+    assert latest["fees"] == pytest.approx(cash_fees)
+    assert latest["financing"] > 0.0
+    assert latest["borrow"] > 0.0
+    assert {"financing", "borrow"}.issubset(
+        set(
+            result.events.loc[result.events["event_type"] == "cash_charge_accrued", "entity_id"]
+            .str.split("-")
+            .str[0]
+        )
+    )
+    replayed = DeterministicEventEngine.replay(
+        journal,
+        calendar=tuple(session.date() for session in sessions),
+        initial_cash=100_000.0,
+        expected_run_id=_RUN_ID,
+    ).snapshot()
+    assert replayed.portfolio is not None
+    assert replayed.portfolio.cash == latest["cash"]
+    assert replayed.portfolio.equity == latest["equity"]
+    assert replayed.portfolio.charges["financing"] == latest["financing"]
+    assert replayed.portfolio.charges["borrow"] == latest["borrow"]
+
+
+def test_fill_attribution_uses_component_model_and_content_identities() -> None:
+    panel = _panel(("AAA",), periods=10, volume=1_000_000.0)
+    sessions = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    for index, session in enumerate(sessions):
+        price = 100.0 + float(index % 2)
+        selector = panel["date"] == session
+        panel.loc[selector, ["open", "high", "low", "close"]] = price
+    targets = _targets(panel, {"AAA": 1.0}, decision_index=4)
+    common = {
+        "panel": panel,
+        "target_weights": targets,
+        "costs": {
+            "commission_bps": 1.0,
+            "half_spread_bps": 2.0,
+            "slippage_bps": 0.0,
+        },
+        "event_run_id": _RUN_ID,
+    }
+    lower = run_backtest(
+        **common,
+        execution={
+            "adv_lookback": 2,
+            "volatility_lookback": 2,
+            "impact_coefficient": 0.1,
+        },
+    )
+    higher = run_backtest(
+        **common,
+        execution={
+            "adv_lookback": 2,
+            "volatility_lookback": 2,
+            "impact_coefficient": 0.2,
+        },
+    )
+
+    lower_manifest = lower.friction_model_manifest.set_index("model_type")
+    higher_manifest = higher.friction_model_manifest.set_index("model_type")
+    lower_impact = lower.friction_attribution.loc[
+        lower.friction_attribution["component"] == "market_impact"
+    ].iloc[0]
+    higher_impact = higher.friction_attribution.loc[
+        higher.friction_attribution["component"] == "market_impact"
+    ].iloc[0]
+    lower_commission = lower.friction_attribution.loc[
+        lower.friction_attribution["component"] == "commission"
+    ].iloc[0]
+
+    assert (
+        lower_impact["model_digest"]
+        == lower_manifest.at["execution_policy", "configuration_digest"]
+    )
+    assert (
+        lower_commission["model_digest"] == lower_manifest.at["fill_cost", "configuration_digest"]
+    )
+    assert (
+        lower_manifest.at["fill_cost", "configuration_digest"]
+        == higher_manifest.at["fill_cost", "configuration_digest"]
+    )
+    assert lower_impact["model_digest"] != higher_impact["model_digest"]
+    assert lower_impact["record_digest"] != higher_impact["record_digest"]
+    assert higher_impact["amount_usd"] == pytest.approx(2.0 * lower_impact["amount_usd"])
+    assert lower.friction_attribution["record_digest"].str.fullmatch(r"[0-9a-f]{64}").all()
+
+
+def test_zero_lagged_liquidity_rejects_and_publishes_normalized_evidence() -> None:
+    panel = _panel(("AAA",), periods=6, price=10.0, volume=0.0)
+    result = run_backtest(
+        panel,
+        _targets(panel, {"AAA": 1.0}, decision_index=2),
+        costs=_NO_COSTS,
+        execution={"adv_lookback": 2, "max_participation_rate": 0.05},
+        event_run_id=_RUN_ID,
+    )
+
+    assert result.fills["status"].tolist() == ["rejected"]
+    rejection = result.friction_attribution.iloc[0]
+    assert rejection["component"] == "execution_rejection"
+    assert rejection["accounting_path"] == "none"
+    assert rejection["amount_usd"] == 0.0
+    assert rejection["detail"] == "required_lagged_adv_unavailable"
+    assert len(rejection["model_digest"]) == 64
+    assert len(rejection["record_digest"]) == 64
+    assert "order_rejected" in set(result.events["event_type"])
+
+
+def test_logical_latency_delays_each_stage_without_intraday_claims() -> None:
+    panel = _panel(("AAA",), periods=10)
+    sessions = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    result = run_backtest(
+        panel,
+        _targets(panel, {"AAA": 1.0}),
+        costs=_NO_COSTS,
+        latency={
+            "data_delay_sessions": 1,
+            "feature_delay_sessions": 1,
+            "inference_delay_sessions": 1,
+            "submission_delay_sessions": 1,
+            "fill_delay_sessions": 1,
+            "calibration_provenance": "predeclared synthetic logical delay",
+        },
+        event_run_id=_RUN_ID,
+    )
+
+    schedule = result.latency_schedule.iloc[0]
+    assert schedule["origin_session"] == sessions[0]
+    assert schedule["data_available_session"] == sessions[1]
+    assert schedule["feature_available_session"] == sessions[2]
+    assert schedule["signal_available_session"] == sessions[3]
+    assert schedule["submission_session"] == sessions[4]
+    assert schedule["fill_session"] == sessions[6]
+    signal_sessions = result.events.loc[
+        result.events["event_type"] == "signal_available", "session"
+    ].tolist()
+    submission_sessions = result.events.loc[
+        result.events["event_type"] == "order_submitted", "session"
+    ].tolist()
+    assert signal_sessions == [sessions[3]]
+    target_session = result.events.loc[
+        result.events["event_type"] == "target_decided", "session"
+    ].iloc[0]
+    assert result.orders.iloc[0]["decision_date"] == target_session == sessions[3]
+    assert result.orders.iloc[0]["decision_date"] >= schedule["feature_available_session"]
+    # DAY lifecycle remains atomic on the future fill bar; submission_session
+    # is a logical readiness diagnostic, not a fabricated resting order.
+    assert submission_sessions == [sessions[6]]
+
+
+def test_added_latency_fails_closed_when_a_baseline_eligible_target_exceeds_calendar() -> None:
+    panel = _panel(("AAA",), periods=3)
+    with pytest.raises(ValueError, match="exceeds the frozen calendar"):
+        run_backtest(
+            panel,
+            _targets(panel, {"AAA": 1.0}, decision_index=1),
+            costs=_NO_COSTS,
+            latency={"fill_delay_sessions": 1},
+        )
+
+
+def test_every_standard_stress_profile_reruns_and_changes_its_event_path() -> None:
+    panel = _panel(("AAA",), periods=12, price=10.0, volume=1_000.0)
+    targets = _targets(panel, {"AAA": 1.0}, decision_index=3)
+    profiles = standard_stress_profiles()
+    results = {
+        profile.name: run_backtest(
+            panel,
+            targets,
+            initial_capital=1_000.0,
+            costs={"commission_bps": 0.0, "half_spread_bps": 2.0, "slippage_bps": 0.0},
+            execution={
+                "adv_lookback": 2,
+                "volatility_lookback": 2,
+                "max_participation_rate": 0.05,
+            },
+            stress_profile=profile,
+            event_run_id=_RUN_ID,
+        )
+        for profile in profiles
+    }
+    baseline = results["baseline"]
+    doubled = results["doubled_costs"]
+    tripled = results["tripled_costs"]
+    adverse_spread = results["adverse_spread"]
+    reduced_liquidity = results["reduced_liquidity"]
+    delayed = results["delayed_signals"]
+    partial_pressure = results["partial_fill_pressure"]
+    capacity = results["capacity_scaling"]
+
+    for name, result in results.items():
+        assert result.friction_model_manifest["stress_profile"].eq(name).all()
+        assert result.friction_attribution["stress_profile"].eq(name).all()
+        assert {"order_submitted", "fill_applied", "order_cancelled"}.issubset(
+            set(result.events["event_type"])
+        )
+
+    costs = [run.equity_curve["trading_cost"].sum() for run in (baseline, doubled, tripled)]
+    assert costs == sorted(costs)
+    assert costs[1] == pytest.approx(2.0 * costs[0])
+    assert costs[2] == pytest.approx(3.0 * costs[0])
+    assert adverse_spread.equity_curve["trading_cost"].sum() == pytest.approx(3.0 * costs[0])
+    assert reduced_liquidity.fills.iloc[0]["filled_shares"] == pytest.approx(
+        0.5 * baseline.fills.iloc[0]["filled_shares"]
+    )
+    assert partial_pressure.fills.iloc[0]["filled_shares"] == pytest.approx(
+        0.5 * baseline.fills.iloc[0]["filled_shares"]
+    )
+    assert delayed.fills.iloc[0]["fill_date"] > baseline.fills.iloc[0]["fill_date"]
+    assert capacity.orders["requested_notional"].sum() == pytest.approx(
+        5.0 * baseline.orders["requested_notional"].sum()
+    )
+
+
 def test_missing_required_open_price_raises_without_publishing_a_result() -> None:
     panel = _panel(("AAA",), periods=3)
     sessions = pd.DatetimeIndex(sorted(panel["date"].unique()))
@@ -459,6 +808,29 @@ def test_missing_required_open_price_raises_without_publishing_a_result() -> Non
         and event.payload.mark_type == "close"
         for event in committed
     )
+
+
+def test_fill_price_resource_failure_never_commits_an_open_order_prefix() -> None:
+    panel = _panel(("AAA",), periods=3, price=1.0e12)
+    journal = InMemoryJournal()
+
+    with pytest.raises(ValueError, match="fill price exceeds"):
+        run_backtest(
+            panel,
+            _targets(panel, {"AAA": 1.0}),
+            costs={
+                "commission_bps": 0.0,
+                "half_spread_bps": 1.0,
+                "slippage_bps": 0.0,
+            },
+            event_journal=journal,
+            event_run_id=_RUN_ID,
+        )
+
+    event_types = {event.event_type for event in journal.events()}
+    assert "order_submitted" not in event_types
+    assert "order_accepted" not in event_types
+    assert "fill_applied" not in event_types
 
 
 def test_missing_required_close_price_records_halt_without_publishing_result() -> None:
@@ -538,6 +910,39 @@ def test_fee_induced_fill_bankruptcy_halts_before_later_execution() -> None:
 
     committed = journal.events()
     assert isinstance(committed[-2].payload, FillApplied)
+    assert isinstance(committed[-1].payload, EngineHalted)
+    assert committed[-1].payload.reason_code == "bankruptcy"
+    assert committed[-1].causation_id == committed[-2].event_id
+    assert not any(
+        event.coordinate.session == committed[-1].coordinate.session
+        and isinstance(event.payload, PortfolioMarked)
+        and event.payload.mark_type == "close"
+        for event in committed
+    )
+
+
+def test_financing_bankruptcy_records_charge_then_terminal_halt() -> None:
+    panel = _panel(("AAA",), periods=4, price=10.0)
+    journal = InMemoryJournal()
+
+    with pytest.raises(RuntimeError, match="non-positive financing equity"):
+        run_backtest(
+            panel,
+            _targets(panel, {"AAA": 2.0}),
+            initial_capital=1_000.0,
+            costs=_NO_COSTS,
+            carry={
+                "cash_financing_bps_annual": 1_000_000.0,
+                "short_borrow_bps_annual": 0.0,
+                "sessions_per_year": 1,
+            },
+            event_journal=journal,
+            event_run_id=_RUN_ID,
+        )
+
+    committed = journal.events()
+    assert isinstance(committed[-2].payload, CashChargeAccrued)
+    assert committed[-2].payload.charge_type == "financing"
     assert isinstance(committed[-1].payload, EngineHalted)
     assert committed[-1].payload.reason_code == "bankruptcy"
     assert committed[-1].causation_id == committed[-2].event_id

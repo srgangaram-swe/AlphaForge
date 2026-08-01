@@ -84,8 +84,12 @@ def write_markdown_report(run_dir: str | Path, output_path: str | Path | None = 
         "execution_rejected_rate",
         "total_trading_cost_dollars",
         "total_commission_dollars",
+        "total_exchange_fee_dollars",
         "total_spread_cost_dollars",
+        "total_slippage_cost_dollars",
         "total_impact_cost_dollars",
+        "total_financing_cost_dollars",
+        "total_borrow_cost_dollars",
     )
     execution_summary = {key: summary[key] for key in execution_keys if key in summary}
     if execution_summary:

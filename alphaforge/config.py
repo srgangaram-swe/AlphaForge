@@ -571,13 +571,55 @@ class ExecutionConfig(StrictConfig):
     volatility_lookback: Annotated[int, Field(ge=2)]
     max_participation_rate: Annotated[float, Field(gt=0, le=1, allow_inf_nan=False)] | None
     impact_coefficient: NonNegativeFloat
+    impact_exponent: Annotated[float, Field(ge=0, le=4, allow_inf_nan=False)] = 0.5
     missing_price_policy: Literal["raise", "skip"]
+    calibration_provenance: Annotated[str, Field(min_length=1, max_length=512)] = (
+        "caller-supplied deterministic simulation assumption; not empirically calibrated"
+    )
 
 
 class CostConfig(StrictConfig):
     commission_bps: NonNegativeFloat
     half_spread_bps: NonNegativeFloat
     slippage_bps: NonNegativeFloat
+    commission_per_share_usd: NonNegativeFloat = 0.0
+    minimum_commission_usd: NonNegativeFloat = 0.0
+    exchange_fee_bps: NonNegativeFloat = 0.0
+    exchange_fee_per_share_usd: NonNegativeFloat = 0.0
+    spread_slippage_multiplier: NonNegativeFloat = 0.0
+    participation_slippage_bps: NonNegativeFloat = 0.0
+    participation_slippage_exponent: Annotated[float, Field(ge=0, le=4, allow_inf_nan=False)] = 1.0
+    volatility_slippage_bps_per_1pct: NonNegativeFloat = 0.0
+    calibration_provenance: Annotated[str, Field(min_length=1, max_length=512)] = (
+        "caller-supplied deterministic scenario assumption; not empirically calibrated"
+    )
+
+
+class LatencyConfig(StrictConfig):
+    data_delay_sessions: Annotated[int, Field(ge=0, le=2520)] = 0
+    feature_delay_sessions: Annotated[int, Field(ge=0, le=2520)] = 0
+    inference_delay_sessions: Annotated[int, Field(ge=0, le=2520)] = 0
+    submission_delay_sessions: Annotated[int, Field(ge=0, le=2520)] = 0
+    fill_delay_sessions: Annotated[int, Field(ge=0, le=2520)] = 0
+    calibration_provenance: Annotated[str, Field(min_length=1, max_length=512)] = (
+        "predeclared deterministic simulation sensitivity; not calibrated from strategy "
+        "test outcomes or presented as observed execution quality"
+    )
+
+    @model_validator(mode="after")
+    def validate_total_delay(self) -> LatencyConfig:
+        total = sum(
+            (
+                self.data_delay_sessions,
+                self.feature_delay_sessions,
+                self.inference_delay_sessions,
+                self.submission_delay_sessions,
+                self.fill_delay_sessions,
+            )
+        )
+        if total >= 5040:
+            raise ValueError("total logical latency must be less than 5040 sessions")
+        return self
 
 
 class PortfolioPolicyConfig(StrictConfig):
@@ -624,6 +666,11 @@ class CapacityPolicyConfig(StrictConfig):
 class BorrowFinancingConfig(StrictConfig):
     short_borrow_bps_annual: NonNegativeFloat
     cash_financing_bps_annual: NonNegativeFloat
+    sessions_per_year: Annotated[int, Field(ge=1, le=366)] = 252
+    calibration_provenance: Annotated[str, Field(min_length=1, max_length=512)] = (
+        "predeclared deterministic simulation sensitivity; not calibrated from strategy "
+        "test outcomes or presented as observed execution quality"
+    )
 
 
 class BacktestConfig(StrictConfig):
@@ -636,6 +683,7 @@ class BacktestConfig(StrictConfig):
     liquidate_at_end: bool
     execution: ExecutionConfig
     costs: CostConfig
+    latency: LatencyConfig = Field(default_factory=LatencyConfig)
     portfolio: PortfolioPolicyConfig
     risk: RiskPolicyConfig
     capacity: CapacityPolicyConfig

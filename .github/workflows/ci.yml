@@ -41,7 +41,7 @@ jobs:
         run: uv run python scripts/validate_configs.py
 
       - name: Type check (mypy)
-        run: uv run python -m mypy alphaforge tests scripts apps
+        run: uv run python -m mypy alphaforge tests scripts apps benchmarks
 
       - name: Build and install wheel
         run: |

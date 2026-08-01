@@ -6,7 +6,7 @@ MEAN_VARIANCE_STUDY_CONFIG ?= configs/mean_variance_study.yaml
 
 .PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence temporal-evidence deep-sequence-evidence time-frequency-evidence latent-representation-evidence ensemble-evidence decision-policy-evidence sprint-3-decision-evidence mean-variance-evidence signal-foundry-evidence train evaluate \
         walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
-        native bench bench-native bench-event
+        native bench bench-native bench-event bench-execution-frictions
 
 install:
 	$(UV) sync --locked --extra dev
@@ -24,15 +24,15 @@ test:
 	$(PYTHON) -m pytest -m "not network" --cov=alphaforge --cov-branch --cov-report=term-missing --cov-fail-under=78
 
 lint:
-	$(PYTHON) -m ruff check alphaforge tests scripts apps
-	$(PYTHON) -m black --check alphaforge tests scripts apps
+	$(PYTHON) -m ruff check alphaforge tests scripts apps benchmarks
+	$(PYTHON) -m black --check alphaforge tests scripts apps benchmarks
 
 format:
-	$(PYTHON) -m ruff check --fix alphaforge tests scripts apps
-	$(PYTHON) -m black alphaforge tests scripts apps
+	$(PYTHON) -m ruff check --fix alphaforge tests scripts apps benchmarks
+	$(PYTHON) -m black alphaforge tests scripts apps benchmarks
 
 typecheck:
-	$(PYTHON) -m mypy alphaforge tests scripts apps
+	$(PYTHON) -m mypy alphaforge tests scripts apps benchmarks
 
 policy:
 	$(PYTHON) -m pre_commit run --all-files
@@ -156,6 +156,10 @@ bench-native:
 
 bench-event:
 	$(PYTHON) scripts/bench_event_engine.py
+
+bench-execution-frictions:
+	$(PYTHON) benchmarks/benchmark_execution_frictions.py \
+		--output runs/execution-frictions-benchmark.json
 
 docker-build:
 	docker build -t alphaforge:latest .

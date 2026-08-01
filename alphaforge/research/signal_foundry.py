@@ -33,6 +33,7 @@ from alphaforge.evaluation import (
     information_coefficient_by_date,
     probability_of_backtest_overfitting,
 )
+from alphaforge.execution import ExecutionStressProfile, standard_stress_profiles
 from alphaforge.features import (
     FittedFeatureTransformer,
     FittedTransformSpec,
@@ -247,6 +248,7 @@ def _backtest(
     features: pd.DataFrame,
     benchmark_symbol: str,
     backtest_config: dict[str, Any],
+    stress_profile: ExecutionStressProfile | None = None,
 ) -> BacktestResult:
     signal_config = backtest_config.get("strategy_params", {})
     signals = build_signals(
@@ -269,6 +271,9 @@ def _backtest(
         costs=backtest_config.get("costs", {}),
         risk=backtest_config.get("risk", {}),
         execution=backtest_config.get("execution", {}),
+        latency=backtest_config.get("latency", {}),
+        carry=backtest_config.get("borrow_financing", {}),
+        stress_profile=stress_profile,
         liquidate_at_end=bool(backtest_config.get("liquidate_at_end", True)),
     )
 
@@ -339,29 +344,8 @@ def _stress_scenarios(
     maximum_drawdown: float,
     seed: int,
 ) -> tuple[list[dict[str, Any]], bool]:
-    scenarios: list[tuple[str, dict[str, Any]]] = []
-    doubled_costs = dict(backtest_config)
-    doubled_costs["costs"] = {
-        key: float(value) * 2.0 for key, value in dict(backtest_config.get("costs", {})).items()
-    }
-    scenarios.append(("doubled_costs", doubled_costs))
-
-    adverse_spread = dict(backtest_config)
-    adverse_spread["costs"] = dict(backtest_config.get("costs", {}))
-    for field in ("half_spread_bps", "slippage_bps"):
-        adverse_spread["costs"][field] = float(adverse_spread["costs"].get(field, 0.0)) * 3.0
-    scenarios.append(("tripled_spread_and_slippage", adverse_spread))
-
-    delayed = dict(backtest_config)
-    delayed["execution_lag"] = int(backtest_config.get("execution_lag", 1)) + 1
-    scenarios.append(("additional_session_delay", delayed))
-
-    lower_liquidity = dict(backtest_config)
-    lower_liquidity["execution"] = dict(backtest_config.get("execution", {}))
-    base_participation = float(lower_liquidity["execution"].get("max_participation_rate", 0.05))
-    lower_liquidity["execution"]["max_participation_rate"] = base_participation / 2.0
-    scenarios.append(("halved_participation", lower_liquidity))
-
+    execution_profiles = standard_stress_profiles()[1:]
+    selection_scenarios: list[tuple[str, dict[str, Any]]] = []
     base_strategy = dict(backtest_config.get("strategy_params", {}))
     base_quantile = float(base_strategy.get("quantile", 0.20))
     for name, quantile in (
@@ -370,11 +354,35 @@ def _stress_scenarios(
     ):
         perturbed = dict(backtest_config)
         perturbed["strategy_params"] = {**base_strategy, "quantile": quantile}
-        scenarios.append((name, perturbed))
+        selection_scenarios.append((name, perturbed))
 
     summaries: list[dict[str, Any]] = []
     passed = True
-    for name, scenario_config in scenarios:
+    for profile in execution_profiles:
+        result = _backtest(
+            panel=panel,
+            predictions=predictions,
+            features=features,
+            benchmark_symbol=benchmark_symbol,
+            backtest_config=backtest_config,
+            stress_profile=profile,
+        )
+        summary = performance_summary(result.equity_curve)
+        scenario_passed = bool(
+            np.isfinite(summary["max_drawdown"]) and summary["max_drawdown"] >= -maximum_drawdown
+        )
+        passed = passed and scenario_passed
+        summaries.append(
+            {
+                "scenario": profile.name,
+                "passed": scenario_passed,
+                "accounting_reconciled": True,
+                "stress_profile_digest": profile.digest,
+                **summary,
+            }
+        )
+
+    for name, scenario_config in selection_scenarios:
         result = _backtest(
             panel=panel,
             predictions=predictions,
@@ -484,37 +492,50 @@ def _year_stability(equity_curve: pd.DataFrame) -> list[dict[str, Any]]:
     return records
 
 
-def _borrow_financing_sensitivity(
-    equity_curve: pd.DataFrame,
+def _native_borrow_financing_summary(
+    result: BacktestResult,
     config: dict[str, Any],
 ) -> dict[str, Any]:
-    """Apply explicit post-ledger borrow/funding drag as a conservative proxy."""
-    expected = {"short_borrow_bps_annual", "cash_financing_bps_annual"}
-    if set(config) != expected:
+    """Summarize carry already reconciled inside the event ledger.
+
+    This deliberately does not post-process the return series: financing and
+    borrow must have exactly one accounting path through ``CashChargeAccrued``.
+    """
+
+    expected = {
+        "short_borrow_bps_annual",
+        "cash_financing_bps_annual",
+        "sessions_per_year",
+        "calibration_provenance",
+    }
+    required = {"short_borrow_bps_annual", "cash_financing_bps_annual"}
+    missing = required - set(config)
+    unknown = set(config) - expected
+    if missing or unknown:
         raise ValueError(
-            f"borrow_financing fields mismatch; missing={sorted(expected - set(config))}, "
-            f"unknown={sorted(set(config) - expected)}"
+            f"borrow_financing fields mismatch; missing={sorted(missing)}, "
+            f"unknown={sorted(unknown)}"
         )
-    borrow = float(config["short_borrow_bps_annual"])
-    financing = float(config["cash_financing_bps_annual"])
-    if not all(np.isfinite(value) and value >= 0.0 for value in (borrow, financing)):
-        raise ValueError("borrow and financing assumptions must be finite and nonnegative")
-    adjusted = equity_curve.copy()
-    gross = adjusted["gross_exposure"].astype(float)
-    net = adjusted["net_exposure"].astype(float)
-    short_exposure = ((gross - net) / 2.0).clip(lower=0.0)
-    financed_cash = (gross - 1.0).clip(lower=0.0)
-    daily_drag = (short_exposure * borrow + financed_cash * financing) / 10_000.0 / 252.0
-    adjusted["return"] = adjusted["return"].astype(float) - daily_drag
-    initial = float(equity_curve["equity"].iloc[0]) / (1.0 + float(equity_curve["return"].iloc[0]))
-    adjusted["equity"] = initial * (1.0 + adjusted["return"]).cumprod()
+    latest = result.accounting.iloc[-1]
+    reconciled = bool(
+        (
+            result.accounting["reconciliation_error"]
+            <= result.accounting["reconciliation_tolerance"]
+        ).all()
+    )
     return {
-        "scenario": "stressed_borrow_and_financing_proxy",
-        "accounting_reconciled": True,
-        "short_borrow_bps_annual": borrow,
-        "cash_financing_bps_annual": financing,
-        "method": "post-ledger exposure-based sensitivity; not a locate or borrow-availability model",
-        **performance_summary(adjusted),
+        "scenario": "native_event_ledger_borrow_and_financing",
+        "accounting_reconciled": reconciled,
+        "short_borrow_bps_annual": float(config["short_borrow_bps_annual"]),
+        "cash_financing_bps_annual": float(config["cash_financing_bps_annual"]),
+        "sessions_per_year": int(config.get("sessions_per_year", 252)),
+        "financing_charges_usd": float(latest["financing"]),
+        "borrow_charges_usd": float(latest["borrow"]),
+        "method": (
+            "native event-ledger accrual after DAY-order termination and before close; "
+            "not a locate or borrow-availability model"
+        ),
+        **performance_summary(result.equity_curve),
     }
 
 
@@ -789,8 +810,8 @@ def run_governed_signal_foundry_research(
             maximum_drawdown=readiness_thresholds.maximum_drawdown,
             seed=research_config.seed,
         )
-        borrow_sensitivity = _borrow_financing_sensitivity(
-            primary.equity_curve,
+        borrow_sensitivity = _native_borrow_financing_summary(
+            primary,
             dict(backtest_config.get("borrow_financing", {})),
         )
         scenario_summaries.append(borrow_sensitivity)
@@ -871,8 +892,8 @@ def run_governed_signal_foundry_research(
         ).to_dict(orient="records")
         dossier["limitations"] = [
             "Daily bars do not establish intraday queue position or institutional execution quality.",
-            "Borrow availability and locate failures are not modeled; borrow and financing are "
-            "post-ledger sensitivity deductions.",
+            "Borrow availability and locate failures are not modeled; configured borrow and "
+            "financing are native event-ledger sensitivities, not executable terms.",
             "Point-in-time completeness is limited to the producer's explicit declarations.",
             "A readiness decision is not evidence that an edge will persist or be profitable.",
         ]
@@ -892,6 +913,11 @@ def run_governed_signal_foundry_research(
         primary.orders.to_csv(staging / "orders.csv", index=False)
         primary.fills.to_csv(staging / "fills.csv", index=False)
         primary.pnl_attribution.to_csv(staging / "pnl_attribution.csv", index=False)
+        primary.events.to_csv(staging / "execution_events.csv", index=False)
+        primary.accounting.to_csv(staging / "accounting.csv", index=False)
+        primary.friction_model_manifest.to_csv(staging / "friction_model_manifest.csv", index=False)
+        primary.friction_attribution.to_csv(staging / "friction_attribution.csv", index=False)
+        primary.latency_schedule.to_csv(staging / "latency_schedule.csv", index=False)
         capacity.curve.to_csv(staging / "capacity_curve.csv", index=False)
         capacity.scenario_trades.to_csv(staging / "capacity_scenario_trades.csv", index=False)
         _write_json(staging / "capacity_diagnostics.json", asdict(capacity.diagnostics))

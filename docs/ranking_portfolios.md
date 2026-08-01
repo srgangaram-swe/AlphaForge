@@ -195,9 +195,11 @@ Repository total 84.55% against an unchanged 78% floor.
 
 * **Synthetic evidence only**, with a planted signal. The Sharpe levels are an
   artefact of that construction and carry no market claim.
-* **Costs are a linear turnover charge.** Slippage, market impact, and latency
-  are SF-S4-MR4; until then the cost model understates the expense of a dense,
-  high-turnover book — which is exactly the kind this comparison favours.
+* **The ranking objective uses a linear turnover penalty.** Any selected target
+  must still pass through the separate event-driven friction model for
+  component-level slippage, impact, carry, and logical latency. The objective
+  penalty is not a substitute for that full causal rerun and can still favour a
+  dense, high-turnover book.
 * **Capacity is modelled through participation caps only.** No borrow
   availability, no short fees, no crowding.
 * **`apply_volatility_target` needs a covariance the caller supplies.** A

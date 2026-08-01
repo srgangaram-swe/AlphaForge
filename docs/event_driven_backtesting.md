@@ -169,16 +169,17 @@ network or file read, uses no random generator, and supplies no favorable
 performance threshold. Compare raw distributions across pinned environments;
 do not turn noisy laptop timing into a correctness gate or a trading claim.
 
-## Deliberate MR boundaries
+## Execution-model boundary
 
-MR3 consumes prices and charges supplied by the simulation and proves event
-ordering, lifecycle, accounting, idempotency, integrity, replay, and bounded
-failure behavior. It does not calibrate those supplied values.
+MR3 established event ordering, lifecycle, accounting, idempotency, integrity,
+replay, and bounded failure behavior. MR4 now supplies the causal calculators
+for commissions, exchange fees, spread, slippage, market impact, logical
+latency, financing, and borrow accrual. Component provenance and separate
+fill-price, fill-fee, and cash-charge paths prevent double charging. See
+[ADR 0011](adr/0011-market-frictions-and-logical-latency.md) and the
+[market-friction guide](market_frictions_latency.md).
 
-- **MR4** owns causal calculators for commissions, exchange fees, spread,
-  slippage, market impact, latency, financing, and borrow accrual. It must
-  preserve component provenance and prevent double charging.
-- **MR5** owns point-in-time borrow availability and locates, liquidity and
+MR5 owns point-in-time borrow availability and locates, liquidity and
   participation constraints, forced buy-ins, aggregate capacity budgets, and
   capacity-frontier evidence.
 

@@ -21,7 +21,7 @@ import json
 import math
 from collections import defaultdict
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 
 import numpy as np
 import pandas as pd
@@ -33,6 +33,7 @@ from alphaforge.data.schemas import to_wide, validate_panel
 from alphaforge.execution.costs import CostModel
 from alphaforge.execution.events import (
     MAX_TARGET_ASSETS,
+    CashChargeAccrued,
     EngineHalted,
     EventCoordinate,
     EventPhase,
@@ -47,6 +48,14 @@ from alphaforge.execution.events import (
     PortfolioMarked,
     SignalAvailable,
     TargetDecided,
+)
+from alphaforge.execution.frictions import (
+    CarryAccrual,
+    CarryCostModel,
+    ExecutionStressProfile,
+    LatencyModel,
+    LatencySchedule,
+    ModelDeclaration,
 )
 from alphaforge.execution.models import (
     BarExecutionModel,
@@ -73,6 +82,9 @@ class BacktestResult:
     pnl_attribution: pd.DataFrame = field(default_factory=pd.DataFrame)
     events: pd.DataFrame = field(default_factory=pd.DataFrame)
     accounting: pd.DataFrame = field(default_factory=pd.DataFrame)
+    friction_model_manifest: pd.DataFrame = field(default_factory=pd.DataFrame)
+    friction_attribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    latency_schedule: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass(frozen=True)
@@ -82,6 +94,13 @@ class _ScheduledDecision:
     risk_scale: float
     target_event_id: str
     correlation_id: str
+
+
+@dataclass(frozen=True)
+class _PendingSignal:
+    origin_date: pd.Timestamp
+    target_weights: Mapping[str, float]
+    latency: LatencySchedule
 
 
 @dataclass(frozen=True, slots=True)
@@ -486,6 +505,167 @@ def _integer_setting(value: object, name: str) -> int:
     return int(numeric)
 
 
+def _apply_execution_stress(
+    *,
+    execution_model: BarExecutionModel,
+    latency_model: LatencyModel,
+    carry_model: CarryCostModel,
+    profile: ExecutionStressProfile,
+    initial_capital: float,
+) -> tuple[BarExecutionModel, LatencyModel, CarryCostModel, float, float]:
+    """Return immutable adverse model variants for one full event-backtest rerun."""
+
+    cost_multiplier = profile.cost_multiplier
+    stressed_costs = replace(
+        execution_model.costs,
+        commission_bps=execution_model.costs.commission_bps * cost_multiplier,
+        half_spread_bps=(
+            execution_model.costs.half_spread_bps * profile.effective_spread_multiplier
+        ),
+        slippage_bps=execution_model.costs.slippage_bps * cost_multiplier,
+        commission_per_share_usd=(execution_model.costs.commission_per_share_usd * cost_multiplier),
+        minimum_commission_usd=(execution_model.costs.minimum_commission_usd * cost_multiplier),
+        exchange_fee_bps=execution_model.costs.exchange_fee_bps * cost_multiplier,
+        exchange_fee_per_share_usd=(
+            execution_model.costs.exchange_fee_per_share_usd * cost_multiplier
+        ),
+        participation_slippage_bps=(
+            execution_model.costs.participation_slippage_bps * cost_multiplier
+        ),
+        volatility_slippage_bps_per_1pct=(
+            execution_model.costs.volatility_slippage_bps_per_1pct * cost_multiplier
+        ),
+    )
+    participation_limit = execution_model.policy.max_participation_rate
+    if profile.participation_limit_multiplier < 1.0:
+        participation_limit = (
+            1.0 if participation_limit is None else participation_limit
+        ) * profile.participation_limit_multiplier
+    stressed_policy = replace(
+        execution_model.policy,
+        max_participation_rate=participation_limit,
+        impact_coefficient=(execution_model.policy.impact_coefficient * cost_multiplier),
+    )
+    stressed_latency = replace(
+        latency_model,
+        inference_delay_sessions=(
+            latency_model.inference_delay_sessions + profile.signal_delay_sessions
+        ),
+    )
+    stressed_carry = replace(
+        carry_model,
+        cash_financing_bps_annual=(carry_model.cash_financing_bps_annual * cost_multiplier),
+        short_borrow_bps_annual=(carry_model.short_borrow_bps_annual * cost_multiplier),
+    )
+    stressed_capital = initial_capital * profile.capacity_multiplier
+    if not math.isfinite(stressed_capital) or stressed_capital > 1.0e18:
+        raise ValueError("stress-adjusted initial capital exceeds the USD resource ceiling")
+    return (
+        BarExecutionModel(stressed_costs, stressed_policy),
+        stressed_latency,
+        stressed_carry,
+        float(stressed_capital),
+        profile.liquidity_multiplier,
+    )
+
+
+def _manifest_record(
+    *,
+    model_type: str,
+    declaration: ModelDeclaration,
+    configuration_digest: str,
+    parameters: Mapping[str, object],
+    stress_profile: str,
+) -> dict[str, object]:
+    """Normalize one immutable model contract for tabular publication."""
+
+    return {
+        "model_type": model_type,
+        "model_id": declaration.model_id,
+        "version": declaration.version,
+        "declaration_digest": declaration.digest,
+        "configuration_digest": configuration_digest,
+        "parameters_json": json.dumps(
+            _semantic_value(parameters),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ),
+        "units_json": json.dumps(dict(declaration.units), sort_keys=True),
+        "parameter_bounds_json": json.dumps(dict(declaration.parameter_bounds), sort_keys=True),
+        "calibration_provenance": declaration.calibration_provenance,
+        "domain": declaration.domain,
+        "execution_timestamp": declaration.execution_timestamp,
+        "failure_behavior": declaration.failure_behavior,
+        "limitations_json": json.dumps(list(declaration.limitations)),
+        "stress_profile": stress_profile,
+    }
+
+
+def _friction_manifest(
+    *,
+    execution_model: BarExecutionModel,
+    latency_model: LatencyModel,
+    carry_model: CarryCostModel,
+    stress_profile: ExecutionStressProfile,
+) -> pd.DataFrame:
+    columns = [
+        "model_type",
+        "model_id",
+        "version",
+        "declaration_digest",
+        "configuration_digest",
+        "parameters_json",
+        "units_json",
+        "parameter_bounds_json",
+        "calibration_provenance",
+        "domain",
+        "execution_timestamp",
+        "failure_behavior",
+        "limitations_json",
+        "stress_profile",
+    ]
+    records = [
+        _manifest_record(
+            model_type="fill_cost",
+            declaration=execution_model.costs.declaration,
+            configuration_digest=execution_model.costs.configuration_digest,
+            parameters=asdict(execution_model.costs),
+            stress_profile=stress_profile.name,
+        ),
+        _manifest_record(
+            model_type="execution_policy",
+            declaration=execution_model.policy.declaration,
+            configuration_digest=execution_model.policy.configuration_digest,
+            parameters=asdict(execution_model.policy),
+            stress_profile=stress_profile.name,
+        ),
+        _manifest_record(
+            model_type="carry_cost",
+            declaration=carry_model.declaration,
+            configuration_digest=carry_model.configuration_digest,
+            parameters=asdict(carry_model),
+            stress_profile=stress_profile.name,
+        ),
+        _manifest_record(
+            model_type="latency",
+            declaration=latency_model.declaration,
+            configuration_digest=latency_model.configuration_digest,
+            parameters=asdict(latency_model),
+            stress_profile=stress_profile.name,
+        ),
+        _manifest_record(
+            model_type="stress_profile",
+            declaration=stress_profile.declaration,
+            configuration_digest=stress_profile.digest,
+            parameters=stress_profile.to_dict(),
+            stress_profile=stress_profile.name,
+        ),
+    ]
+    return pd.DataFrame(records, columns=columns)
+
+
 def _orders_frame(records: list[dict[str, object]]) -> pd.DataFrame:
     columns = [
         "order_id",
@@ -512,6 +692,152 @@ def _fills_frame(fills: list[Fill]) -> pd.DataFrame:
         )
         records.append(record)
     return pd.DataFrame(records)
+
+
+def _fill_friction_records(
+    fill: Fill,
+    *,
+    cost_model_digest: str,
+    execution_policy_digest: str,
+    stress_profile: str,
+) -> list[dict[str, object]]:
+    """Return normalized cost or rejection evidence for one simulated fill."""
+
+    basis = abs(fill.filled_shares) * fill.reference_price
+    execution_model_digest = _stable_digest(
+        {
+            "cost_model_digest": cost_model_digest,
+            "execution_policy_digest": execution_policy_digest,
+        },
+        domain="alphaforge.execution-model.v1",
+    )
+
+    def record_with_digest(record: dict[str, object]) -> dict[str, object]:
+        """Bind one attribution row to its fill context and governing model."""
+
+        digest_payload = {
+            **record,
+            "decision_date": fill.decision_date,
+            "fill_date": fill.fill_date,
+            "requested_shares": fill.requested_shares,
+            "filled_shares": fill.filled_shares,
+            "residual_shares": fill.residual_shares,
+            "reference_price": fill.reference_price,
+            "fill_price": fill.fill_price,
+            "participation_rate": fill.participation_rate,
+            "lagged_adv_shares": (
+                fill.lagged_adv_shares if math.isfinite(fill.lagged_adv_shares) else None
+            ),
+            "lagged_volatility": (
+                fill.lagged_volatility if math.isfinite(fill.lagged_volatility) else None
+            ),
+        }
+        record["record_digest"] = _stable_digest(
+            digest_payload,
+            domain="alphaforge.fill-friction-attribution.v1",
+        )
+        return record
+
+    if fill.cost_breakdown is None:
+        return [
+            record_with_digest(
+                {
+                    "date": fill.fill_date,
+                    "order_id": fill.order_id,
+                    "symbol": fill.symbol,
+                    "component": "execution_rejection",
+                    "accounting_path": "none",
+                    "amount_usd": 0.0,
+                    "rate": None,
+                    "rate_unit": "not_applicable",
+                    "basis_usd": 0.0,
+                    "model_digest": execution_model_digest,
+                    "stress_profile": stress_profile,
+                    "status": fill.status,
+                    "detail": fill.rejection_reason or "no_executable_quantity",
+                }
+            )
+        ]
+    records: list[dict[str, object]] = []
+    for component, accounting_path, amount, rate_bps in fill.cost_breakdown.components():
+        governing_digest = (
+            execution_policy_digest if component == "market_impact" else cost_model_digest
+        )
+        records.append(
+            record_with_digest(
+                {
+                    "date": fill.fill_date,
+                    "order_id": fill.order_id,
+                    "symbol": fill.symbol,
+                    "component": component,
+                    "accounting_path": accounting_path,
+                    "amount_usd": amount,
+                    "rate": rate_bps,
+                    "rate_unit": (
+                        "basis_points" if rate_bps is not None else "composite_declared_parameters"
+                    ),
+                    "basis_usd": basis,
+                    "model_digest": governing_digest,
+                    "stress_profile": stress_profile,
+                    "status": fill.status,
+                    "detail": "filled_quantity_only",
+                }
+            )
+        )
+    return records
+
+
+def _carry_friction_records(
+    accrual: CarryAccrual,
+    *,
+    carry_model: CarryCostModel,
+    stress_profile: str,
+) -> list[dict[str, object]]:
+    """Return normalized financing and per-symbol borrow evidence."""
+
+    records: list[dict[str, object]] = []
+    if accrual.financing_charge_usd > 0.0:
+        records.append(
+            {
+                "date": pd.Timestamp(accrual.session),
+                "order_id": None,
+                "symbol": "__CASH__",
+                "component": "cash_financing",
+                "accounting_path": "cash_charge",
+                "amount_usd": accrual.financing_charge_usd,
+                "rate": carry_model.cash_financing_bps_annual,
+                "rate_unit": "annual_basis_points",
+                "basis_usd": accrual.financing_basis_usd,
+                "model_digest": accrual.model_digest,
+                "record_digest": accrual.digest,
+                "stress_profile": stress_profile,
+                "status": "accrued",
+                "detail": f"one_of_{carry_model.sessions_per_year}_logical_sessions",
+            }
+        )
+    market_values = dict(accrual.short_market_values_usd)
+    for symbol, amount in accrual.borrow_charges_usd:
+        if amount == 0.0:
+            continue
+        records.append(
+            {
+                "date": pd.Timestamp(accrual.session),
+                "order_id": None,
+                "symbol": symbol,
+                "component": "short_borrow",
+                "accounting_path": "cash_charge",
+                "amount_usd": amount,
+                "rate": carry_model.short_borrow_bps_annual,
+                "rate_unit": "annual_basis_points",
+                "basis_usd": market_values[symbol],
+                "model_digest": accrual.model_digest,
+                "record_digest": accrual.digest,
+                "stress_profile": stress_profile,
+                "status": "accrued",
+                "detail": f"one_of_{carry_model.sessions_per_year}_logical_sessions",
+            }
+        )
+    return records
 
 
 def _trades_frame(fills: pd.DataFrame) -> pd.DataFrame:
@@ -563,6 +889,9 @@ def run_backtest(
     liquidate_at_end: bool = False,
     event_journal: Journal | None = None,
     event_run_id: str | None = None,
+    latency: LatencyModel | dict | None = None,
+    carry: CarryCostModel | dict | None = None,
+    stress_profile: ExecutionStressProfile | dict | None = None,
 ) -> BacktestResult:
     """Run a chronological OOS backtest from close-time target weights.
 
@@ -578,6 +907,10 @@ def run_backtest(
     while the returned ``events`` table contains metadata and causation only.
     ``event_run_id`` is optional; when omitted it is derived from canonical
     validated data, targets, and configuration without wall-clock state.
+    ``latency``, ``carry``, and ``stress_profile`` are bounded simulation
+    sensitivities. They do not represent observed broker terms or live-trading
+    readiness. Stress profiles rerun the full event simulation; they never
+    rescale a completed return series.
     """
     if not isinstance(execution_lag, int) or isinstance(execution_lag, bool) or execution_lag < 1:
         raise ValueError("execution_lag must be an integer >= 1")
@@ -622,24 +955,50 @@ def run_backtest(
             f"event-backed backtests support at most {MAX_TARGET_ASSETS} target assets"
         )
 
+    execution_model = BarExecutionModel.from_config(costs=costs, execution=execution)
+    latency_model = (
+        latency if isinstance(latency, LatencyModel) else LatencyModel.from_config(latency)
+    )
+    carry_model = carry if isinstance(carry, CarryCostModel) else CarryCostModel.from_config(carry)
+    resolved_stress = (
+        stress_profile
+        if isinstance(stress_profile, ExecutionStressProfile)
+        else (
+            ExecutionStressProfile(name="baseline")
+            if stress_profile is None
+            else ExecutionStressProfile.from_config(stress_profile)
+        )
+    )
+    (
+        execution_model,
+        latency_model,
+        carry_model,
+        initial_capital,
+        liquidity_multiplier,
+    ) = _apply_execution_stress(
+        execution_model=execution_model,
+        latency_model=latency_model,
+        carry_model=carry_model,
+        profile=resolved_stress,
+        initial_capital=float(initial_capital),
+    )
+
     terminal_fill_date: pd.Timestamp | None = None
+    liquidation_date: pd.Timestamp | None = None
     if liquidate_at_end:
         last_decision = max(decisions)
         last_decision_idx = int(calendar.get_indexer([last_decision])[0])
         liquidation_decision_idx = last_decision_idx + rebalance_frequency
-        terminal_fill_idx = liquidation_decision_idx + execution_lag
-        if terminal_fill_idx >= len(calendar):
+        if liquidation_decision_idx >= len(calendar):
             raise ValueError(
                 "panel needs enough sessions after the final target to execute terminal liquidation"
             )
         liquidation_date = calendar[liquidation_decision_idx]
         decisions[liquidation_date] = {symbol: 0.0 for symbol in tradable_symbols}
-        terminal_fill_date = calendar[terminal_fill_idx]
     close = close.reindex(columns=tradable_symbols)
     open_price = open_price.reindex(columns=tradable_symbols)
     volume = volume.reindex(columns=tradable_symbols)
 
-    execution_model = BarExecutionModel.from_config(costs=costs, execution=execution)
     if execution_model.policy.missing_price_policy != "raise":
         raise ValueError(
             "historical ledger requires missing_price_policy='raise' for auditable marking"
@@ -649,6 +1008,65 @@ def run_backtest(
         volume,
         execution_model.policy,
     )
+    lagged_adv = lagged_adv * liquidity_multiplier
+
+    frozen_calendar = tuple(timestamp.date() for timestamp in calendar)
+    calendar_position = {date: i for i, date in enumerate(calendar)}
+    pending_signals: dict[pd.Timestamp, _PendingSignal] = {}
+    latency_records: list[dict[str, object]] = []
+    latency_offsets = latency_model.cumulative_offsets(execution_lag=execution_lag)
+    for origin_date, target in sorted(decisions.items()):
+        origin_index = calendar_position[origin_date]
+        # Preserve the version-1 contract: a trailing target that could not
+        # cross even the irreducible execution boundary is not emitted. Once
+        # baseline-eligible, every additional declared delay must fit or fail.
+        if origin_index + execution_lag >= len(calendar):
+            if liquidation_date is not None and origin_date == liquidation_date:
+                raise ValueError(
+                    "panel needs enough sessions after the final target to execute terminal liquidation"
+                )
+            continue
+        if origin_index + latency_offsets[-1] >= len(frozen_calendar):
+            raise ValueError("latency schedule exceeds the frozen calendar")
+        resolved_sessions = tuple(
+            frozen_calendar[origin_index + offset] for offset in latency_offsets
+        )
+        schedule = LatencySchedule(
+            origin_session=origin_date.date(),
+            data_available_session=resolved_sessions[0],
+            feature_available_session=resolved_sessions[1],
+            signal_available_session=resolved_sessions[2],
+            submission_session=resolved_sessions[3],
+            fill_session=resolved_sessions[4],
+            execution_lag_sessions=execution_lag,
+            model_digest=latency_model.configuration_digest,
+        )
+        signal_date = pd.Timestamp(schedule.signal_available_session)
+        if signal_date in pending_signals:
+            raise RuntimeError("two target origins resolved to the same signal session")
+        pending_signals[signal_date] = _PendingSignal(
+            origin_date=origin_date,
+            target_weights=dict(target),
+            latency=schedule,
+        )
+        latency_records.append(
+            {
+                "origin_session": pd.Timestamp(schedule.origin_session),
+                "data_available_session": pd.Timestamp(schedule.data_available_session),
+                "feature_available_session": pd.Timestamp(schedule.feature_available_session),
+                "signal_available_session": pd.Timestamp(schedule.signal_available_session),
+                "submission_session": pd.Timestamp(schedule.submission_session),
+                "fill_session": pd.Timestamp(schedule.fill_session),
+                "execution_lag_sessions": schedule.execution_lag_sessions,
+                "model_digest": schedule.model_digest,
+                "schedule_digest": schedule.digest,
+                "stress_profile": resolved_stress.name,
+            }
+        )
+        if liquidation_date is not None and origin_date == liquidation_date:
+            terminal_fill_date = pd.Timestamp(schedule.fill_session)
+    if liquidate_at_end and terminal_fill_date is None:
+        raise RuntimeError("terminal liquidation did not resolve to a fill session")
     risk_cfg: Mapping[str, object] = risk or {}
     data_digest = _frame_digest(
         clean_panel,
@@ -665,6 +1083,10 @@ def run_backtest(
             "liquidate_at_end": liquidate_at_end,
             "costs": asdict(execution_model.costs),
             "execution": asdict(execution_model.policy),
+            "latency": asdict(latency_model),
+            "carry": asdict(carry_model),
+            "stress_profile": resolved_stress.to_dict(),
+            "liquidity_multiplier": liquidity_multiplier,
             "risk": risk_cfg,
         },
         domain="alphaforge.backtest-config.v1",
@@ -680,19 +1102,19 @@ def run_backtest(
     resolved_run_id = event_run_id or f"backtest-{derived_identity[:32]}"
     event_engine = DeterministicEventEngine(
         resolved_run_id,
-        calendar=tuple(timestamp.date() for timestamp in calendar),
+        calendar=frozen_calendar,
         initial_cash=float(initial_capital),
         journal=event_journal,
     )
 
     scheduled: dict[pd.Timestamp, _ScheduledDecision] = {}
-    calendar_position = {date: i for i, date in enumerate(calendar)}
     curve_records: list[dict[str, object]] = []
     position_records: list[dict[str, object]] = []
     order_records: list[dict[str, object]] = []
     fills: list[Fill] = []
     attribution_records: list[dict[str, object]] = []
     accounting_records: list[dict[str, object]] = []
+    friction_records: list[dict[str, object]] = []
     realized_returns: list[float] = []
     close_equities: list[float] = []
     previous_close_prices: dict[str, float] = {}
@@ -782,6 +1204,14 @@ def run_backtest(
                 )
                 day_fills.append(fill)
                 fills.append(fill)
+                friction_records.extend(
+                    _fill_friction_records(
+                        fill,
+                        cost_model_digest=execution_model.costs.configuration_digest,
+                        execution_policy_digest=execution_model.policy.configuration_digest,
+                        stress_profile=resolved_stress.name,
+                    )
+                )
                 event_order_id = f"order-{order.order_id:08d}"
                 submitted = _execution_event(
                     run_id=event_engine.run_id,
@@ -819,7 +1249,7 @@ def run_backtest(
                         entity_id=event_order_id,
                         payload=OrderRejected(
                             order_id=event_order_id,
-                            reason_code="execution_model_rejected",
+                            reason_code=fill.rejection_reason or "execution_model_rejected",
                         ),
                         causation_id=generated.submitted.event_id,
                     )
@@ -843,10 +1273,21 @@ def run_backtest(
                 )
                 event_engine.process(accepted)
                 execution_ordinal += 1
-                fee_components = (
-                    (FeeComponent(FeeCategory.COMMISSION, fill.commission),)
-                    if fill.commission > 0.0
-                    else ()
+                fee_components = tuple(
+                    component
+                    for component in (
+                        (
+                            FeeComponent(FeeCategory.COMMISSION, fill.commission)
+                            if fill.commission > 0.0
+                            else None
+                        ),
+                        (
+                            FeeComponent(FeeCategory.EXCHANGE_FEE, fill.exchange_fee)
+                            if fill.exchange_fee > 0.0
+                            else None
+                        ),
+                    )
+                    if component is not None
                 )
                 fill_id = f"fill-{order.order_id:08d}-0001"
                 fill_event = _execution_event(
@@ -905,28 +1346,97 @@ def run_backtest(
             active_risk_scale = scheduled_decision.risk_scale
             active_targets = dict(scheduled_decision.target_weights)
 
-        post_trade_positions = dict(event_engine.positions)
-        post_trade_open_prices = _valid_price_map(
+        post_fill_positions = dict(event_engine.positions)
+        post_fill_open_prices = _valid_price_map(
             open_price.loc[date],
-            set(post_trade_positions),
+            set(post_fill_positions),
             date=date,
             field_name="open",
         )
+        post_fill_open_equity = event_engine.value_portfolio(
+            date.date(),
+            post_fill_open_prices,
+        ).equity
+        fill_cost = math.fsum(fill.total_cost for fill in day_fills)
+        _require_reconciliation(
+            open_equity - post_fill_open_equity,
+            fill_cost,
+            operands=(
+                open_equity,
+                post_fill_open_equity,
+                fill_cost,
+                *(fill.total_cost for fill in day_fills),
+            ),
+            message=f"open-fill accounting did not reconcile on {date.date()}",
+        )
+
+        carry_accrual = carry_model.accrue(
+            session=date.date(),
+            cash_usd=event_engine.cash,
+            positions=post_fill_positions,
+            prices_usd=post_fill_open_prices,
+        )
+        friction_records.extend(
+            _carry_friction_records(
+                carry_accrual,
+                carry_model=carry_model,
+                stress_profile=resolved_stress.name,
+            )
+        )
+        charge_ordinal = 0
+        for charge_type, amount in (
+            ("financing", carry_accrual.financing_charge_usd),
+            ("borrow", carry_accrual.total_borrow_charge_usd),
+        ):
+            if amount == 0.0:
+                continue
+            charge_event = _execution_event(
+                run_id=event_engine.run_id,
+                date=date,
+                bar_index=bar_index,
+                phase=EventPhase.CHARGE,
+                ordinal=charge_ordinal,
+                correlation_id=f"carry-{bar_index:08d}",
+                entity_id=f"{charge_type}-{bar_index:08d}",
+                payload=CashChargeAccrued(
+                    charge_id=f"{charge_type}-{bar_index:08d}",
+                    charge_type=charge_type,  # type: ignore[arg-type]
+                    amount=amount,
+                ),
+            )
+            event_engine.process(charge_event)
+            charge_snapshot = event_engine.snapshot().portfolio
+            if charge_snapshot is None:
+                raise RuntimeError("carry charge did not publish a reconciled portfolio snapshot")
+            _halt_if_bankrupt(
+                event_engine,
+                date=date,
+                bar_index=bar_index,
+                cause_event=charge_event,
+                snapshot=charge_snapshot,
+                source=charge_type,
+            )
+            charge_ordinal += 1
+
+        post_trade_positions = dict(event_engine.positions)
+        post_trade_open_prices = post_fill_open_prices
         post_trade_open_equity = event_engine.value_portfolio(
             date.date(),
             post_trade_open_prices,
         ).equity
-        day_cost = float(sum(fill.total_cost for fill in day_fills))
+        carry_cost = carry_accrual.total_charge_usd
+        day_cost = math.fsum((fill_cost, carry_cost))
         _require_reconciliation(
             open_equity - post_trade_open_equity,
             day_cost,
             operands=(
                 open_equity,
                 post_trade_open_equity,
+                fill_cost,
+                carry_cost,
                 day_cost,
-                *(fill.total_cost for fill in day_fills),
             ),
-            message=f"open-fill accounting did not reconcile on {date.date()}",
+            message=f"open-friction accounting did not reconcile on {date.date()}",
         )
 
         try:
@@ -1042,13 +1552,21 @@ def run_backtest(
         costs_by_symbol: defaultdict[str, float] = defaultdict(float)
         for fill in day_fills:
             costs_by_symbol[fill.symbol] += fill.total_cost
+        if carry_accrual.financing_charge_usd > 0.0:
+            costs_by_symbol["__CASH__"] += carry_accrual.financing_charge_usd
+        for symbol, borrow_charge in carry_accrual.borrow_charges_usd:
+            costs_by_symbol[symbol] += borrow_charge
         attribution_symbols = set(old_positions) | set(post_trade_positions) | set(costs_by_symbol)
         for symbol in sorted(attribution_symbols):
-            prior_close = previous_close_prices.get(symbol, float(open_price.at[date, symbol]))
-            open_value = float(open_price.at[date, symbol])
-            close_value = float(close.at[date, symbol])
-            symbol_overnight = old_positions.get(symbol, 0.0) * (open_value - prior_close)
-            symbol_intraday = post_trade_positions.get(symbol, 0.0) * (close_value - open_value)
+            if symbol == "__CASH__":
+                symbol_overnight = 0.0
+                symbol_intraday = 0.0
+            else:
+                prior_close = previous_close_prices.get(symbol, float(open_price.at[date, symbol]))
+                open_value = float(open_price.at[date, symbol])
+                close_value = float(close.at[date, symbol])
+                symbol_overnight = old_positions.get(symbol, 0.0) * (open_value - prior_close)
+                symbol_intraday = post_trade_positions.get(symbol, 0.0) * (close_value - open_value)
             symbol_cost = costs_by_symbol[symbol]
             attribution_records.append(
                 {
@@ -1071,26 +1589,27 @@ def run_backtest(
             if np.isfinite(close.at[date, symbol]) and float(close.at[date, symbol]) > 0
         }
 
-        target = decisions.get(date)
-        fill_idx = calendar_position[date] + execution_lag
-        if (
-            target is not None
-            and fill_idx < len(calendar)
-            and (terminal_fill_date is None or date != terminal_fill_date)
-        ):
+        pending_signal = pending_signals.get(date)
+        if pending_signal is not None:
+            signal_target = pending_signal.target_weights
             scale = _risk_scale(realized_returns, close_equities, risk_cfg)
-            scaled_target = {symbol: float(weight) * scale for symbol, weight in target.items()}
-            eligible_date = calendar[fill_idx]
-            correlation_id = f"decision-{bar_index:08d}"
+            scaled_target = {
+                symbol: float(weight) * scale for symbol, weight in signal_target.items()
+            }
+            eligible_date = pd.Timestamp(pending_signal.latency.fill_session)
+            origin_index = calendar_position[pending_signal.origin_date]
+            correlation_id = f"decision-{origin_index:08d}"
             signal_digest = _stable_digest(
                 {
-                    "decision_date": date,
-                    "unscaled_target": tuple(sorted(target.items())),
+                    "origin_date": pending_signal.origin_date,
+                    "signal_available_date": date,
+                    "unscaled_target": tuple(sorted(signal_target.items())),
                     "target_digest": target_digest,
+                    "latency_schedule_digest": pending_signal.latency.digest,
                 },
                 domain="alphaforge.backtest-signal.v1",
             )
-            signal_id = f"signal-{bar_index:08d}"
+            signal_id = f"signal-{origin_index:08d}"
             signal_event = _execution_event(
                 run_id=event_engine.run_id,
                 date=date,
@@ -1108,14 +1627,16 @@ def run_backtest(
             event_engine.process(signal_event)
             problem_digest = _stable_digest(
                 {
-                    "decision_date": date,
+                    "origin_date": pending_signal.origin_date,
+                    "signal_available_date": date,
                     "eligible_date": eligible_date,
                     "scaled_target": tuple(sorted(scaled_target.items())),
                     "risk_scale": scale,
+                    "latency_schedule_digest": pending_signal.latency.digest,
                 },
                 domain="alphaforge.backtest-target-problem.v1",
             )
-            target_id = f"target-{bar_index:08d}"
+            target_id = f"target-{origin_index:08d}"
             target_event = _execution_event(
                 run_id=event_engine.run_id,
                 date=date,
@@ -1174,6 +1695,42 @@ def run_backtest(
         "bankrupt",
     ]
     accounting = pd.DataFrame(accounting_records, columns=accounting_columns)
+    friction_columns = [
+        "date",
+        "order_id",
+        "symbol",
+        "component",
+        "accounting_path",
+        "amount_usd",
+        "rate",
+        "rate_unit",
+        "basis_usd",
+        "model_digest",
+        "record_digest",
+        "stress_profile",
+        "status",
+        "detail",
+    ]
+    friction_attribution = pd.DataFrame(friction_records, columns=friction_columns)
+    latency_columns = [
+        "origin_session",
+        "data_available_session",
+        "feature_available_session",
+        "signal_available_session",
+        "submission_session",
+        "fill_session",
+        "execution_lag_sessions",
+        "model_digest",
+        "schedule_digest",
+        "stress_profile",
+    ]
+    latency_schedule = pd.DataFrame(latency_records, columns=latency_columns)
+    model_manifest = _friction_manifest(
+        execution_model=execution_model,
+        latency_model=latency_model,
+        carry_model=carry_model,
+        stress_profile=resolved_stress,
+    )
 
     if not attribution.empty:
         daily_attribution = attribution.groupby("date", sort=True)[
@@ -1208,6 +1765,29 @@ def run_backtest(
                     message="symbol-level P&L attribution did not reconcile",
                 )
 
+    friction_by_date = (
+        friction_attribution.groupby("date", sort=True)["amount_usd"].sum()
+        if not friction_attribution.empty
+        else pd.Series(dtype=float)
+    )
+    curve_costs = curve.set_index("date")["trading_cost"]
+    for friction_date, expected_cost in curve_costs.items():
+        observed_cost = float(friction_by_date.get(friction_date, 0.0))
+        expected = float(expected_cost)
+        day_components = friction_attribution.loc[
+            friction_attribution["date"] == friction_date, "amount_usd"
+        ]
+        _require_reconciliation(
+            observed_cost,
+            expected,
+            operands=(
+                *(float(value) for value in day_components),
+                observed_cost,
+                expected,
+            ),
+            message="component-level friction attribution did not reconcile",
+        )
+
     events = _event_frame(event_engine.journal.events())
     event_engine.close()
 
@@ -1220,4 +1800,7 @@ def run_backtest(
         pnl_attribution=attribution,
         events=events,
         accounting=accounting,
+        friction_model_manifest=model_manifest,
+        friction_attribution=friction_attribution,
+        latency_schedule=latency_schedule,
     )
