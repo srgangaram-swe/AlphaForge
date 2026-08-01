@@ -281,13 +281,29 @@ def _reconcile_product(left: float, right: float, expected: float, *, name: str)
     )
 
 
-def _canonical_error(recorded: Any, computed: float, *, name: str) -> float:
+def _canonical_error(recorded: Any, computed: float, *, name: str, scale: float = 0.0) -> float:
+    """Verify a stored reconciliation residual against a freshly recomputed one.
+
+    Both operands are *roundoff residuals*, so their own magnitude is noise and
+    is not a meaningful tolerance scale. Judging them against each other with a
+    purely relative bound is structurally unsatisfiable: a residual of 1.9e-9
+    earns a bound of 1.9e-18, and any two independently accumulated float paths
+    that legitimately differ in their last bits are then reported as a
+    reconciliation failure.
+
+    ``scale`` is the magnitude of the quantity whose reconciliation produced the
+    residual — a variance, a return, an equity value. The residual of
+    reconciling ``X`` is only interpretable relative to ``|X|``, so that is what
+    bounds the comparison. Passing ``0.0`` preserves the strict
+    residual-relative behaviour for fields where no underlying scale exists.
+    """
     recorded_value = _finite_float(recorded, name=name)
+    scale_value = abs(_finite_float(scale, name=f"{name} scale"))
     _reconciliation_error(
         recorded_value,
         computed,
         name=f"{name} field",
-        term_magnitudes=(recorded_value, computed),
+        term_magnitudes=(recorded_value, computed, scale_value),
         operations=1,
     )
     return computed
@@ -627,6 +643,7 @@ class ExAnteRiskAttribution:
                 self.variance_reconciliation_error,
                 variance_error,
                 name="variance_reconciliation_error",
+                scale=variance,
             ),
         )
         object.__setattr__(
@@ -636,6 +653,7 @@ class ExAnteRiskAttribution:
                 self.volatility_reconciliation_error,
                 volatility_error,
                 name="volatility_reconciliation_error",
+                scale=volatility,
             ),
         )
         object.__setattr__(self, "factor_variance", factor_variance)
@@ -650,6 +668,7 @@ class ExAnteRiskAttribution:
                     self.factor_specific_reconciliation_error,
                     factor_error,
                     name="factor_specific_reconciliation_error",
+                    scale=variance,
                 ),
             )
         object.__setattr__(self, "asset_contributions", asset_records)
@@ -1052,6 +1071,7 @@ class RealizedAttribution:
                 self.return_reconciliation_error,
                 return_error,
                 name="return_reconciliation_error",
+                scale=observed_net_return,
             ),
         )
         object.__setattr__(
@@ -1061,6 +1081,7 @@ class RealizedAttribution:
                 self.pnl_reconciliation_error,
                 pnl_error,
                 name="pnl_reconciliation_error",
+                scale=observed_net_pnl,
             ),
         )
         object.__setattr__(
@@ -1070,6 +1091,7 @@ class RealizedAttribution:
                 self.ending_equity_reconciliation_error,
                 ending_error,
                 name="ending_equity_reconciliation_error",
+                scale=modeled_ending,
             ),
         )
         object.__setattr__(self, "asset_contributions", records)
@@ -1675,6 +1697,7 @@ class ScenarioResult:
                 self.return_reconciliation_error,
                 return_error,
                 name="return_reconciliation_error",
+                scale=modeled_return,
             ),
         )
         object.__setattr__(
@@ -1684,6 +1707,7 @@ class ScenarioResult:
                 self.pnl_reconciliation_error,
                 pnl_error,
                 name="pnl_reconciliation_error",
+                scale=modeled_pnl,
             ),
         )
         object.__setattr__(
@@ -1693,6 +1717,7 @@ class ScenarioResult:
                 self.ending_value_reconciliation_error,
                 ending_error,
                 name="ending_value_reconciliation_error",
+                scale=modeled_ending,
             ),
         )
         object.__setattr__(self, "contributions", records)
