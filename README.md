@@ -70,6 +70,9 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Commission, spread, fixed slippage, square-root impact sensitivity, and capacity
   scenarios — including costed volatility-targeting and drawdown-control trades.
 - Portfolio caps, inverse-vol sizing, turnover controls, and regime-aware exposure.
+- Immutable causal covariance/factor-risk snapshots, a bounded sparse Markowitz
+  QP with independent KKT and objective certification, and reconciled asset,
+  factor, specific, realized-P&L, exposure-drift, and scenario attribution.
 - Risk metrics, beta-aware stress tests, regime-conditional performance, reporting,
   API endpoints, and paper-trading replay.
 - A C++17 limit-order-book execution core with pybind11 bindings, a parity-tested
@@ -155,6 +158,17 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [constrained Markowitz optimizer](docs/mean_variance_optimization.md) turns
+periodic alpha and immutable point-in-time shrinkage/factor-risk snapshots into
+certified feasible weights. Its sparse QP, independent KKT/objective audit,
+Euler risk and independently reconciled realized-P&L attribution, and
+self-financing synthetic evidence fail closed; they do not advance a strategy
+or authorize paper/live trading. The committed [reference
+manifest](docs/evidence/signal_foundry_sprint_4/mr2_mean_variance/manifest.json)
+and [four-panel Seaborn
+figure](docs/evidence/signal_foundry_sprint_4/mr2_mean_variance/mean_variance_evidence.png)
+expose failed optimization coverage alongside returns, costs, and input-error
+sensitivity so an incomplete arm cannot look complete by omission.
 The [ranking portfolio contract](docs/ranking_portfolios.md) defines allocation
 policies, the explicit constraint set, uncertainty-aware sizing, and net-of-cost
 capacity evidence.
