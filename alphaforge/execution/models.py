@@ -206,6 +206,10 @@ class BarExecutionModel:
                 lagged_volatility=lagged_volatility,
             )
 
+        # A participation cap is a hard limit. Never round a capped quantity up
+        # with a relative tolerance, even when the residue is small compared
+        # with an unusually large order.
+        status: FillStatus = "filled" if fill_abs == requested_abs else "partial"
         sign = float(np.sign(order.requested_shares))
         filled_shares = sign * fill_abs
         participation = fill_abs / float(lagged_adv_shares) if adv_is_valid else 0.0
@@ -227,7 +231,6 @@ class BarExecutionModel:
         spread_cost = reference_notional * self.costs.half_spread_bps / 10_000.0
         fixed_slippage_cost = reference_notional * self.costs.slippage_bps / 10_000.0
         impact_cost = reference_notional * impact_bps / 10_000.0
-        status: FillStatus = "filled" if np.isclose(fill_abs, requested_abs) else "partial"
         return Fill(
             order_id=order.order_id,
             symbol=order.symbol,

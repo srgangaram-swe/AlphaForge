@@ -96,6 +96,8 @@ def main() -> None:
     result.orders.to_csv(run_dir / "orders.csv", index=False)
     result.fills.to_csv(run_dir / "fills.csv", index=False)
     result.pnl_attribution.to_csv(run_dir / "pnl_attribution.csv", index=False)
+    result.events.to_csv(run_dir / "execution_events.csv", index=False)
+    result.accounting.to_csv(run_dir / "accounting.csv", index=False)
     monthly_returns(result.equity_curve).to_csv(run_dir / "monthly_returns.csv", index=False)
 
     if not result.fills.empty:

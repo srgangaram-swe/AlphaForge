@@ -68,6 +68,40 @@ def test_lagged_adv_participation_cap_produces_a_partial_fill() -> None:
     assert fill.participation_rate == pytest.approx(0.05)
 
 
+def test_large_order_residual_is_not_hidden_by_relative_tolerance() -> None:
+    model = BarExecutionModel(
+        CostModel(),
+        ExecutionPolicy(max_participation_rate=0.999999),
+    )
+
+    fill = model.execute(
+        _order(1_000_000_000.0),
+        reference_price=1.0,
+        lagged_adv_shares=1_000_000_000.0,
+    )
+
+    assert fill.status == "partial"
+    assert fill.filled_shares == 999_999_000.0
+    assert fill.residual_shares == 1_000.0
+
+
+def test_participation_cap_is_never_rounded_up_within_ulp_tolerance() -> None:
+    policy = ExecutionPolicy(max_participation_rate=0.999999999999999)
+    model = BarExecutionModel(CostModel(), policy)
+
+    fill = model.execute(
+        _order(1_000_000_000_000_000.0),
+        reference_price=1.0,
+        lagged_adv_shares=1_000_000_000_000_000.0,
+    )
+
+    assert fill.status == "partial"
+    assert fill.filled_shares == 999_999_999_999_999.0
+    assert fill.residual_shares == 1.0
+    assert policy.max_participation_rate is not None
+    assert fill.participation_rate <= policy.max_participation_rate
+
+
 def test_missing_adv_rejects_when_participation_is_enforced() -> None:
     model = BarExecutionModel(
         CostModel(),

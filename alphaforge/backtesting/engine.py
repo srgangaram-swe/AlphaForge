@@ -16,16 +16,38 @@ an observable, costed trade.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 from collections import defaultdict
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
 import pandas as pd
 
-from alphaforge.backtesting.ledger import PortfolioLedger
+from alphaforge.backtesting.event_engine import DeterministicEventEngine
+from alphaforge.backtesting.journal import Journal
+from alphaforge.backtesting.ledger import LedgerSnapshot, reconciles
 from alphaforge.data.schemas import to_wide, validate_panel
 from alphaforge.execution.costs import CostModel
+from alphaforge.execution.events import (
+    MAX_TARGET_ASSETS,
+    EngineHalted,
+    EventCoordinate,
+    EventPhase,
+    ExecutionEvent,
+    FeeCategory,
+    FeeComponent,
+    FillApplied,
+    OrderAccepted,
+    OrderCancelled,
+    OrderRejected,
+    OrderSubmitted,
+    PortfolioMarked,
+    SignalAvailable,
+    TargetDecided,
+)
 from alphaforge.execution.models import (
     BarExecutionModel,
     ExecutionPolicy,
@@ -49,6 +71,8 @@ class BacktestResult:
     orders: pd.DataFrame = field(default_factory=pd.DataFrame)
     fills: pd.DataFrame = field(default_factory=pd.DataFrame)
     pnl_attribution: pd.DataFrame = field(default_factory=pd.DataFrame)
+    events: pd.DataFrame = field(default_factory=pd.DataFrame)
+    accounting: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 @dataclass(frozen=True)
@@ -56,6 +80,273 @@ class _ScheduledDecision:
     decision_date: pd.Timestamp
     target_weights: Mapping[str, float]
     risk_scale: float
+    target_event_id: str
+    correlation_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _GeneratedOrder:
+    order: Order
+    fill: Fill
+    submitted: ExecutionEvent
+
+
+def _semantic_value(value: object) -> object:
+    """Normalize supported configuration values for stable identity hashing."""
+
+    if value is None or isinstance(value, (bool, str, int)):
+        return value
+    if isinstance(value, (float, np.floating)):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("identity inputs must not contain non-finite numbers")
+        return {"float_hex": number.hex()}
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, (pd.Timestamp, np.datetime64)):
+        timestamp = pd.Timestamp(value)
+        return {"timestamp": timestamp.isoformat()}
+    if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise ValueError("identity mappings must use string keys")
+        return {key: _semantic_value(value[key]) for key in sorted(value)}
+    if isinstance(value, (list, tuple)):
+        return [_semantic_value(item) for item in value]
+    raise TypeError(f"unsupported identity value: {type(value).__name__}")
+
+
+def _canonical_bytes(value: object) -> bytes:
+    return json.dumps(
+        _semantic_value(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("ascii")
+
+
+def _stable_digest(value: object, *, domain: str) -> str:
+    digest = hashlib.sha256()
+    digest.update(domain.encode("ascii"))
+    digest.update(b"\x00")
+    digest.update(_canonical_bytes(value))
+    return digest.hexdigest()
+
+
+def _frame_digest(
+    frame: pd.DataFrame,
+    *,
+    sort_by: tuple[str, ...],
+    domain: str,
+) -> str:
+    """Hash a normalized frame without materializing one giant JSON document."""
+
+    columns = tuple(sorted(str(column) for column in frame.columns))
+    ordered = frame.sort_values(list(sort_by), kind="mergesort").loc[:, list(columns)]
+    digest = hashlib.sha256()
+    digest.update(domain.encode("ascii"))
+    digest.update(b"\x00")
+    digest.update(_canonical_bytes(columns))
+    for row in ordered.itertuples(index=False, name=None):
+        normalized_row = tuple(
+            {"missing": True} if bool(pd.isna(value)) else value for value in row
+        )
+        encoded = _canonical_bytes(normalized_row)
+        digest.update(len(encoded).to_bytes(8, byteorder="big", signed=False))
+        digest.update(encoded)
+    return digest.hexdigest()
+
+
+def _decisions_digest(decisions: Mapping[pd.Timestamp, Mapping[str, float]]) -> str:
+    payload = [
+        {
+            "date": date,
+            "weights": tuple(sorted(weights.items())),
+        }
+        for date, weights in sorted(decisions.items())
+    ]
+    return _stable_digest(payload, domain="alphaforge.backtest-decisions.v1")
+
+
+def _execution_event(
+    *,
+    run_id: str,
+    date: pd.Timestamp,
+    bar_index: int,
+    phase: EventPhase,
+    ordinal: int,
+    correlation_id: str,
+    entity_id: str,
+    payload: object,
+    causation_id: str | None = None,
+) -> ExecutionEvent:
+    return ExecutionEvent(
+        run_id=run_id,
+        correlation_id=correlation_id,
+        entity_id=entity_id,
+        coordinate=EventCoordinate(
+            session=date.date(),
+            bar_index=bar_index,
+            phase=phase,
+            ordinal=ordinal,
+        ),
+        payload=payload,  # type: ignore[arg-type]
+        causation_id=causation_id,
+    )
+
+
+def _mark_event(
+    engine: DeterministicEventEngine,
+    *,
+    date: pd.Timestamp,
+    bar_index: int,
+    mark_type: str,
+    prices: Mapping[str, float],
+) -> tuple[ExecutionEvent, LedgerSnapshot]:
+    snapshot = engine.value_portfolio(date.date(), prices)
+    holdings = math.fsum(snapshot.market_values.values())
+    mark_id = f"mark-{mark_type}-{bar_index:08d}"
+    event = _execution_event(
+        run_id=engine.run_id,
+        date=date,
+        bar_index=bar_index,
+        phase=(EventPhase.OPEN_MARK if mark_type == "open" else EventPhase.CLOSE_MARK),
+        ordinal=0,
+        correlation_id=f"mark-{bar_index:08d}",
+        entity_id=mark_id,
+        payload=PortfolioMarked(
+            mark_id=mark_id,
+            mark_type=mark_type,  # type: ignore[arg-type]
+            prices=tuple(sorted(prices.items())),
+            cash=snapshot.cash,
+            holdings_value=holdings,
+            accrued_charges=snapshot.total_charges,
+            equity=snapshot.equity,
+        ),
+    )
+    engine.process(event)
+    committed = engine.snapshot().portfolio
+    if committed is None:
+        raise RuntimeError("portfolio mark did not publish a reconciled snapshot")
+    return event, committed
+
+
+def _event_frame(events: tuple[ExecutionEvent, ...]) -> pd.DataFrame:
+    columns = [
+        "event_id",
+        "run_id",
+        "session",
+        "bar_index",
+        "phase",
+        "ordinal",
+        "event_type",
+        "correlation_id",
+        "entity_id",
+        "causation_id",
+    ]
+    records = [
+        {
+            "event_id": event.event_id,
+            "run_id": event.run_id,
+            "session": pd.Timestamp(event.coordinate.session),
+            "bar_index": event.coordinate.bar_index,
+            "phase": event.coordinate.phase.name.lower(),
+            "ordinal": event.coordinate.ordinal,
+            "event_type": event.event_type,
+            "correlation_id": event.correlation_id,
+            "entity_id": event.entity_id,
+            "causation_id": event.causation_id,
+        }
+        for event in events
+    ]
+    return pd.DataFrame(records, columns=columns)
+
+
+def _record_control_halt(
+    engine: DeterministicEventEngine,
+    *,
+    date: pd.Timestamp,
+    bar_index: int,
+    reason_code: str,
+    detail: str,
+    correlation_id: str | None = None,
+    causation_id: str | None = None,
+) -> ExecutionEvent:
+    """Append one terminal, bounded control event and return it."""
+
+    halt = _execution_event(
+        run_id=engine.run_id,
+        date=date,
+        bar_index=bar_index,
+        phase=EventPhase.CONTROL,
+        ordinal=0,
+        correlation_id=correlation_id or f"control-{bar_index:08d}",
+        entity_id=f"engine-control-{bar_index:08d}",
+        payload=EngineHalted(
+            reason_code=reason_code,
+            detail=detail,
+        ),
+        causation_id=causation_id,
+    )
+    engine.process(halt)
+    return halt
+
+
+def _halt_if_bankrupt(
+    engine: DeterministicEventEngine,
+    *,
+    date: pd.Timestamp,
+    bar_index: int,
+    cause_event: ExecutionEvent,
+    snapshot: LedgerSnapshot,
+    source: str,
+) -> None:
+    """Record the required terminal control event for insolvent accounting."""
+
+    if not snapshot.bankrupt:
+        return
+    _record_control_halt(
+        engine,
+        date=date,
+        bar_index=bar_index,
+        correlation_id=cause_event.correlation_id,
+        reason_code="bankruptcy",
+        detail=f"{source.capitalize()} produced non-positive portfolio equity.",
+        causation_id=cause_event.event_id,
+    )
+    raise RuntimeError(f"backtest halted on non-positive {source} equity at {date.date()}")
+
+
+def _accounting_record(date: pd.Timestamp, snapshot: LedgerSnapshot) -> dict[str, object]:
+    return {
+        "date": date,
+        "cash": snapshot.cash,
+        "equity": snapshot.equity,
+        "gross_exposure": snapshot.gross_exposure,
+        "net_exposure": snapshot.net_exposure,
+        "realized_pnl": snapshot.realized_pnl,
+        "unrealized_pnl": snapshot.unrealized_pnl,
+        "fees": snapshot.charges["fees"],
+        "financing": snapshot.charges["financing"],
+        "borrow": snapshot.charges["borrow"],
+        "other_charges": snapshot.charges["other"],
+        "total_charges": snapshot.total_charges,
+        "net_pnl": snapshot.net_pnl,
+        "reconciliation_error": snapshot.reconciliation_error,
+        "reconciliation_tolerance": snapshot.reconciliation_tolerance,
+        "bankrupt": snapshot.bankrupt,
+    }
+
+
+def _require_reconciliation(
+    observed: float,
+    expected: float,
+    *,
+    operands: tuple[float, ...],
+    message: str,
+) -> None:
+    if not reconciles(observed, expected, operands=operands):
+        raise RuntimeError(message)
 
 
 def _decision_targets(
@@ -270,6 +561,8 @@ def run_backtest(
     risk: dict | None = None,
     execution: ExecutionPolicy | dict | None = None,
     liquidate_at_end: bool = False,
+    event_journal: Journal | None = None,
+    event_run_id: str | None = None,
 ) -> BacktestResult:
     """Run a chronological OOS backtest from close-time target weights.
 
@@ -277,14 +570,31 @@ def run_backtest(
     the next session open; larger lags count trading sessions, not wall-clock
     days.  Orders are DAY orders, so any residual from a participation-capped
     partial fill expires and is visible in the fill audit table.
+
+    ``event_journal`` must be empty; non-empty history is opened through
+    :meth:`DeterministicEventEngine.replay`. The default in-memory journal has
+    no filesystem or network side effect. A caller-supplied journal remains
+    caller-owned and open. Canonical journal marks can contain licensed prices,
+    while the returned ``events`` table contains metadata and causation only.
+    ``event_run_id`` is optional; when omitted it is derived from canonical
+    validated data, targets, and configuration without wall-clock state.
     """
-    if not isinstance(execution_lag, int) or execution_lag < 1:
+    if not isinstance(execution_lag, int) or isinstance(execution_lag, bool) or execution_lag < 1:
         raise ValueError("execution_lag must be an integer >= 1")
-    if not isinstance(rebalance_frequency, int) or rebalance_frequency < 1:
+    if (
+        not isinstance(rebalance_frequency, int)
+        or isinstance(rebalance_frequency, bool)
+        or rebalance_frequency < 1
+    ):
         raise ValueError("rebalance_frequency must be an integer >= 1")
     if not isinstance(liquidate_at_end, bool):
         raise ValueError("liquidate_at_end must be boolean")
-    if not np.isfinite(initial_capital) or initial_capital <= 0:
+    if (
+        isinstance(initial_capital, bool)
+        or not isinstance(initial_capital, (int, float, np.integer, np.floating))
+        or not np.isfinite(initial_capital)
+        or initial_capital <= 0
+    ):
         raise ValueError("initial_capital must be finite and positive")
 
     clean_panel = validate_panel(panel, allow_na_volume=True)
@@ -292,6 +602,10 @@ def run_backtest(
     open_price = to_wide(clean_panel, "open").reindex(close.index)
     volume = to_wide(clean_panel, "volume").reindex(close.index)
     calendar = pd.DatetimeIndex(pd.to_datetime(close.index))
+    if calendar.tz is not None:
+        raise ValueError("backtest sessions must be timezone-naive daily timestamps")
+    if not calendar.equals(calendar.normalize()):
+        raise ValueError("backtest sessions must be normalized to midnight daily bars")
     close.index = open_price.index = volume.index = calendar
 
     decisions = _decision_targets(
@@ -303,6 +617,10 @@ def run_backtest(
     tradable_symbols = sorted({symbol for target in decisions.values() for symbol in target})
     if not tradable_symbols:
         raise ValueError("target weights do not overlap panel symbols")
+    if len(tradable_symbols) > MAX_TARGET_ASSETS:
+        raise ValueError(
+            f"event-backed backtests support at most {MAX_TARGET_ASSETS} target assets"
+        )
 
     terminal_fill_date: pd.Timestamp | None = None
     if liquidate_at_end:
@@ -332,7 +650,40 @@ def run_backtest(
         execution_model.policy,
     )
     risk_cfg: Mapping[str, object] = risk or {}
-    ledger = PortfolioLedger(float(initial_capital))
+    data_digest = _frame_digest(
+        clean_panel,
+        sort_by=("date", "symbol"),
+        domain="alphaforge.backtest-panel.v1",
+    )
+    target_digest = _decisions_digest(decisions)
+    configuration_digest = _stable_digest(
+        {
+            "benchmark_symbol": benchmark_symbol,
+            "initial_capital": float(initial_capital),
+            "execution_lag": execution_lag,
+            "rebalance_frequency": rebalance_frequency,
+            "liquidate_at_end": liquidate_at_end,
+            "costs": asdict(execution_model.costs),
+            "execution": asdict(execution_model.policy),
+            "risk": risk_cfg,
+        },
+        domain="alphaforge.backtest-config.v1",
+    )
+    derived_identity = _stable_digest(
+        {
+            "data_digest": data_digest,
+            "target_digest": target_digest,
+            "configuration_digest": configuration_digest,
+        },
+        domain="alphaforge.event-run.v1",
+    )
+    resolved_run_id = event_run_id or f"backtest-{derived_identity[:32]}"
+    event_engine = DeterministicEventEngine(
+        resolved_run_id,
+        calendar=tuple(timestamp.date() for timestamp in calendar),
+        initial_cash=float(initial_capital),
+        journal=event_journal,
+    )
 
     scheduled: dict[pd.Timestamp, _ScheduledDecision] = {}
     calendar_position = {date: i for i, date in enumerate(calendar)}
@@ -341,6 +692,7 @@ def run_backtest(
     order_records: list[dict[str, object]] = []
     fills: list[Fill] = []
     attribution_records: list[dict[str, object]] = []
+    accounting_records: list[dict[str, object]] = []
     realized_returns: list[float] = []
     close_equities: list[float] = []
     previous_close_prices: dict[str, float] = {}
@@ -356,28 +708,57 @@ def run_backtest(
     )
 
     for date in calendar:
-        old_positions = dict(ledger.positions)
+        bar_index = calendar_position[date]
+        old_positions = dict(event_engine.positions)
         scheduled_decision = scheduled.get(date)
         required_at_open = set(old_positions)
         if scheduled_decision is not None:
             required_at_open.update(scheduled_decision.target_weights)
-        open_prices = _valid_price_map(
-            open_price.loc[date],
-            required_at_open,
+        try:
+            open_prices = _valid_price_map(
+                open_price.loc[date],
+                required_at_open,
+                date=date,
+                field_name="open",
+            )
+        except ValueError:
+            _record_control_halt(
+                event_engine,
+                date=date,
+                bar_index=bar_index,
+                reason_code="missing_open_price",
+                detail="A required open price was absent or invalid.",
+            )
+            raise
+        open_event, open_snapshot = _mark_event(
+            event_engine,
             date=date,
-            field_name="open",
+            bar_index=bar_index,
+            mark_type="open",
+            prices=open_prices,
         )
-        open_equity = ledger.equity(open_prices)
+        _halt_if_bankrupt(
+            event_engine,
+            date=date,
+            bar_index=bar_index,
+            cause_event=open_event,
+            snapshot=open_snapshot,
+            source="open",
+        )
+        open_equity = open_snapshot.equity
         overnight_pnl = open_equity - previous_equity
 
         day_fills: list[Fill] = []
         if scheduled_decision is not None:
             pretrade_equity = open_equity
-            quantities = ledger.target_orders(
+            quantities = event_engine.target_orders(
                 scheduled_decision.target_weights,
                 open_prices,
             )
-            for symbol, requested_shares in quantities.items():
+            generated_orders: list[_GeneratedOrder] = []
+            for submission_ordinal, (symbol, requested_shares) in enumerate(
+                sorted(quantities.items())
+            ):
                 order_id += 1
                 order = Order(
                     order_id=order_id,
@@ -401,46 +782,203 @@ def run_backtest(
                 )
                 day_fills.append(fill)
                 fills.append(fill)
-                if fill.filled_shares != 0:
-                    ledger.apply_fill(
-                        symbol,
-                        fill.filled_shares,
-                        fill.fill_price,
-                        fill.commission,
+                event_order_id = f"order-{order.order_id:08d}"
+                submitted = _execution_event(
+                    run_id=event_engine.run_id,
+                    date=date,
+                    bar_index=bar_index,
+                    phase=EventPhase.ORDER_SUBMISSION,
+                    ordinal=submission_ordinal,
+                    correlation_id=scheduled_decision.correlation_id,
+                    entity_id=event_order_id,
+                    payload=OrderSubmitted(
+                        order_id=event_order_id,
+                        symbol=symbol,
+                        side="buy" if requested_shares > 0 else "sell",
+                        quantity=abs(float(requested_shares)),
+                    ),
+                    causation_id=scheduled_decision.target_event_id,
+                )
+                event_engine.process(submitted)
+                generated_orders.append(_GeneratedOrder(order, fill, submitted))
+
+            execution_ordinal = 0
+            cancellations: list[tuple[_GeneratedOrder, ExecutionEvent]] = []
+            for generated in generated_orders:
+                order = generated.order
+                fill = generated.fill
+                event_order_id = f"order-{order.order_id:08d}"
+                if fill.status == "rejected":
+                    rejected = _execution_event(
+                        run_id=event_engine.run_id,
+                        date=date,
+                        bar_index=bar_index,
+                        phase=EventPhase.EXECUTION,
+                        ordinal=execution_ordinal,
+                        correlation_id=scheduled_decision.correlation_id,
+                        entity_id=event_order_id,
+                        payload=OrderRejected(
+                            order_id=event_order_id,
+                            reason_code="execution_model_rejected",
+                        ),
+                        causation_id=generated.submitted.event_id,
                     )
+                    event_engine.process(rejected)
+                    execution_ordinal += 1
+                    continue
+
+                accepted = _execution_event(
+                    run_id=event_engine.run_id,
+                    date=date,
+                    bar_index=bar_index,
+                    phase=EventPhase.EXECUTION,
+                    ordinal=execution_ordinal,
+                    correlation_id=scheduled_decision.correlation_id,
+                    entity_id=event_order_id,
+                    payload=OrderAccepted(
+                        order_id=event_order_id,
+                        accepted_quantity=abs(order.requested_shares),
+                    ),
+                    causation_id=generated.submitted.event_id,
+                )
+                event_engine.process(accepted)
+                execution_ordinal += 1
+                fee_components = (
+                    (FeeComponent(FeeCategory.COMMISSION, fill.commission),)
+                    if fill.commission > 0.0
+                    else ()
+                )
+                fill_id = f"fill-{order.order_id:08d}-0001"
+                fill_event = _execution_event(
+                    run_id=event_engine.run_id,
+                    date=date,
+                    bar_index=bar_index,
+                    phase=EventPhase.EXECUTION,
+                    ordinal=execution_ordinal,
+                    correlation_id=scheduled_decision.correlation_id,
+                    entity_id=fill_id,
+                    payload=FillApplied(
+                        fill_id=fill_id,
+                        order_id=event_order_id,
+                        symbol=order.symbol,
+                        side="buy" if fill.filled_shares > 0 else "sell",
+                        quantity=abs(fill.filled_shares),
+                        reference_price=fill.reference_price,
+                        price=fill.fill_price,
+                        fees=fee_components,
+                    ),
+                    causation_id=accepted.event_id,
+                )
+                event_engine.process(fill_event)
+                fill_snapshot = event_engine.snapshot().portfolio
+                if fill_snapshot is None:
+                    raise RuntimeError("fill did not publish a reconciled portfolio snapshot")
+                _halt_if_bankrupt(
+                    event_engine,
+                    date=date,
+                    bar_index=bar_index,
+                    cause_event=fill_event,
+                    snapshot=fill_snapshot,
+                    source="fill",
+                )
+                execution_ordinal += 1
+                if fill.status == "partial":
+                    cancellations.append((generated, fill_event))
+
+            for cancellation_ordinal, (generated, fill_event) in enumerate(cancellations):
+                cancelled = _execution_event(
+                    run_id=event_engine.run_id,
+                    date=date,
+                    bar_index=bar_index,
+                    phase=EventPhase.DAY_CANCEL,
+                    ordinal=cancellation_ordinal,
+                    correlation_id=scheduled_decision.correlation_id,
+                    entity_id=f"order-{generated.order.order_id:08d}",
+                    payload=OrderCancelled(
+                        order_id=f"order-{generated.order.order_id:08d}",
+                        reason_code="day_expired",
+                        cancelled_quantity=abs(generated.fill.residual_shares),
+                    ),
+                    causation_id=fill_event.event_id,
+                )
+                event_engine.process(cancelled)
             active_risk_scale = scheduled_decision.risk_scale
             active_targets = dict(scheduled_decision.target_weights)
 
-        post_trade_positions = dict(ledger.positions)
+        post_trade_positions = dict(event_engine.positions)
         post_trade_open_prices = _valid_price_map(
             open_price.loc[date],
             set(post_trade_positions),
             date=date,
             field_name="open",
         )
-        post_trade_open_equity = ledger.equity(post_trade_open_prices)
+        post_trade_open_equity = event_engine.value_portfolio(
+            date.date(),
+            post_trade_open_prices,
+        ).equity
         day_cost = float(sum(fill.total_cost for fill in day_fills))
-        if not np.isclose(
+        _require_reconciliation(
             open_equity - post_trade_open_equity,
             day_cost,
-            rtol=1e-10,
-            atol=1e-6,
-        ):
-            raise RuntimeError(f"open-fill accounting did not reconcile on {date.date()}")
-
-        close_prices = _valid_price_map(
-            close.loc[date],
-            set(post_trade_positions),
-            date=date,
-            field_name="close",
+            operands=(
+                open_equity,
+                post_trade_open_equity,
+                day_cost,
+                *(fill.total_cost for fill in day_fills),
+            ),
+            message=f"open-fill accounting did not reconcile on {date.date()}",
         )
-        snapshot = ledger.snapshot(date, close_prices)
+
+        try:
+            close_prices = _valid_price_map(
+                close.loc[date],
+                set(post_trade_positions),
+                date=date,
+                field_name="close",
+            )
+        except ValueError:
+            _record_control_halt(
+                event_engine,
+                date=date,
+                bar_index=bar_index,
+                reason_code="missing_close_price",
+                detail="A required close price was absent or invalid.",
+            )
+            raise
+        close_event, snapshot = _mark_event(
+            event_engine,
+            date=date,
+            bar_index=bar_index,
+            mark_type="close",
+            prices=close_prices,
+        )
+        _halt_if_bankrupt(
+            event_engine,
+            date=date,
+            bar_index=bar_index,
+            cause_event=close_event,
+            snapshot=snapshot,
+            source="close",
+        )
         close_equity = snapshot.equity
         intraday_pnl = close_equity - post_trade_open_equity
         market_pnl = overnight_pnl + intraday_pnl
         net_pnl = close_equity - previous_equity
-        if not np.isclose(net_pnl, market_pnl - day_cost, rtol=1e-10, atol=1e-6):
-            raise RuntimeError(f"daily P&L did not reconcile on {date.date()}")
+        _require_reconciliation(
+            net_pnl,
+            market_pnl - day_cost,
+            operands=(
+                close_equity,
+                previous_equity,
+                overnight_pnl,
+                intraday_pnl,
+                market_pnl,
+                day_cost,
+                net_pnl,
+            ),
+            message=f"daily P&L did not reconcile on {date.date()}",
+        )
+        accounting_records.append(_accounting_record(date, snapshot))
 
         traded_notional = float(sum(fill.traded_notional for fill in day_fills))
         gross_return = market_pnl / previous_equity
@@ -535,10 +1073,78 @@ def run_backtest(
 
         target = decisions.get(date)
         fill_idx = calendar_position[date] + execution_lag
-        if target is not None and fill_idx < len(calendar):
+        if (
+            target is not None
+            and fill_idx < len(calendar)
+            and (terminal_fill_date is None or date != terminal_fill_date)
+        ):
             scale = _risk_scale(realized_returns, close_equities, risk_cfg)
             scaled_target = {symbol: float(weight) * scale for symbol, weight in target.items()}
-            scheduled[calendar[fill_idx]] = _ScheduledDecision(date, scaled_target, scale)
+            eligible_date = calendar[fill_idx]
+            correlation_id = f"decision-{bar_index:08d}"
+            signal_digest = _stable_digest(
+                {
+                    "decision_date": date,
+                    "unscaled_target": tuple(sorted(target.items())),
+                    "target_digest": target_digest,
+                },
+                domain="alphaforge.backtest-signal.v1",
+            )
+            signal_id = f"signal-{bar_index:08d}"
+            signal_event = _execution_event(
+                run_id=event_engine.run_id,
+                date=date,
+                bar_index=bar_index,
+                phase=EventPhase.SIGNAL,
+                ordinal=0,
+                correlation_id=correlation_id,
+                entity_id=signal_id,
+                payload=SignalAvailable(
+                    signal_id=signal_id,
+                    model_id="caller-supplied-oos-targets",
+                    signal_digest=signal_digest,
+                ),
+            )
+            event_engine.process(signal_event)
+            problem_digest = _stable_digest(
+                {
+                    "decision_date": date,
+                    "eligible_date": eligible_date,
+                    "scaled_target": tuple(sorted(scaled_target.items())),
+                    "risk_scale": scale,
+                },
+                domain="alphaforge.backtest-target-problem.v1",
+            )
+            target_id = f"target-{bar_index:08d}"
+            target_event = _execution_event(
+                run_id=event_engine.run_id,
+                date=date,
+                bar_index=bar_index,
+                phase=EventPhase.TARGET_DECISION,
+                ordinal=0,
+                correlation_id=correlation_id,
+                entity_id=target_id,
+                payload=TargetDecided(
+                    target_id=target_id,
+                    portfolio_id="caller-target-weights-v1",
+                    solver_id="deterministic-risk-scaling-v1",
+                    eligible_session=eligible_date.date(),
+                    cash_weight=1.0 - math.fsum(scaled_target.values()),
+                    weights=tuple(sorted(scaled_target.items())),
+                    configuration_digest=configuration_digest,
+                    data_digest=data_digest,
+                    problem_digest=problem_digest,
+                ),
+                causation_id=signal_event.event_id,
+            )
+            event_engine.process(target_event)
+            scheduled[eligible_date] = _ScheduledDecision(
+                decision_date=date,
+                target_weights=scaled_target,
+                risk_scale=scale,
+                target_event_id=target_event.event_id,
+                correlation_id=correlation_id,
+            )
 
         if terminal_fill_date is not None and date == terminal_fill_date:
             break
@@ -549,6 +1155,25 @@ def run_backtest(
     fill_frame = _fills_frame(fills)
     trades = _trades_frame(fill_frame)
     attribution = pd.DataFrame(attribution_records)
+    accounting_columns = [
+        "date",
+        "cash",
+        "equity",
+        "gross_exposure",
+        "net_exposure",
+        "realized_pnl",
+        "unrealized_pnl",
+        "fees",
+        "financing",
+        "borrow",
+        "other_charges",
+        "total_charges",
+        "net_pnl",
+        "reconciliation_error",
+        "reconciliation_tolerance",
+        "bankrupt",
+    ]
+    accounting = pd.DataFrame(accounting_records, columns=accounting_columns)
 
     if not attribution.empty:
         daily_attribution = attribution.groupby("date", sort=True)[
@@ -556,17 +1181,35 @@ def run_backtest(
         ].sum()
         curve_check = curve.set_index("date")[["market_pnl", "trading_cost"]]
         curve_check = curve_check.assign(
-            net_pnl=curve.set_index("date")["return"]
-            * curve.set_index("date")["equity"].shift(1).fillna(initial_capital)
+            net_pnl=curve_check["market_pnl"] - curve_check["trading_cost"]
         )
         common = daily_attribution.index.intersection(curve_check.index)
-        if not np.allclose(
-            daily_attribution.loc[common].to_numpy(),
-            curve_check.loc[common].to_numpy(),
-            rtol=1e-10,
-            atol=1e-6,
-        ):
-            raise RuntimeError("symbol-level P&L attribution did not reconcile")
+        indexed_curve = curve.set_index("date")
+        prior_equity = indexed_curve["equity"].shift(1).fillna(initial_capital)
+        for common_date in common:
+            day_rows = attribution.loc[attribution["date"] == common_date]
+            current_equity = float(indexed_curve.at[common_date, "equity"])
+            previous_day_equity = float(prior_equity.at[common_date])
+            current_cash = float(indexed_curve.at[common_date, "cash"])
+            for column in ("market_pnl", "trading_cost", "net_pnl"):
+                observed = float(daily_attribution.at[common_date, column])
+                expected = float(curve_check.at[common_date, column])
+                _require_reconciliation(
+                    observed,
+                    expected,
+                    operands=(
+                        *(float(value) for value in day_rows[column]),
+                        observed,
+                        expected,
+                        current_equity,
+                        previous_day_equity,
+                        current_cash,
+                    ),
+                    message="symbol-level P&L attribution did not reconcile",
+                )
+
+    events = _event_frame(event_engine.journal.events())
+    event_engine.close()
 
     return BacktestResult(
         equity_curve=curve,
@@ -575,4 +1218,6 @@ def run_backtest(
         orders=orders,
         fills=fill_frame,
         pnl_attribution=attribution,
+        events=events,
+        accounting=accounting,
     )

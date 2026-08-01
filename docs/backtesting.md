@@ -9,14 +9,17 @@ next session open.
 
 ```mermaid
 sequenceDiagram
-    participant L as Existing ledger
+    participant J as Event journal/reducer
+    participant L as Reconciled ledger
     participant M as Market bar t
     participant E as Execution model
     participant R as Research decision
     L->>M: Prior-close shares own close(t-1) → open(t)
-    E->>L: Fill previously scheduled orders at open(t)
+    E->>J: Submit → accept/reject → fill → DAY cancel
+    J->>L: Apply accepted fills exactly once
     L->>M: Post-fill shares own open(t) → close(t)
-    M->>L: Mark shares and cash at close(t)
+    M->>J: Append close mark and verify accounting
+    J->>L: Publish immutable snapshot
     L->>R: Publish reconciled P&L and state
     R-->>E: Schedule close(t) target for a future open
 ```
@@ -31,6 +34,13 @@ are complete portfolio snapshots: a symbol omitted on a decision date has a
 zero target and is liquidated at the next eligible fill. This prevents sparse
 panels from silently preserving stale positions.
 
+Every event is bound to the run's frozen, strictly increasing session calendar.
+The reducer rejects a mismatched `(session, bar_index)`, a target used before
+its exact eligible session, a DAY-order transition that crosses a session, or
+a fill whose reference price differs from the current open mark. Content-derived
+event identifiers make exact retries idempotent; explicit ordinals, not hash
+order, sequence causal fills within one phase.
+
 CLI research runs set `liquidate_at_end=true`: one forced zero target is
 scheduled after the final signal/rebalance interval, the book closes at its
 future-open fill, and the experiment stops. This prevents the last OOS signal
@@ -40,11 +50,24 @@ from becoming an undocumented buy-and-hold position after predictions end.
 
 The accounting state is signed shares plus cash. Every fill applies
 
-`cash_after = cash_before - signed_shares × fill_price - commission`
+`cash_after = cash_before - signed_shares × fill_price - categorized_fill_fees`
 
 and every close satisfies
 
 `equity = cash + Σ(shares × close)`.
+
+The cost-basis ledger additionally proves at every mark:
+
+`equity = initial_cash + realized P&L + unrealized P&L - total_charges`.
+
+Average cost, realized P&L, unrealized P&L, fees, financing, borrow, other
+charges, gross exposure, net exposure, and non-positive-equity state are
+explicit snapshot diagnostics. The reducer republishes a fully reconciled
+snapshot after every accounting mutation; state-only events preserve that
+latest state. All comparisons use operation-count/ULP bounds at the values'
+actual scale; there is no dollar-sized absolute tolerance. Non-positive equity
+after an open, fill, charge, or close is journaled as an exactly caused
+bankruptcy halt and produces no `BacktestResult`.
 
 Shares persist between rebalances. Their weights therefore drift with relative
 returns; returning to the same target weights requires a real order, creates
@@ -102,8 +125,19 @@ Each completed backtest writes:
   participation, residuals, and cost components;
 - `executed_weights.csv`: signed shares, marked values, drifted weights, and targets;
 - `pnl_attribution.csv`: overnight/intraday market P&L and costs by symbol;
+- `execution_events.csv`: identifiers, logical coordinates, types, and causation
+  only (no prices or raw signal values);
+- `accounting.csv`: realized/unrealized P&L, categorized charges, gross/net
+  exposure, equity, and reconciliation diagnostics at every close;
 - `capacity_curve.csv` / `capacity_scenarios.csv`: aggregate and row-level sensitivities;
 - `capacity_diagnostics.json`: data provenance and interpretation guardrails.
+
+`run_backtest(..., event_journal=...)` accepts an empty caller-owned journal;
+`SQLiteJournal` provides verified local restart when explicitly requested.
+Canonical journal payloads contain the price marks required for replay and may
+therefore contain licensed observations. They belong only under ignored,
+owner-controlled run storage and are never automatic public evidence. The
+returned `events` table is deliberately metadata-only.
 
 Performance metrics start with the first non-zero exposure. Sharpe and Sortino
 use arithmetic daily means annualized by √252; annual return is geometric.

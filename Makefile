@@ -6,7 +6,7 @@ MEAN_VARIANCE_STUDY_CONFIG ?= configs/mean_variance_study.yaml
 
 .PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence temporal-evidence deep-sequence-evidence time-frequency-evidence latent-representation-evidence ensemble-evidence decision-policy-evidence sprint-3-decision-evidence mean-variance-evidence signal-foundry-evidence train evaluate \
         walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
-        native bench bench-native
+        native bench bench-native bench-event
 
 install:
 	$(UV) sync --locked --extra dev
@@ -153,6 +153,9 @@ bench-native:
 	cmake -S cpp -B build -DCMAKE_BUILD_TYPE=Release
 	cmake --build build --target bench_orderbook
 	./build/bench_orderbook
+
+bench-event:
+	$(PYTHON) scripts/bench_event_engine.py
 
 docker-build:
 	docker build -t alphaforge:latest .
