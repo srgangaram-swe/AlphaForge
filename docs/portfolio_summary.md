@@ -22,8 +22,11 @@ asserts past features are bit-identical; walk-forward and purged/combinatorial
 CV splitters enforce embargoes; every run reports deflated Sharpe ratios and
 the probability of backtest overfitting; and the backtest costs the turnover
 of its own risk controls. A from-scratch Gaussian HMM provides causal regime
-awareness. A chronological cash/share ledger prevents pre-fill gap capture,
-tracks drift and lagged-ADV partial fills, and reconciles P&L and costs. A
+awareness. A frozen-calendar, hash-journaled event reducer makes target,
+order, rejection, partial-fill, cancellation, and restart state explicit. Its
+chronological cost-basis ledger prevents pre-fill gap capture, tracks drift and
+lagged-ADV partial fills, and reconciles realized/unrealized P&L and categorized
+costs. A
 separately scoped C++17 limit-order-book core (~6M ops/s, ~125 ns median
 latency, parity-tested against a Python reference) demonstrates systems work
 without masquerading as calibrated historical microstructure. Reproducible offline via a synthetic regime-switching

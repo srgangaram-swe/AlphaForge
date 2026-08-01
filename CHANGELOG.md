@@ -6,6 +6,26 @@ still evolve between minor releases.
 
 ## [Unreleased]
 
+### Added
+
+- Immutable, content-addressed fill-cost, execution-policy, carry-cost,
+  logical-session latency, and adverse stress-profile contracts with strict
+  units, bounds, calibration provenance, failure behavior, and limitations.
+- Event-ledger financing and per-symbol short-borrow accrual, categorized
+  commission and exchange fees, component-level spread/slippage/impact
+  attribution, causal latency schedules, and exact cross-table reconciliation.
+- A deterministic CPU-only execution-friction benchmark plus full-rerun
+  baseline, doubled/tripled-cost, adverse-spread, reduced-liquidity,
+  delayed-signal, partial-fill-pressure, and capacity-scaling profiles.
+
+### Changed
+
+- Governed research now charges borrow and financing exactly once through
+  replayable cash-charge events instead of applying a post-hoc return proxy.
+- Backtest run artifacts now publish friction model manifests, normalized
+  component attribution, and logical latency schedules while preserving the
+  version-1 order and fill table schemas.
+
 ## [0.3.0] - 2026-07-26
 
 ### Added

@@ -70,6 +70,9 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 - Commission, spread, fixed slippage, square-root impact sensitivity, and capacity
   scenarios — including costed volatility-targeting and drawdown-control trades.
 - Portfolio caps, inverse-vol sizing, turnover controls, and regime-aware exposure.
+- Immutable causal covariance/factor-risk snapshots, a bounded sparse Markowitz
+  QP with independent KKT and objective certification, and reconciled asset,
+  factor, specific, realized-P&L, exposure-drift, and scenario attribution.
 - Risk metrics, beta-aware stress tests, regime-conditional performance, reporting,
   API endpoints, and paper-trading replay.
 - A C++17 limit-order-book execution core with pybind11 bindings, a parity-tested
@@ -155,6 +158,23 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [borrow, liquidity, and capacity policy](docs/borrow_liquidity_capacity.md)
+enforces point-in-time shortability, conserved participation and book budgets,
+forced buy-ins, and a complete-rerun capacity frontier.
+The [constrained Markowitz optimizer](docs/mean_variance_optimization.md) turns
+periodic alpha and immutable point-in-time shrinkage/factor-risk snapshots into
+certified feasible weights. Its sparse QP, independent KKT/objective audit,
+Euler risk and independently reconciled realized-P&L attribution, and
+self-financing synthetic evidence fail closed; they do not advance a strategy
+or authorize paper/live trading. The committed [reference
+manifest](docs/evidence/signal_foundry_sprint_4/mr2_mean_variance/manifest.json)
+and [four-panel Seaborn
+figure](docs/evidence/signal_foundry_sprint_4/mr2_mean_variance/mean_variance_evidence.png)
+expose failed optimization coverage alongside returns, costs, and input-error
+sensitivity so an incomplete arm cannot look complete by omission.
+The [ranking portfolio contract](docs/ranking_portfolios.md) defines allocation
+policies, the explicit constraint set, uncertainty-aware sizing, and net-of-cost
+capacity evidence.
 The [regime and change-point contract](docs/regimes.md) defines causal state
 models, canonical labelling, and incremental-value evidence against a no-regime
 baseline.
@@ -288,10 +308,18 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
   earlier than a future open and cannot capture the preceding overnight gap.
 - Equity is reconciled to cash plus signed marked holdings every day; weights
   drift between explicit, costed rebalances.
+- Typed canonical events bind targets, orders, fills, DAY cancellations, and
+  portfolio marks to a frozen calendar. Bounded hash-chained journals support
+  idempotent replay; cost-basis accounting exposes realized/unrealized P&L and
+  categorized charges without a dollar-sized tolerance floor.
 - ADV and volatility used at the open are lagged one full session. Participation
   limits create reported partial fills rather than assumed liquidity.
-- Transaction costs are decomposed into commission, half-spread, fixed
-  slippage, and impact sensitivity on traded notional.
+- Transaction costs are decomposed into commission, exchange fees, half-spread,
+  fixed/spread/participation/volatility slippage, power-law impact, financing,
+  and short borrow. Immutable declarations, logical-session latency schedules,
+  component attribution, and full-rerun adverse stress profiles preserve units,
+  provenance, and one accounting path per component. See the
+  [market-friction guide](docs/market_frictions_latency.md).
 
 ## Repository Map
 
@@ -310,12 +338,14 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - `alphaforge/signals`: rank, long-short, top-k, threshold, confidence-weighted,
   and regime-filtered signals.
 - `alphaforge/portfolio`: capped, inverse-vol, turnover-aware target weights.
-- `alphaforge/backtesting`: chronological self-financing ledger and future-open
-  event loop with accounting invariants and P&L attribution.
+- `alphaforge/backtesting`: frozen-calendar event reducer, tamper-evident
+  in-memory/SQLite journals, chronological cost-basis ledger, future-open
+  simulator, accounting invariants, and P&L attribution.
 - `alphaforge/risk`: performance, drawdown, VaR, expected shortfall, regime tables,
   beta-aware stress tests, concentration.
-- `alphaforge/execution`: typed orders/fills, causal daily-bar execution, and
-  separately scoped Python/C++ order-book implementations.
+- `alphaforge/execution`: typed orders/fills, causal daily-bar execution,
+  bounded friction/carry/latency contracts, and separately scoped Python/C++
+  order-book implementations.
 - `alphaforge/paper`: simulated replay using the same execution and ledger contract.
 - `alphaforge/research`: governed selection, immutable holdout, aggregate
   ensemble evidence, strict cross-repository provenance, content-addressed
@@ -336,6 +366,8 @@ After `make demo`, inspect:
 - `walk_forward_windows.csv`
 - `equity_curve.csv`
 - `orders.csv` / `fills.csv` / `pnl_attribution.csv`
+- `execution_events.csv` / `accounting.csv`
+- `friction_model_manifest.csv` / `friction_attribution.csv` / `latency_schedule.csv`
 - `capacity_curve.csv` / `capacity_diagnostics.json`
 - `backtest_summary.json`
 - `report.md`

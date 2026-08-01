@@ -49,11 +49,19 @@ Two implementation layers sit beside the Python pipeline:
 - **Native execution core** (`cpp/`): C++17 limit order book with pybind11
   bindings and a pure-Python reference implementation kept bit-identical by
   parity tests (docs/execution_engine.md).
-- **Historical execution and accounting** (`alphaforge/execution/models.py`,
-  `alphaforge/backtesting/ledger.py`, `alphaforge/backtesting/engine.py`): typed
-  order/fill contracts, lagged-liquidity next-open fills, signed shares and
-  cash, and fail-closed P&L reconciliation. The timing decision is recorded in
-  [ADR 0001](adr/0001-temporal-integrity.md).
+- **Historical execution, frictions, and accounting** (`alphaforge/execution/models.py`,
+  `alphaforge/execution/frictions.py`,
+  `alphaforge/execution/events.py`, `alphaforge/backtesting/event_engine.py`,
+  `alphaforge/backtesting/journal.py`, `alphaforge/backtesting/ledger.py`, and
+  `alphaforge/backtesting/engine.py`): typed canonical events, a frozen-calendar
+  order state machine, tamper-evident in-memory/SQLite journals, lagged-liquidity
+  next-open fills, component-level market frictions, logical-session latency,
+  native carry accrual, signed shares, cost-basis P&L, categorized charges, and
+  fail-closed replay/reconciliation. See [ADR 0001](adr/0001-temporal-integrity.md),
+  [ADR 0010](adr/0010-deterministic-event-sourcing-and-accounting.md), and
+  [ADR 0011](adr/0011-market-frictions-and-logical-latency.md),
+  [the event-driven backtest contract](event_driven_backtesting.md), and
+  [the friction-model guide](market_frictions_latency.md).
 - **Validation science** (`alphaforge/training/purged_cv.py`,
   `alphaforge/training/temporal_validation.py`,
   `alphaforge/evaluation/overfitting.py`): explicit development and inaccessible

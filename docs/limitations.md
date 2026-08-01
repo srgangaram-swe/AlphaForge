@@ -36,10 +36,19 @@ Important limitations:
 - Backtests are daily-bar approximations. The close-decision/next-open ledger
   prevents pre-fill gap capture and lets holdings drift, but bars cannot reveal
   queue position, auction dynamics, intraday path, or order-book state.
-- Spread, slippage, square-root impact, participation, and capacity settings
-  are transparent sensitivities, not estimates calibrated to proprietary
-  order-level execution data. Partial DAY-order residuals expire rather than
-  following a production order-management lifecycle.
+- Deterministic event replay proves ordering and accounting mechanics, not that
+  daily-bar fills occurred or would be available. Schema-v1 replay also requires
+  the caller-preserved frozen calendar; the local SHA-256 journal chain is not a
+  digital signature against an actor able to replace the database and its
+  trusted provenance. Runtime mark events can contain licensed prices and must
+  remain in ignored owner-controlled storage.
+- Commission, exchange fees, spread, slippage, power-law impact, financing,
+  borrow, logical latency, participation, and capacity settings are transparent
+  sensitivities, not estimates calibrated to proprietary order-level execution
+  data. A scalar borrow rate proves neither availability nor a locate. Logical
+  session delays do not represent wall-clock exchange or broker latency.
+  Partial DAY-order residuals expire rather than following a production
+  order-management lifecycle.
 - The C++ order book simulates fills against a *synthetic* book shape; it is
   a systems-engineering and parity-testing module, not a historical market
   microstructure calibration or the paper replay's source of truth.
