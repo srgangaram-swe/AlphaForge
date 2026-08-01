@@ -36,6 +36,12 @@ Important limitations:
 - Backtests are daily-bar approximations. The close-decision/next-open ledger
   prevents pre-fill gap capture and lets holdings drift, but bars cannot reveal
   queue position, auction dynamics, intraday path, or order-book state.
+- Deterministic event replay proves ordering and accounting mechanics, not that
+  daily-bar fills occurred or would be available. Schema-v1 replay also requires
+  the caller-preserved frozen calendar; the local SHA-256 journal chain is not a
+  digital signature against an actor able to replace the database and its
+  trusted provenance. Runtime mark events can contain licensed prices and must
+  remain in ignored owner-controlled storage.
 - Spread, slippage, square-root impact, participation, and capacity settings
   are transparent sensitivities, not estimates calibrated to proprietary
   order-level execution data. Partial DAY-order residuals expire rather than

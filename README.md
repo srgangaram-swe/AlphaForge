@@ -305,6 +305,10 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
   earlier than a future open and cannot capture the preceding overnight gap.
 - Equity is reconciled to cash plus signed marked holdings every day; weights
   drift between explicit, costed rebalances.
+- Typed canonical events bind targets, orders, fills, DAY cancellations, and
+  portfolio marks to a frozen calendar. Bounded hash-chained journals support
+  idempotent replay; cost-basis accounting exposes realized/unrealized P&L and
+  categorized charges without a dollar-sized tolerance floor.
 - ADV and volatility used at the open are lagged one full session. Participation
   limits create reported partial fills rather than assumed liquidity.
 - Transaction costs are decomposed into commission, half-spread, fixed
@@ -327,8 +331,9 @@ AlphaForge ships the modern anti-overfitting toolkit and wires it into every run
 - `alphaforge/signals`: rank, long-short, top-k, threshold, confidence-weighted,
   and regime-filtered signals.
 - `alphaforge/portfolio`: capped, inverse-vol, turnover-aware target weights.
-- `alphaforge/backtesting`: chronological self-financing ledger and future-open
-  event loop with accounting invariants and P&L attribution.
+- `alphaforge/backtesting`: frozen-calendar event reducer, tamper-evident
+  in-memory/SQLite journals, chronological cost-basis ledger, future-open
+  simulator, accounting invariants, and P&L attribution.
 - `alphaforge/risk`: performance, drawdown, VaR, expected shortfall, regime tables,
   beta-aware stress tests, concentration.
 - `alphaforge/execution`: typed orders/fills, causal daily-bar execution, and
@@ -353,6 +358,7 @@ After `make demo`, inspect:
 - `walk_forward_windows.csv`
 - `equity_curve.csv`
 - `orders.csv` / `fills.csv` / `pnl_attribution.csv`
+- `execution_events.csv` / `accounting.csv`
 - `capacity_curve.csv` / `capacity_diagnostics.json`
 - `backtest_summary.json`
 - `report.md`
