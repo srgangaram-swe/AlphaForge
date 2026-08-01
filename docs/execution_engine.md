@@ -44,11 +44,13 @@ incompatible extension fails closed to the tested Python implementation.
 ## Boundary with daily-bar execution
 
 Historical backtests and paper replay use `alphaforge.execution.models` plus
-the self-financing ledger, not a fabricated order-book snapshot. Their fills
-occur at a future open and use lagged ADV/volatility sensitivities, explicit
-participation caps, and reconciled implementation shortfall. This is the more
-defensible model for OHLCV inputs because the data does not contain queue or L2
-state.
+the canonical event reducer, tamper-evident journal, and self-financing
+cost-basis ledger—not a fabricated order-book snapshot. Their fills occur at a
+future open and use lagged ADV/volatility sensitivities, explicit participation
+caps, frozen-calendar eligibility, DAY lifecycle events, and reconciled
+implementation shortfall. This is the more defensible model for OHLCV inputs
+because the data does not contain queue or L2 state. See
+[`event_driven_backtesting.md`](event_driven_backtesting.md).
 
 The native book becomes a candidate execution backend only if a future data
 source supplies point-in-time L2 events and the fill model is calibrated and

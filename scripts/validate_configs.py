@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from alphaforge.config import SCHEMAS, load_config
+from alphaforge.optimization.study import load_mean_variance_study_config
 from alphaforge.research.cross_repository_provenance import (
     CrossRepositoryProvenanceError,
     load_cross_repository_receipt,
@@ -63,6 +64,14 @@ def main() -> None:
     print(
         f"validated sprint_3_decision: {sprint_3_path} "
         f"(plan_id={sprint_3_plan.plan_id}, families={len(sprint_3_plan.families)})"
+    )
+
+    mean_variance_path = Path("configs/mean_variance_study.yaml")
+    mean_variance_config = load_mean_variance_study_config(mean_variance_path)
+    print(
+        f"validated mean_variance_study: {mean_variance_path} "
+        f"(profile_id={mean_variance_config.profile_id}, "
+        f"formulations={len(mean_variance_config.evidence.formulations)})"
     )
 
 

@@ -258,9 +258,12 @@ def test_target_contract_rejects_ambiguous_panels(target_factory, message: str) 
     ("kwargs", "message"),
     [
         ({"execution_lag": 0}, "execution_lag"),
+        ({"execution_lag": True}, "execution_lag"),
         ({"rebalance_frequency": 0}, "rebalance_frequency"),
+        ({"rebalance_frequency": True}, "rebalance_frequency"),
         ({"liquidate_at_end": "yes"}, "liquidate_at_end"),
         ({"initial_capital": np.inf}, "initial_capital"),
+        ({"initial_capital": True}, "initial_capital"),
         (
             {"execution": {"missing_price_policy": "skip"}},
             "requires missing_price_policy='raise'",

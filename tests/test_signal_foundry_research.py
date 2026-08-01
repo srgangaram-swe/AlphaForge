@@ -13,6 +13,7 @@ import pytest
 from alphaforge.config import load_signal_foundry_research_config
 from alphaforge.data import SignalFoundryDataset, SyntheticMarketConfig, generate_synthetic_market
 from alphaforge.evaluation import NOT_READY, ReadinessThresholds
+from alphaforge.execution import standard_stress_profiles
 from alphaforge.research import GovernedResearchConfig, run_governed_signal_foundry_research
 from alphaforge.research.signal_foundry import _capacity_config
 
@@ -167,6 +168,14 @@ def test_governed_run_is_transactional_auditable_and_not_ready_on_missing_pit(
     assert (result.run_dir / "dossier.md").is_file()
     assert (result.run_dir / "final_holdout_predictions.csv").is_file()
     assert (result.run_dir / "capacity_curve.csv").is_file()
+    new_execution_artifacts = (
+        "execution_events.csv",
+        "accounting.csv",
+        "friction_model_manifest.csv",
+        "friction_attribution.csv",
+        "latency_schedule.csv",
+    )
+    assert all((result.run_dir / name).is_file() for name in new_execution_artifacts)
     manifest = json.loads((result.run_dir / "run_manifest.json").read_text())
     assert manifest["run_manifest_version"] == "2.0.0"
     assert manifest["result"]["trial_ledger_head"]
@@ -193,6 +202,26 @@ def test_governed_run_is_transactional_auditable_and_not_ready_on_missing_pit(
     )
     assert result.dossier["concentration"]["gross_exposure"] >= 0.0
     assert all(scenario["accounting_reconciled"] for scenario in result.dossier["scenarios"])
+    execution_profiles = standard_stress_profiles()[1:]
+    execution_scenarios = result.dossier["scenarios"][: len(execution_profiles)]
+    assert [scenario["scenario"] for scenario in execution_scenarios] == [
+        profile.name for profile in execution_profiles
+    ]
+    assert [scenario["stress_profile_digest"] for scenario in execution_scenarios] == [
+        profile.digest for profile in execution_profiles
+    ]
+    manifest_frame = pd.read_csv(result.run_dir / "friction_model_manifest.csv")
+    assert set(manifest_frame["model_type"]) == {
+        "fill_cost",
+        "execution_policy",
+        "carry_cost",
+        "latency",
+        "stress_profile",
+    }
+    friction_frame = pd.read_csv(result.run_dir / "friction_attribution.csv")
+    assert friction_frame["model_digest"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert friction_frame["record_digest"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert not pd.read_csv(result.run_dir / "latency_schedule.csv").empty
     assert result.dossier["uncertainty"]["available"]
     assert result.dossier["year_stability"]
     assert result.dossier["regime_stability"]

@@ -120,13 +120,13 @@ The workflow:
 4. records each candidate and result in an ordered SHA-256 hash chain;
 5. fits the selected candidate on development data and touches the final
    holdout once for that immutable run identity;
-6. backtests future-open execution with commissions, spread, slippage,
-   square-root impact, participation limits, drifted positions, and reconciled
-   cash/share accounting;
-7. repeats the holdout under doubled costs, tripled spread/slippage, an extra
-   session of latency, halved participation, perturbed selection breadth, and
-   explicit borrow/funding drag, then compares against a deterministic
-   permuted-signal placebo;
+6. backtests future-open execution with component-level fees, spread/slippage,
+   power-law impact, native financing/borrow accrual, logical-session latency,
+   participation limits, drifted positions, and reconciled cash/share accounting;
+7. repeats the complete event simulation under doubled and tripled costs,
+   adverse spread, reduced liquidity, delayed signal, partial-fill pressure,
+   five-times capital demand, and perturbed selection breadth, then compares
+   against a deterministic permuted-signal placebo;
 8. proves idempotency, stale-data, risk-limit, and one-way kill-switch behavior
    through deterministic offline proposed decisions with no broker interface;
 9. produces circular moving-block uncertainty intervals, year/regime
