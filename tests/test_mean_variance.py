@@ -34,7 +34,6 @@ from alphaforge.optimization.mean_variance import (
     solve_mean_variance,
 )
 from alphaforge.optimization.risk_model import (
-    CONDITION_WARNING,
     RiskModelError,
     shrinkage_covariance,
     validate_covariance,
@@ -89,17 +88,24 @@ def test_minimum_variance_matches_the_closed_form(risk_model, budget_constraints
 
 def test_maximum_utility_matches_the_closed_form(risk_model, alpha) -> None:
     """With every inequality slack the stationary point is exactly reproduced."""
-    reference = analytic_maximum_utility(risk_model, alpha.to_numpy(), 1.0)
+    # Scale risk aversion so the unconstrained stationary point lies strictly
+    # inside the shared one-unit gross/leverage ceiling. The earlier test used
+    # gross >16 and therefore compared a constrained solve to an unreachable
+    # unconstrained reference.
+    risk_aversion = 100.0
+    reference = analytic_maximum_utility(risk_model, alpha.to_numpy(), risk_aversion)
     span = float(np.abs(reference).sum())
-    slack = PortfolioConstraints(
-        max_position=span, max_gross=span * 2, max_net=span * 2, max_leverage=span * 2
-    )
+    slack = PortfolioConstraints(max_position=1.0, max_gross=1.0, max_net=1.0, max_leverage=1.0)
     problem = MeanVarianceProblem(
-        risk_model=risk_model, expected_returns=alpha, constraints=slack, risk_aversion=1.0
+        risk_model=risk_model,
+        expected_returns=alpha,
+        constraints=slack,
+        risk_aversion=risk_aversion,
     )
     result = solve_mean_variance(
         problem, formulation="maximum_utility", max_iterations=20_000, tolerance=1e-14
     )
+    assert span < 1.0
     np.testing.assert_allclose(result.weights.to_numpy(), reference, atol=ANALYTIC_TOLERANCE)
 
 
@@ -253,28 +259,25 @@ def test_non_finite_covariance_is_refused() -> None:
 
 
 def test_dimension_mismatch_is_refused() -> None:
-    with pytest.raises(RiskModelError, match="does not match the asset labels"):
+    with pytest.raises(RiskModelError, match="does not match asset labels"):
         validate_covariance(np.eye(3) * 1e-4, assets=("A", "B"))
     with pytest.raises(RiskModelError, match="square"):
         validate_covariance(np.ones((2, 3)), assets=("A", "B"))
 
 
-def test_non_psd_covariance_is_repaired_only_with_a_reported_ridge() -> None:
-    """A silent repair changes the risk model; the amount must be published."""
+def test_materially_non_psd_covariance_is_refused_even_if_repair_is_enabled() -> None:
+    """Stabilization cannot turn a different strategy into a valid risk model."""
     matrix = np.array([[1e-4, 2e-4], [2e-4, 1e-4]])  # indefinite
-    with pytest.raises(RiskModelError, match="not positive definite"):
+    with pytest.raises(RiskModelError, match="materially indefinite"):
         validate_covariance(matrix, assets=("A", "B"), allow_ridge=False)
-    model = validate_covariance(matrix, assets=("A", "B"), allow_ridge=True)
-    assert model.ridge_applied > 0.0
-    assert model.min_eigenvalue >= 0.0
-    assert model.diagnostics()["ridge_applied"] == model.ridge_applied
+    with pytest.raises(RiskModelError, match="materially indefinite"):
+        validate_covariance(matrix, assets=("A", "B"), allow_ridge=True)
 
 
-def test_singular_covariance_is_reported_as_ill_conditioned() -> None:
+def test_singular_covariance_is_refused() -> None:
     matrix = np.outer(np.ones(4), np.ones(4)) * 1e-4  # rank 1
-    model = validate_covariance(matrix, assets=tuple("ABCD"))
-    assert model.ill_conditioned
-    assert model.condition_number > CONDITION_WARNING
+    with pytest.raises(RiskModelError, match="singular|positive definite"):
+        validate_covariance(matrix, assets=tuple("ABCD"))
 
 
 def test_infeasible_constraints_fail_closed(risk_model) -> None:
@@ -453,21 +456,10 @@ def test_identical_assets_receive_identical_weights(alpha) -> None:
     np.testing.assert_allclose(result.weights.to_numpy(), 0.25, atol=1e-7)
 
 
-def test_near_zero_variance_asset_is_handled(alpha) -> None:
+def test_near_zero_variance_asset_is_refused_as_ill_conditioned() -> None:
     matrix = np.diag([1e-14, 1e-4, 1e-4, 1e-4, 1e-4, 1e-4])
-    model = validate_covariance(matrix, assets=tuple(SYMBOLS))
-    constraints = PortfolioConstraints(
-        max_position=0.6, max_gross=1.0, max_net=1.0, max_leverage=1.0, long_only=True
-    )
-    result = solve_mean_variance(
-        MeanVarianceProblem(risk_model=model, constraints=constraints, budget=1.0),
-        formulation="minimum_variance",
-        max_iterations=20_000,
-        tolerance=1e-13,
-    )
-    # Minimum variance concentrates in the near-riskless name, up to its cap.
-    assert result.weights.iloc[0] == pytest.approx(0.6, abs=1e-6)
-    assert result.audit_passed
+    with pytest.raises(RiskModelError, match="ill-conditioned"):
+        validate_covariance(matrix, assets=tuple(SYMBOLS))
 
 
 def test_extreme_correlation_is_solvable(alpha) -> None:
@@ -811,7 +803,7 @@ def test_shrinkage_is_between_sample_and_target(market) -> None:
     assert model.shrinkage_intensity is not None
     assert 0.0 <= model.shrinkage_intensity <= 1.0
     assert model.min_eigenvalue > 0.0
-    assert model.estimator == "ledoit_wolf_constant_correlation"
+    assert model.estimator == "constant_correlation_shrinkage_v1"
 
 
 def test_shrinkage_reduces_the_condition_number(market) -> None:
@@ -825,7 +817,7 @@ def test_shrinkage_reduces_the_condition_number(market) -> None:
 def test_insufficient_history_is_refused(market) -> None:
     with pytest.raises(RiskModelError, match="complete observations"):
         shrinkage_covariance(market["returns"], as_of=market["dates"][3], window=252)
-    with pytest.raises(RiskModelError, match="window must be"):
+    with pytest.raises(RiskModelError, match="window must"):
         shrinkage_covariance(market["returns"], window=2)
 
 

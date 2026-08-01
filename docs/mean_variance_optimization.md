@@ -1,196 +1,236 @@
-# Constrained Markowitz optimization (SF-S4-MR2)
+# Certified point-in-time portfolio optimization (SF-S4-MR2)
 
-A deterministic, point-in-time mean-variance optimizer with a validated risk-model
-contract, four formulations, an independent feasibility audit, and walk-forward
-evidence against the SF-S4-MR1 baselines and a no-trade arm.
+AlphaForge provides simulation-only infrastructure for causal risk estimation,
+constrained Markowitz allocation, and reconciled risk attribution. It does not
+claim that an efficient frontier is stable, that a historical allocation is
+profitable, or that any strategy is ready for paper or live trading.
 
-> **No profit claim.** An attractive efficient frontier is an in-sample artefact.
-> All evidence here is synthetic with a planted signal; the Sharpe levels are a
-> property of that construction, not a market result. Markowitz optimization
-> guarantees nothing out of sample and the frontier is not stable.
+Sprint 3 deliberately concluded `Advance = 0` / `NOT_READY`. No approved
+prediction candidate therefore exists for this component to consume. MR2 is
+bounded to infrastructure and redistribution-safe synthetic evidence; issue #44
+owns the later frozen qualification decision. The final holdout is not exposed
+to the MR2 comparison API or reference study.
 
----
+## Point-in-time risk snapshot
 
-## 1. The problem
+`RiskModel` is an immutable covariance contract in squared periodic-return
+units. It carries:
 
-In periodic (per-bar) units throughout:
+- exact asset order, periods per year, estimator identifier and parameters;
+- strict `as_of` semantics and the actual observation start/end interval;
+- considered, complete, and dropped observation counts and dropped assets;
+- an exact SHA-256 source digest and a separate model identity;
+- minimum eigenvalue, condition number, shrinkage intensity, and any explicitly
+  permitted round-off-scale ridge.
 
+Point-in-time estimator observations end strictly before `as_of`. Omitting
+`as_of` from the covariance estimator explicitly requests an offline batch over
+the supplied observations; it does not create a decision-ready snapshot. A
+future-mutation test changes every observation later than a declared decision
+and requires the earlier covariance and identity to remain byte-for-byte
+unchanged. Materially indefinite, singular, or ill-conditioned inputs are
+refused; stabilization cannot silently turn a different matrix into the
+requested strategy. Input is bounded before sorting or numeric conversion at
+100,000 rows, 2,000 assets, and 2,000,000 cells; estimator windows are bounded at
+10,000 observations. A name with no observation inside the actual trailing
+window is dropped and reported as stale instead of borrowing older history or
+erasing coverage loss.
+
+`estimate_factor_risk_model` fits the point-in-time linear decomposition
+
+```text
+Sigma = B F B' + D
 ```
-minimize   (λ/2) · w'Σw  −  μ'w  +  cost(w, w_prev)
-subject to 1'w = budget                       (equality)
-           |w_i| ≤ max_position               (box)
-           ‖w‖₁ ≤ max_gross · deployable      (L1 ball)
-           |1'w| ≤ max_net                    (net band)
-           ‖w − w_prev‖₁ ≤ max_turnover       (turnover ball)
-           |w_i| ≤ liquidity_cap_i            (participation)
-           lower ≤ a'w ≤ upper                (sector / factor)
-           w ≥ 0 if long_only
+
+where `B` is the supplied exposure vintage, `F` is a shrunk factor covariance,
+and `D` contains positive specific variances. The public `FactorRiskModel`
+reconstructs the asset covariance on construction and rejects a mismatch. The
+estimator requires both the exposure vintage and its availability timestamp,
+enforces `exposure_vintage <= exposure_available_at <= as_of`, and binds those
+timestamps and the exact supplied matrix into source and model identities. This
+proves the declared temporal contract; upstream data governance must still prove
+that the declaration itself is truthful. Factor count is capped at 64. Exposure
+rank and conditioning are checked directly, and factor/specific floors report
+their threshold, adjustment, and affected count. If stabilization is needed
+while its corresponding shrinkage setting is zero, estimation fails rather than
+silently changing the model.
+
+## Optimization problem
+
+All expected returns are periodic returns at the same frequency as the risk
+model. Risk aversion therefore has inverse-return units. Alpha availability may
+not be later than the decision timestamp, and a point-in-time risk snapshot must
+share that decision boundary.
+
+For weights `w`, previous holdings `p`, covariance `Sigma`, alpha `mu`, and
+risk-aversion coefficient `lambda`, the cost-aware formulation is:
+
+```text
+minimize  (lambda / 2) w' Sigma w - mu'w
+          + c1 ||w - p||_1 + c2 ||w - p||_2^2
 ```
 
-**Units are stated, not assumed.** `μ` and `Σ` must be in the *same* periodic
-units; the `RiskModel` carries its own `periods_per_year` so annualization
-happens once, at reporting time. Mixing an annualized alpha with a daily
-covariance is the most common unit error in mean-variance code.
+The other formulations use the same canonical contract:
 
-**Budget is an equality and it matters.** The variance objective is minimized at
-`w = 0`, so without `1'w = budget` the "minimum-variance portfolio" is an empty
-book. This was caught during development: the first implementation had only upper
-bounds and returned all zeros, correctly optimal for the problem as posed and
-useless as a portfolio.
+| Formulation | Objective / additional constraint |
+|---|---|
+| `minimum_variance` | minimize `0.5 w'Sigma w`; a budget equality is required |
+| `target_return` | minimize `0.5 w'Sigma w` subject to `mu'w >= target` |
+| `maximum_utility` | minimize `(lambda/2) w'Sigma w - mu'w` |
+| `alpha_risk_cost` | maximum utility plus linear and quadratic turnover cost |
 
-### Formulations
+Configured limits cover the budget equality, gross and leverage ceilings, net
+exposure, long-only policy, per-position and liquidity caps, full-universe
+turnover, and bounded sector/factor exposures. A name leaving the investable
+universe is a mandatory liquidation: its turnover and linear/quadratic costs are
+charged rather than disappearing during reindexing.
 
-| formulation | μ | λ | notes |
-|---|---|---|---|
-| `minimum_variance` | 0 | 1 | mean term vanishes; needs a budget |
-| `target_return` | — | 1 | min variance s.t. `μ'w ≥ target`, as a half-space |
-| `maximum_utility` | alpha | declared | classic utility maximization |
-| `alpha_risk_cost` | alpha | declared | costs inside the objective |
+Absolute gross weights and trades are represented with epigraph variables, so
+the problem is one canonical sparse convex QP. The locked Apache-2.0 OSQP
+dependency solves that QP; [ADR 0009](adr/0009-certified-sparse-mean-variance-qp.md)
+records the dependency, alternatives, numerical policy, rollback, and residual
+risk.
 
----
+The solve boundary accepts at most 512 assets, 256 exposure constraints, 1,024
+previous-book names, 20,000 iterations, and five solver seconds. A nonzero
+budget at or below the float64 audit floor (`128 * eps`) is refused: an absolute
+certificate floor could otherwise mistake a zero book for that budget. When the
+largest absolute quadratic or linear objective coefficient is below `1e-2`, the
+entire objective—including its constant—is scaled together before OSQP sees it.
+This preserves the optimizer while preventing a small-return-unit objective from
+being treated as numerically flat; the policy is included in solve identity.
 
-## 2. The risk model is a contract
+## Independent result certificate
 
-The optimizer inverts `Σ`, so the *smallest* eigenvalues — the ones estimated
-worst — dominate the answer. `RiskModel` therefore refuses a matrix that is not
-square, symmetric, finite, or PSD, and publishes its condition number and minimum
-eigenvalue **before** the solve.
+A solver success string is never sufficient. A result becomes `optimal` only
+when the exact supported OSQP status and every independent check pass:
 
-Two refusals worth naming:
+- original financial constraints recomputed from weights, including exited
+  holdings;
+- QP primal feasibility under an absolute row-residual check;
+- scale-normalized KKT stationarity and complementarity;
+- independently reconstructed formulation-specific objective components;
+- relative objective-reconstruction and primal/dual-gap checks; and
+- finite, aligned, immutable returned weights and diagnostics.
 
-- **Asymmetry is an error, not something to average away.** Silently applying
-  `(A + A')/2` hides an estimator bug while changing the risk model.
-- **Any ridge is reported.** When a matrix needs stabilization the amount is
-  recorded on the model. A silent repair changes the strategy, and doing it
-  without saying so is how an optimizer's output stops corresponding to the risk
-  it claims to control.
+The certificate intentionally uses a mixed policy rather than pretending unlike
+units are interchangeable. Canonical QP row violation is an absolute residual in
+the submitted row's units and must not exceed `1e-7`. Stationarity,
+complementarity, objective reconstruction, and primal/dual gap are normalized by
+their implemented vector or objective scales; objective reconstruction uses
+`1e-8`, and the other KKT checks use `1e-7`. The reported maximum residual is
+therefore a conservative diagnostic across unlike checks, not one universal
+dimensionless error measure. The separate financial audit uses scale-aware
+constraint tolerances with a fixed round-off floor.
 
-`shrinkage_covariance` is a causal Ledoit-Wolf-style estimator toward a
-constant-correlation target. It shrinks harder exactly when the sample covariance
-is least trustworthy. **It is interim** — issue #7 owns the production estimator,
-and because the optimizer depends on the `RiskModel` contract rather than on this
-implementation, #7 lands as a drop-in.
+Inaccurate success, iteration exhaustion, timeout, infeasibility, malformed
+input, excessive dimensions, or a failed certificate remains non-tradable. The
+evidence consumer accepts only `status == "optimal"` with a passing audit.
+Solver identity hashes exact input bytes, timestamps, formulation, dependency
+version, iteration/tolerance settings, and deterministic configuration; inputs
+are never rounded before hashing.
 
----
+## Risk and P&L attribution
 
-## 3. Solver
+`attribute_ex_ante_risk` reports Euler marginal and component asset risk. For
+portfolio volatility `sigma_p`:
 
-Accelerated projected gradient (FISTA) with a proximal step for the turnover
-charge. Rationale, alternatives, and residual numerical risk are in
-[ADR 0009](adr/0009-from-scratch-mean-variance-solver.md). The short version:
+```text
+marginal variance_i  = (Sigma w)_i
+component variance_i = w_i (Sigma w)_i
+component vol_i      = component variance_i / sigma_p
+```
 
-- **Analytic step size**, not a line search, so the solve is deterministic and
-  two runs produce bit-identical weights.
-- **Every projection is a true projection.** Clip-then-rescale and radial L1
-  rescaling are both *not* projections and both broke convergence during
-  development; the L1 step is now the exact sort-and-scan soft-threshold.
-- **The turnover charge is proximal.** As a subgradient it oscillates across the
-  kink at zero trade and *increases* turnover — measured at 0.90 with a penalty
-  against 0.56 without, before the prox replaced it.
-- **Termination is on feasibility**, not on a small step.
+Components must reconcile to portfolio variance and volatility before the
+record is returned. A factor snapshot additionally reports factor exposures,
+factor risk, per-asset specific risk, and exact factor-plus-specific
+reconciliation.
 
-### Validated against closed form
+The attribution module also provides:
 
-Declared tolerance 1e-8 on the weights, on well-conditioned problems where no
-inequality binds:
+- per-asset realized return and currency-P&L contributions against an ending
+  equity value supplied independently by the caller, with explicit starting
+  cash weight, cash return, and aggregate cost;
+- pre/post-return asset, cash, gross/net, and factor-exposure drift under a
+  self-financing ledger; and
+- a bounded, deterministically ordered set of named modeled return scenarios
+  with explicit cash/cost paths and per-asset return, P&L, and ending-value
+  reconciliation.
 
-| formulation | reference | achieved |
-|---|---|---|
-| minimum variance | `Σ⁻¹1 / (1'Σ⁻¹1)` | **3.8e-11** |
-| maximum utility | `(1/λ)Σ⁻¹μ` | **7.3e-13** |
+Realized attribution refuses the record unless both contribution sums and a
+separately constructed ending-value path reproduce the observed ending equity.
+Scenario outputs are counterfactual model calculations: they reconcile their own
+return, P&L, and ending-value paths, but they have no independent observed
+endpoint and are never labelled realized evidence.
 
----
+These are return-series diagnostics, not order-, fill-, broker-, tax-, or
+financing-level execution attribution. The event-driven execution work owns
+those later boundaries.
 
-## 4. Nothing is trusted
+## Reference evidence
 
-`audit_solution` re-derives every feasibility check from the returned weights
-alone, using code that does **not** call the projection. A projection bug
-therefore cannot hide behind itself. A solve that fails its own audit is reported
-as `failed`, never as a portfolio.
+The strict study configuration is
+[`configs/mean_variance_study.yaml`](../configs/mean_variance_study.yaml). The
+publisher uses a fixed seed and synthetic data, excludes its protected holdout
+from all comparison objects, and atomically writes a new directory containing:
 
-The result also carries active constraints — a book pinned against many limits is
-being determined by the constraint set rather than by the forecast, which is
-worth knowing before reading its expected return as skill.
+- fold/regime/capital/turnover comparisons for every Markowitz formulation;
+- equal-weight, inverse-volatility, rank-based, uncertainty/volatility-target,
+  and drifting no-trade baselines on identical dates;
+- alpha and covariance-error sensitivity;
+- annualized return/volatility, drawdown, turnover, cost, VaR/CVaR/worst bar,
+  concentration/effective-N, exposure, coverage, conditioning, failure, and
+  certificate diagnostics;
+- dependence-aware uncertainty for the mean; and
+- a four-panel Seaborn figure covering net returns, modeled cost drag,
+  alpha/covariance input-error sensitivity, and feasible evaluation coverage;
+  plus configuration identity, artifact hashes, and explicit limitations.
 
-**No silent relaxation, anywhere.** An infeasible constraint set raises. An
-unreachable target return is reported `infeasible`, not approximated.
+The fourth panel is a required interpretation guard: solver failures remain in
+the denominator, so the return of a low-coverage constrained arm cannot be read
+as comparable to a fully evaluated baseline. The committed artifacts trace the
+reference plot to machine-readable inputs and identities:
 
----
+- [manifest](evidence/signal_foundry_sprint_4/mr2_mean_variance/manifest.json);
+- [scope and identity summary](evidence/signal_foundry_sprint_4/mr2_mean_variance/summary.json);
+- [aggregate comparison](evidence/signal_foundry_sprint_4/mr2_mean_variance/comparison.csv);
+- [input-error sensitivity](evidence/signal_foundry_sprint_4/mr2_mean_variance/sensitivity.csv);
+  and
+- [attribution summary](evidence/signal_foundry_sprint_4/mr2_mean_variance/attribution_summary.csv).
 
-## 5. Measured evidence
+![SF-S4-MR2 synthetic development evidence: returns, cost drag, sensitivity, and feasible coverage](evidence/signal_foundry_sprint_4/mr2_mean_variance/mean_variance_evidence.png)
 
-Synthetic panel, 12 names, 240 evaluation days, 10bps turnover cost, long-only,
-`max_position` 0.25, budget 1.0, capital $100M:
+Generate a new immutable bundle with:
 
-| arm | turnover budget | net return | gross | cost drag | turnover | max drawdown |
-|---|---|---|---|---|---|---|
-| alpha_risk_cost | none | 2.448 | 2.623 | 0.175 | 0.694 | −0.015 |
-| alpha_risk_cost | 0.2 | 0.844 | 0.894 | 0.049 | 0.196 | −0.022 |
-| maximum_utility | none | 2.430 | 2.624 | 0.195 | 0.773 | −0.014 |
-| maximum_utility | 0.2 | 0.768 | 0.816 | 0.048 | 0.192 | −0.022 |
-| minimum_variance | none | 0.042 | 0.046 | 0.004 | 0.017 | −0.045 |
-| **no_trade** | — | 0.026 | 0.027 | 0.001 | 0.004 | −0.047 |
+```bash
+uv run make mean-variance-evidence OUTPUT=/absolute/path/to/new/output
+```
 
-Read honestly: `minimum_variance` uses no alpha, so it lands just above the
-do-nothing arm — which is the correct outcome, not a disappointment. The turnover
-budget cuts return by roughly two-thirds and cost drag by three-quarters.
+An existing output path fails closed. Licensed market observations, API keys,
+broker credentials, generated private runs, and holdout rows are never written.
+The committed reference bundle is synthetic engineering evidence—not market
+performance. It selects and promotes no arm and cannot support a profit,
+paper-trading, or live-trading claim.
 
-**The no-trade arm is the one most often omitted and hardest to beat net of
-costs.** Without it, "our optimizer beat equal weight" can be true while "our
-optimizer beat leaving it alone" is false.
+## Rollback and limitations
 
-### Sensitivity to input error
+Rollback removes the optimizer from allocation selection while leaving the MR1
+rule-based portfolios and their constraint contract intact. The implementation
+has no broker, order, paper, or live authority.
 
-The most important diagnostic for mean-variance, which is famously more sensitive
-to expected-return error than to covariance error:
+Residual limitations are explicit:
 
-| alpha error | net return | net Sharpe |
-|---|---|---|
-| 0% | 2.430 | 21.97 |
-| 10% | 2.429 | 21.98 |
-| 25% | 2.426 | 21.91 |
-| 50% | 2.260 | 20.33 |
-| 100% | 1.660 | 15.20 |
-
-Degradation is graceful here only because the planted signal is strong. On a
-realistic signal-to-noise ratio the same sweep is the check that decides whether
-a result reflects skill or input precision.
-
-### Capacity
-
-Liquidity caps bind as capital grows. At $200M on 12 names at 5% participation
-the constraint set becomes infeasible and every date is recorded
-`feasible=False` with the reason — never dropped, because dropping the hard dates
-is how an optimizer acquires a survivorship-flattered record.
-
----
-
-## 6. Evidence and gates
-
-`tests/test_mean_variance.py` — 54 tests: analytic agreement, independent audit
-(including that the audit *fails* a book breaching each limit), non-symmetric /
-non-finite / non-PSD / singular / dimension-mismatched covariance, infeasible
-constraints, non-convergence reporting, asset permutation, alpha/λ scale
-invariance, duplicate assets, deterministic ties, near-zero variance, extreme
-correlation, single-asset and empty universes, turnover-penalty monotonicity,
-problem identity, solver determinism, three mutation tests (future returns,
-future covariance, future universe membership), and the walk-forward harness.
-
-Coverage: `mean_variance.py` 92%, `risk_model.py` 90%, `evidence.py` 88%
-(branch). Repository total 84.79% against an unchanged 78% floor.
-
----
-
-## 7. Residual limitations
-
-- **Synthetic evidence only**, with a planted signal.
-- **Interim covariance.** #7 supplies the production causal shrinkage and factor
-  risk model; this is a contract-compatible placeholder.
-- **First-order convergence** reaches a declared tolerance, not an exact vertex.
-- **Cost model is linear + quadratic in turnover.** Real slippage, impact, and
-  latency are SF-S4-MR4; the quadratic term is a crude stand-in, documented as
-  such rather than presented as calibrated.
-- **No warm start** across rebalances.
-- **Capacity is participation caps only** — no borrow, short fees, or crowding.
-- **Simulation only**: no broker, no live endpoint, no capital at risk, and the
-  optimizer stays out of any paper/live path until later qualification gates.
+- expected returns are much harder to estimate than covariance, so allocations
+  can remain unstable despite a numerically certified optimum;
+- the linear factor model depends on the supplied exposure vintage and model
+  specification;
+- OSQP is a numerical first-order solver and certification is tolerance-bounded,
+  not symbolic proof;
+- canonical primal-row residuals retain their row units while the other
+  certificate residuals are scaled, so their aggregate maximum is diagnostic
+  rather than one dimensionless error;
+- MR2 costs are objective penalties, not the later fill/latency/impact model;
+- the reference evidence is synthetic and cannot establish an investable edge;
+  and
+- no candidate may advance until the remaining robustness, execution, Monte
+  Carlo, and frozen qualification gates are complete.
