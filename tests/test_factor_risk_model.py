@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from alphaforge.optimization.risk_model import (
+    CONDITION_LIMIT,
     MAX_ASSETS,
     MAX_SOURCE_CELLS,
     MAX_SOURCE_OBSERVATIONS,
@@ -374,6 +375,7 @@ def test_factor_floor_fails_closed_at_zero_shrinkage_and_is_disclosed() -> None:
     assert model.factor_directions_stabilized == 1
     assert model.factor_ridge_applied > 0.0
     assert model.factor_variance_floor > 0.0
+    assert np.linalg.cond(model.factor_covariance) < CONDITION_LIMIT * (1.0 - 1e-6)
 
 
 def _zero_specific_variance_market() -> tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp]:

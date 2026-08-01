@@ -688,7 +688,7 @@ def _causal_window(
     source_rows, source_assets = returns.shape
     if not 1 <= source_rows <= MAX_SOURCE_OBSERVATIONS:
         raise RiskModelError(
-            "raw return observation count must lie in " f"[1, {MAX_SOURCE_OBSERVATIONS}]"
+            f"raw return observation count must lie in [1, {MAX_SOURCE_OBSERVATIONS}]"
         )
     if not 1 <= source_assets <= MAX_ASSETS:
         raise RiskModelError(f"raw return asset count must lie in [1, {MAX_ASSETS}]")
@@ -1155,16 +1155,27 @@ def estimate_factor_risk_model(
     initial_factor_floor = EIGENVALUE_FLOOR * largest
     factor_count = int(np.count_nonzero(factor_eigenvalues < initial_factor_floor))
     factor_ridge = 0.0
+    factor_roundoff_margin = 0.0
     if factor_count:
         if factor_weight == 0.0:
             raise RiskModelError(
                 "factor covariance requires stabilization while factor_shrinkage is zero"
             )
-        factor_ridge = (EIGENVALUE_FLOOR * largest - float(factor_eigenvalues[0])) / (
-            1.0 - EIGENVALUE_FLOOR
+        # Solving for a ridge that lands exactly on the admissible condition
+        # boundary is not portable across eigensolver/LAPACK implementations:
+        # their final eigenvalue round-off can place the matrix infinitesimally
+        # outside the contract.  Add a dimension- and scale-aware floating-point
+        # margin while retaining the same economic variance floor.
+        factor_roundoff_margin = (
+            ROUNDOFF_MULTIPLIER * np.finfo(np.float64).eps * max(n_factors, 1) * largest
         )
+        factor_ridge = (
+            initial_factor_floor + factor_roundoff_margin - float(factor_eigenvalues[0])
+        ) / (1.0 - EIGENVALUE_FLOOR)
         factor_covariance = factor_covariance + factor_ridge * np.eye(n_factors)
-    factor_floor = EIGENVALUE_FLOOR * (largest + factor_ridge)
+    # Report the actual stabilization target, including its numerical safety
+    # margin, so downstream diagnostics can independently reconcile the ridge.
+    factor_floor = EIGENVALUE_FLOOR * (largest + factor_ridge) + factor_roundoff_margin
     factor_count = int(np.count_nonzero(factor_eigenvalues < factor_floor))
 
     residuals = values - factor_returns @ loadings.T
