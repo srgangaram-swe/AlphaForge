@@ -158,6 +158,9 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [borrow, liquidity, and capacity policy](docs/borrow_liquidity_capacity.md)
+enforces point-in-time shortability, conserved participation and book budgets,
+forced buy-ins, and a complete-rerun capacity frontier.
 The [constrained Markowitz optimizer](docs/mean_variance_optimization.md) turns
 periodic alpha and immutable point-in-time shrinkage/factor-risk snapshots into
 certified feasible weights. Its sparse QP, independent KKT/objective audit,
