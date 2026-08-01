@@ -862,3 +862,46 @@ def test_component_records_canonicalize_numpy_scalars() -> None:
         scenario.scenario_return,
     ):
         assert type(value) is float
+
+
+# ---------------------------------------------------------------------------
+# Regression: residual-vs-residual tolerance (surfaced on CPython 3.14)
+# ---------------------------------------------------------------------------
+
+
+def test_residual_comparison_is_scaled_by_the_reconciled_quantity() -> None:
+    """A stored residual must be judged against the scale of what it reconciles.
+
+    Both operands of `_canonical_error` are roundoff residuals, so the residual's
+    own magnitude is noise and cannot bound the comparison: a residual of 1.9e-9
+    would earn a bound of 1.9e-18 and any two legitimately-different float
+    accumulation paths would be reported as a reconciliation failure. This
+    reproduces the exact values that failed on CPython 3.14.
+    """
+    from alphaforge.optimization.risk_attribution import _canonical_error
+
+    observed_residual = -1.862645149230957e-09  # 2**-29, from an equity near 1e6
+
+    # Without a scale the comparison is judged against the residual itself and
+    # is unsatisfiable.
+    with pytest.raises(RiskAttributionError, match="did not reconcile"):
+        _canonical_error(observed_residual, 0.0, name="ending_value_reconciliation_error")
+
+    # Given the equity it reconciles, the same difference is ordinary roundoff.
+    assert (
+        _canonical_error(
+            observed_residual,
+            0.0,
+            name="ending_value_reconciliation_error",
+            scale=1_000_000.0,
+        )
+        == 0.0
+    )
+
+
+def test_residual_tolerance_still_rejects_a_materially_wrong_value() -> None:
+    """Widening the bound must not make the integrity check vacuous."""
+    from alphaforge.optimization.risk_attribution import _canonical_error
+
+    with pytest.raises(RiskAttributionError, match="did not reconcile"):
+        _canonical_error(1e-3, 0.0, name="ending_value_reconciliation_error", scale=1_000_000.0)
