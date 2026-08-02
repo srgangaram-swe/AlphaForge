@@ -1,4 +1,4 @@
-"""Parameter, feature, and stable-region robustness analysis (SF-S4-MR6).
+"""Robustness analysis: parameters, features, calendar, regimes, and universe.
 
 - :mod:`~alphaforge.robustness.grid` — the frozen study: parameter axes, feature
   families, ablation arms, negative controls, and named seed streams, published
@@ -7,6 +7,15 @@
   and representation-placebo nulls under a leakage-safe temporal protocol.
 - :mod:`~alphaforge.robustness.stability` — stable regions, sensitivity cliffs,
   and family redundancy, reported instead of a single optimum.
+- :mod:`~alphaforge.robustness.periods` — calendar intervals and causal regime
+  labels frozen before evaluation, so a regime is never defined from the
+  outcomes it is used to explain.
+- :mod:`~alphaforge.robustness.universe` — point-in-time membership and
+  ablations, keeping investability filters distinct from hindsight-based
+  fragility probes.
+- :mod:`~alphaforge.robustness.temporal_evidence` — per-period and per-regime
+  evidence with block-bootstrap and Newey-West uncertainty, and the gate that
+  withholds every portfolio-level claim absent a qualified candidate.
 
 Simulation-only. Nothing here qualifies a strategy or claims a profit.
 """
@@ -35,6 +44,19 @@ from alphaforge.robustness.grid import (
     canonical_digest,
     verify_frozen,
 )
+from alphaforge.robustness.periods import (
+    MIN_PERIOD_OBSERVATIONS,
+    FrozenPeriodSet,
+    PeriodContractError,
+    PeriodInterval,
+    RegimeDefinition,
+    assert_conditioning_is_independent,
+    calendar_years,
+    coverage_report,
+    label_regimes,
+    standard_regime_definitions,
+    verify_frozen_periods,
+)
 from alphaforge.robustness.stability import (
     FamilyContribution,
     SensitivityCliff,
@@ -46,35 +68,104 @@ from alphaforge.robustness.stability import (
     stable_regions,
     verify_rerun_determinism,
 )
+from alphaforge.robustness.temporal_evidence import (
+    MIN_BOOTSTRAP_OBSERVATIONS,
+    PeriodOutcome,
+    QualifiedCandidate,
+    TemporalEvidenceError,
+    UncertaintyInterval,
+    UnqualifiedCandidateError,
+    block_bootstrap_interval,
+    compare_uncertainty,
+    matched_family_evidence,
+    naive_interval,
+    newey_west_interval,
+    newey_west_standard_error,
+    period_evidence,
+    portfolio_dependence_evidence,
+    regime_definition_sensitivity,
+    regime_evidence,
+    temporal_robustness_report,
+)
+from alphaforge.robustness.universe import (
+    AblationResult,
+    MembershipRecord,
+    PointInTimeUniverse,
+    UniverseContractError,
+    apply_liquidity_floor,
+    assert_no_future_membership,
+    concentration_profile,
+    drop_sector,
+    drop_top_contributors,
+    exclude_inactive,
+)
 
 __all__ = [
     "CONTROL_KINDS",
     "MAX_GRID_POINTS",
+    "MIN_BOOTSTRAP_OBSERVATIONS",
     "MIN_CONTROL_OBSERVATIONS",
+    "MIN_PERIOD_OBSERVATIONS",
+    "AblationResult",
     "ControlKind",
     "ControlOutcome",
     "FamilyContribution",
     "FeatureFamily",
     "Fold",
+    "FrozenPeriodSet",
     "GridPoint",
+    "MembershipRecord",
     "NegativeControl",
     "NegativeControlError",
+    "PeriodContractError",
+    "PeriodInterval",
+    "PeriodOutcome",
+    "PointInTimeUniverse",
+    "QualifiedCandidate",
+    "RegimeDefinition",
     "RobustnessGrid",
     "RobustnessGridError",
     "SensitivityCliff",
     "StabilityError",
     "StableRegion",
+    "TemporalEvidenceError",
+    "UncertaintyInterval",
+    "UniverseContractError",
+    "UnqualifiedCandidateError",
+    "apply_liquidity_floor",
+    "assert_conditioning_is_independent",
+    "assert_no_future_membership",
     "assert_streams_isolated",
+    "block_bootstrap_interval",
+    "calendar_years",
     "canonical_digest",
+    "compare_uncertainty",
+    "concentration_profile",
     "contiguous_folds",
+    "coverage_report",
+    "drop_sector",
+    "drop_top_contributors",
+    "exclude_inactive",
     "family_redundancy",
+    "label_regimes",
+    "matched_family_evidence",
+    "naive_interval",
+    "newey_west_interval",
+    "newey_west_standard_error",
+    "period_evidence",
     "permute_within_folds",
+    "portfolio_dependence_evidence",
     "randomize_labels_within_folds",
+    "regime_definition_sensitivity",
+    "regime_evidence",
     "representation_placebo",
     "run_control",
     "sensitivity_cliffs",
     "stability_report",
     "stable_regions",
+    "standard_regime_definitions",
+    "temporal_robustness_report",
     "verify_frozen",
+    "verify_frozen_periods",
     "verify_rerun_determinism",
 ]
