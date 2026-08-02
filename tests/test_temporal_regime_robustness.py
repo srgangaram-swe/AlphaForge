@@ -19,7 +19,7 @@ Grouped by acceptance criterion. The invariants that carry the most weight:
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -989,16 +989,20 @@ def test_label_regimes_refuses_a_non_series_and_an_empty_series(
     two_regime: RegimeDefinition,
 ) -> None:
     with pytest.raises(PeriodContractError, match="pandas Series"):
-        label_regimes([0.1, 0.2], two_regime)  # type: ignore[arg-type]
+        # cast rather than `type: ignore`: the violation is deliberate, and
+        # whether a bare list needs an ignore here varies by pandas-stubs version.
+        label_regimes(cast(pd.Series, [0.1, 0.2]), two_regime)
     with pytest.raises(PeriodContractError, match="non-empty"):
         label_regimes(pd.Series([], dtype=float), two_regime)
 
 
 def test_calendar_years_refuses_a_non_integer_or_inverted_range() -> None:
     with pytest.raises(PeriodContractError, match="years must be ints"):
-        calendar_years(2018.5, 2020)  # type: ignore[arg-type]
+        calendar_years(cast(int, 2018.5), 2020)
+    # bool is a subtype of int, so this needs no ignore — and the refusal is
+    # exactly why the constructor checks for bool explicitly.
     with pytest.raises(PeriodContractError, match="years must be ints"):
-        calendar_years(True, 2020)  # type: ignore[arg-type]
+        calendar_years(True, 2020)
     with pytest.raises(PeriodContractError, match="on or after"):
         calendar_years(2020, 2018)
 
@@ -1057,7 +1061,9 @@ def test_malformed_symbols_are_refused() -> None:
 
 def test_a_non_numeric_contribution_is_refused() -> None:
     with pytest.raises(UniverseContractError, match="real number"):
-        drop_top_contributors({"AAA": "big", "BBB": 1.0}, count=1, baseline_metric=1.0)  # type: ignore[dict-item]
+        drop_top_contributors(
+            cast(dict[str, float], {"AAA": "big", "BBB": 1.0}), count=1, baseline_metric=1.0
+        )
     with pytest.raises(UniverseContractError, match="finite"):
         drop_top_contributors({"AAA": np.nan, "BBB": 1.0}, count=1, baseline_metric=1.0)
 
