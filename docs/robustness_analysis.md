@@ -144,6 +144,9 @@ Repository total 84.12% against an unchanged 78% floor.
 
 ## 7. Residual limitations
 
+- **This MR covers *how* a candidate was configured, not *when* or *where* it was
+  measured.** Calendar, regime, and universe robustness is SF-S4-MR7 — see
+  [temporal, regime, and universe robustness](temporal_regime_robustness.md).
 - **Redundancy is a claim about this grid and this metric.** A family that adds
   nothing on average may still matter in a regime the sweep did not contain, so
   the flag marks a candidate for removal, not a decision to remove it.
