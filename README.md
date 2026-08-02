@@ -158,6 +158,9 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [robustness analysis contract](docs/robustness_analysis.md) freezes the
+parameter grid, feature ablations, and negative controls, and reports stable
+regions rather than a single optimum.
 The [borrow, liquidity, and capacity policy](docs/borrow_liquidity_capacity.md)
 enforces point-in-time shortability, conserved participation and book budgets,
 forced buy-ins, and a complete-rerun capacity frontier.
