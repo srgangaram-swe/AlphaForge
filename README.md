@@ -170,6 +170,17 @@ backfilled constituent list, and block-bootstrap/Newey-West intervals reported
 beside the i.i.d. one so the cost of assuming independence is visible. Losing,
 sparse, and empty periods are always reported, and portfolio-level dependence
 claims are withheld until a candidate is formally qualified.
+The [execution perturbation and qualification
+contract](docs/perturbation_and_qualification.md) closes Sprint 4: bounded,
+frozen Monte Carlo perturbation of order sequence, fill price, signal timing,
+missed and delayed trades, size, cost, liquidity, and partial fills, with
+insolvent and unreconciled paths kept in the denominator and every path
+replayable from its seed coordinates; then a versioned rubric frozen before
+scoring, where any failed criterion, missing observation, unevidenced metric, or
+reconciliation failure forces `REJECTED`. Sprint 4's own candidate is
+**`REJECTED` with 7 of 8 criteria blocking** — see the [Sprint 4
+report](docs/sprint_4_report.md). `QUALIFIED_FOR_PAPER` would authorize
+zero-capital paper evaluation only; it is never authorization for live capital.
 The [borrow, liquidity, and capacity policy](docs/borrow_liquidity_capacity.md)
 enforces point-in-time shortability, conserved participation and book budgets,
 forced buy-ins, and a complete-rerun capacity frontier.
