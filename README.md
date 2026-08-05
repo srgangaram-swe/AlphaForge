@@ -158,6 +158,16 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [broker contract and paper adapter](docs/broker_contract_and_paper_adapter.md)
+supplies typed, vendor-neutral account, order, fill, position, clock, and quote
+records behind a deny-by-default authorization boundary. **No live capability
+exists** — it is absent rather than disabled by a flag, endpoints are allowlisted
+rather than denylisted, and tests parse the module AST to prove that no override
+parameter and no networking import exists. A paper session additionally requires a
+`QUALIFIED_FOR_PAPER` decision, which no candidate currently holds, so no session
+can be opened. See also
+[ADR 0016](docs/adr/0016-deny-by-default-broker-authorization.md).
+
 The [robustness analysis contract](docs/robustness_analysis.md) freezes the
 parameter grid, feature ablations, and negative controls, and reports stable
 regions rather than a single optimum.
