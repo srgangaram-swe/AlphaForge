@@ -155,3 +155,12 @@ Performance metrics start with the first non-zero exposure. Sharpe and Sortino
 use arithmetic daily means annualized by √252; annual return is geometric.
 Deflated Sharpe uses the number of model variants visible to the run, while the
 limitations document states why that cannot account for uncoded experiments.
+
+## Beyond the backtest
+
+A backtest is not an execution record. The
+[broker connectivity requirements](broker_connectivity_requirements.md) state
+what a broker must supply before any of this reaches a paper environment — the
+capability matrix, failure-mode behaviour, reconciliation cadence, idempotency
+requirements, and the nine-item capital-authorization gate. None of the nine
+items is currently satisfied, and no broker client or connection exists.
