@@ -168,6 +168,15 @@ parameter and no networking import exists. A paper session additionally requires
 can be opened. See also
 [ADR 0016](docs/adr/0016-deny-by-default-broker-authorization.md).
 
+The [durable session state and reconciliation contract](docs/durable_state_and_reconciliation.md)
+makes broker idempotency survive a process restart: intent is persisted before the
+broker is contacted, snapshots are atomic and hash-chained, and recovery refuses
+tampered, truncated, gapped, schema-incompatible, foreign, stale, or
+clock-rolled-back records rather than loading a best guess. Reconciliation against
+broker state **halts on any divergence and never repairs or liquidates**, because
+an automatic correction acts on exactly the state known to be wrong. See also
+[ADR 0017](docs/adr/0017-durable-session-state-and-halt-on-divergence.md).
+
 The [bounded distributed execution contract](docs/distributed_execution.md)
 profiles the serial pipeline *before* distributing anything and reports the Amdahl
 bound that caps achievable speedup. The measured sweep is 97.3% parallel, but its
