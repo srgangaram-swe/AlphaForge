@@ -177,6 +177,16 @@ broker state **halts on any divergence and never repairs or liquidates**, becaus
 an automatic correction acts on exactly the state known to be wrong. See also
 [ADR 0017](docs/adr/0017-durable-session-state-and-halt-on-divergence.md).
 
+The [bounded distributed execution contract](docs/distributed_execution.md)
+profiles the serial pipeline *before* distributing anything and reports the Amdahl
+bound that caps achievable speedup. The measured sweep is 97.3% parallel, but its
+0.49 ms per-task cost sits **below** the measured 2–20 ms crossover where
+distribution starts paying — so a cluster framework is selected and gated rather
+than adopted. Tasks declare CPU, RAM, GPU, scratch, duration, seed, timeout, and
+retry bounds; results assemble by content-addressed identity, never completion
+order; and cluster access is never required to reproduce a result. See also
+[ADR 0018](docs/adr/0018-bounded-distributed-research-execution.md).
+
 The [robustness analysis contract](docs/robustness_analysis.md) freezes the
 parameter grid, feature ablations, and negative controls, and reports stable
 regions rather than a single optimum.
