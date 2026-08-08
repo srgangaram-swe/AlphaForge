@@ -31,6 +31,13 @@ Parallel fraction **0.9727**. Amdahl bound: **36.6×** at infinite workers,
 
 ### Measurement 2 — where distribution actually pays
 
+> **Amended by [ADR 0021](0021-reproducible-sprint-evidence.md) (2026-08-08).**
+> The table below came from a *single unwarmed sample per work size* and is not
+> reproducible at the precision it implies. It is preserved rather than rewritten
+> so the correction is visible. Re-measured with 1 warmup and 7 repetitions, the
+> crossover interval is **2.04–20.84 ms per task**; the decision below is
+> unchanged.
+
 The parallel fraction says what *could* be gained. It says nothing about the
 fixed cost of distributing, which is what decides whether any of it is realizable.
 32 tasks, 8 workers, `ProcessPoolExecutor`, same machine:

@@ -1,0 +1,197 @@
+{
+  "environment": {
+    "cpu_count": 10,
+    "machine": "arm64",
+    "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "python_version": "3.13.11",
+    "timing_clock": "time.perf_counter_ns"
+  },
+  "environment_identity": "dbe7d09c55a223594ec126a7189d88978c5abc6159050f1d013615ea506a74d8",
+  "limitations": [
+    "Single-machine wall clock on one synthetic CPU-bound workload.",
+    "Not a service-level objective and not a performance guarantee.",
+    "Not a cluster benchmark: only in-process and process-pool backends are measured.",
+    "Absolute timings depend on machine load; the crossover interval is the durable finding.",
+    "Process-pool startup cost dominates below the crossover and is platform-specific."
+  ],
+  "measurements": [
+    {
+      "derived": {
+        "per_task_ms": 0.05222528125,
+        "pool_median_ns": 99251666,
+        "pool_range_ns": [
+          95273667,
+          107892292
+        ],
+        "serial_median_ns": 1671209,
+        "serial_range_ns": [
+          1663500,
+          1721375
+        ],
+        "speedup": 0.016838095191268627,
+        "speedup_range": [
+          0.015418154245902942,
+          0.018067689154863745
+        ]
+      },
+      "iterations": 1000,
+      "parity_identity": "d158192b273123e0212b2a59b97c2f3d532e327fb64e1605dd0718fbebac8c71",
+      "pool_ns": [
+        95273667,
+        98030625,
+        107892292,
+        103433083,
+        99992917,
+        99251666,
+        96405084
+      ],
+      "repetitions": 7,
+      "serial_ns": [
+        1688583,
+        1666083,
+        1671209,
+        1663625,
+        1663500,
+        1721375,
+        1682625
+      ],
+      "task_count": 32,
+      "warmups": 1,
+      "workers": 8
+    },
+    {
+      "derived": {
+        "per_task_ms": 2.04199478125,
+        "pool_median_ns": 110924000,
+        "pool_range_ns": [
+          107666500,
+          113238375
+        ],
+        "serial_median_ns": 65343833,
+        "serial_range_ns": [
+          63426292,
+          70888875
+        ],
+        "speedup": 0.5890865186974865,
+        "speedup_range": [
+          0.5601130535474392,
+          0.6584116229282089
+        ]
+      },
+      "iterations": 50000,
+      "parity_identity": "504d8014ba6c244977f6f16a02cc6830f94f20e3764b7d04377ed79df3479438",
+      "pool_ns": [
+        113238375,
+        107666500,
+        109680583,
+        110924000,
+        111783042,
+        112345416,
+        108512625
+      ],
+      "repetitions": 7,
+      "serial_ns": [
+        64601792,
+        63426292,
+        66602666,
+        64920750,
+        68850625,
+        70888875,
+        65343833
+      ],
+      "task_count": 32,
+      "warmups": 1,
+      "workers": 8
+    },
+    {
+      "derived": {
+        "per_task_ms": 20.8378736875,
+        "pool_median_ns": 243264458,
+        "pool_range_ns": [
+          240019833,
+          246070000
+        ],
+        "serial_median_ns": 666811958,
+        "serial_range_ns": [
+          651805083,
+          735556542
+        ],
+        "speedup": 2.741098981257673,
+        "speedup_range": [
+          2.648860417767302,
+          3.0645656769538707
+        ]
+      },
+      "iterations": 500000,
+      "parity_identity": "36b74d100cd6a07751a053c02340f727f7432ad4182caa5948dd219e8876fef8",
+      "pool_ns": [
+        246070000,
+        242703959,
+        240019833,
+        243264458,
+        245943125,
+        243065959,
+        244134417
+      ],
+      "repetitions": 7,
+      "serial_ns": [
+        651805083,
+        666811958,
+        695770334,
+        661067917,
+        659181500,
+        735556542,
+        667038000
+      ],
+      "task_count": 32,
+      "warmups": 1,
+      "workers": 8
+    },
+    {
+      "derived": {
+        "per_task_ms": 85.814578125,
+        "pool_median_ns": 693171583,
+        "pool_range_ns": [
+          676218292,
+          704166625
+        ],
+        "serial_median_ns": 2746066500,
+        "serial_range_ns": [
+          2710443334,
+          2922936459
+        ],
+        "speedup": 3.961597052370798,
+        "speedup_range": [
+          3.8491505245651196,
+          4.3224747002259445
+        ]
+      },
+      "iterations": 2000000,
+      "parity_identity": "28e4791d95675e763b6247ce112a60a86f5f43275aacef52da85abaa8adf58bc",
+      "pool_ns": [
+        693171583,
+        685295667,
+        694072875,
+        704166625,
+        676218292,
+        694868459,
+        682235875
+      ],
+      "repetitions": 7,
+      "serial_ns": [
+        2710443334,
+        2736236333,
+        2729144709,
+        2746066500,
+        2779713250,
+        2922936459,
+        2819797917
+      ],
+      "task_count": 32,
+      "warmups": 1,
+      "workers": 8
+    }
+  ],
+  "schema_version": 1
+}

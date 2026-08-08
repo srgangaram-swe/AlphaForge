@@ -46,8 +46,12 @@ distributed. Measured with 32 tasks across 8 processes:
 | 19.25 ms | 616.0 ms | 206.6 ms | **2.98×** |
 | 78.7 ms | 2519.5 ms | 575.6 ms | **4.38×** |
 
-**The crossover sits between 2 ms and 20 ms per task.** Below it, distribution is
-up to fifty times *slower*.
+**The crossover interval is 2.04–20.84 ms per task**, re-measured under
+[ADR 0021](adr/0021-reproducible-sprint-evidence.md) with one warmup and seven
+repetitions per size and reported as an interval because four sizes bound where
+break-even lies without locating it. Below it, distribution is up to fifty times
+*slower*. Raw samples:
+`docs/evidence/signal_foundry_sprint_5/raw/crossover_measurements.json`.
 
 The Sprint 4 sweep runs at **0.49 ms per point** — well below the crossover. A
 97% parallel fraction with a sub-millisecond task cost is exactly the shape that
