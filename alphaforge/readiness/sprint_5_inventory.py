@@ -409,7 +409,12 @@ class DeliverySlice:
 
 @dataclass(frozen=True, slots=True)
 class DeliveryInventory:
-    """Exact six-slice inventory used by Sprint 5 close-out evidence."""
+    """Exact six planned capability slices used by Sprint 5 close-out evidence.
+
+    Evidence-correction pull requests are intentionally outside this inventory:
+    they add no trading capability and a publisher cannot bind its own future
+    squash commit without circular provenance.
+    """
 
     source_head: str
     slices: tuple[DeliverySlice, ...]
@@ -423,7 +428,7 @@ class DeliveryInventory:
         observed = tuple((item.mr_group, item.issue_number, item.commit) for item in self.slices)
         if observed != expected:
             raise Sprint5InventoryError(
-                "delivery slices must match the complete frozen Sprint 5 plan exactly"
+                "delivery slices must match the six frozen Sprint 5 capability slices exactly"
             )
         for previous, current in zip(self.slices, self.slices[1:], strict=False):
             if current.parent != previous.commit:

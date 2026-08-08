@@ -8,7 +8,7 @@
 > **Measurement-method correction (2026-08-08):** the table below is the historical,
 > single-sample observation used for the original architecture decision. It is not the current
 > close-out reference and must not be interpreted as a distribution or SLA. [ADR
-> 0021](0021-content-addressed-sprint-evidence.md) supersedes the measurement method with bounded
+> 0022](0022-content-addressed-sprint-evidence.md) supersedes the measurement method with bounded
 > warm-ups, repeated raw samples, dispersion, parity identities, content-addressed inputs, and
 > transactional publication. Dask remains the selected future framework, but the numeric
 > single-sample crossover and speedup are no longer sufficient adoption evidence.
@@ -39,12 +39,14 @@ Parallel fraction **0.9727**. Amdahl bound: **36.6×** at infinite workers,
 
 ### Measurement 2 — where distribution actually pays
 
-> **Amended by [ADR 0021](0021-reproducible-sprint-evidence.md) (2026-08-08).**
-> The table below came from a *single unwarmed sample per work size* and is not
-> reproducible at the precision it implies. It is preserved rather than rewritten
-> so the correction is visible. Re-measured with 1 warmup and 7 repetitions, the
-> crossover interval is **2.04–20.84 ms per task**; the decision below is
-> unchanged.
+> **Correction history (2026-08-08).** [ADR 0021](0021-reproducible-sprint-evidence.md)
+> first identified that the table below came from one unwarmed sample per work size,
+> but its replacement evidence and publication mechanism later failed independent
+> provenance and race-safety review. [ADR 0022](0022-content-addressed-sprint-evidence.md)
+> supersedes that attempt. The current source-bound repeated record observes no
+> process-pool break-even at any declared size in its macOS `spawn` environment.
+> Both earlier numeric intervals are historical, unsupported as current release
+> evidence, and preserved only so the correction remains auditable.
 
 The parallel fraction says what *could* be gained. It says nothing about the
 fixed cost of distributing, which is what decides whether any of it is realizable.
@@ -114,7 +116,13 @@ nothing is obviously wrong.
 **Cluster access is never required for reproducibility.** A result reproducible
 only on a cluster is not reproducible.
 
-### The adoption gate
+### Historical adoption gate (numeric evidence superseded)
+
+> ADR 0022 supersedes the numeric sufficiency claim below. The 20 ms value is a
+> conservative profiling floor, not an adoption threshold, and the 2.77× sample
+> is not current evidence. Adoption now requires fresh repeated measurements on
+> the representative target backend and workload, exact result parity, reported
+> dispersion, and a benefit that survives operational cost.
 
 The Dask dependency is added when, and only when, a measured profile shows:
 

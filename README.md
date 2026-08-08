@@ -208,7 +208,7 @@ timeout, and retry bounds; results assemble by content-addressed identity, never
 completion order; and cluster access is never required to reproduce a result.
 See [ADR 0018](docs/adr/0018-bounded-distributed-research-execution.md)
 and its evidence-method correction in [ADR
-0021](docs/adr/0021-content-addressed-sprint-evidence.md).
+0022](docs/adr/0022-content-addressed-sprint-evidence.md).
 
 The [robustness analysis contract](docs/robustness_analysis.md) freezes the
 parameter grid, feature ablations, and negative controls, and reports stable

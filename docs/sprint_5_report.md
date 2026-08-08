@@ -29,12 +29,15 @@ publisher intentionally refuses the committed destination.*
 | SF-S5-MR10 | [#49](https://github.com/srgangaram-swe/AlphaForge/issues/49) | Live-readiness gate and inert capital configuration |
 
 ADRs 0015–0020 describe the implementation decisions. [ADR
-0021](adr/0021-content-addressed-sprint-evidence.md) corrects the close-out
+0022](adr/0022-content-addressed-sprint-evidence.md) corrects the close-out
 measurement method. The figure's delivery panel is generated from the frozen
 commit/path/blob ledger in
 [`delivery_inventory.json`](evidence/signal_foundry_sprint_5/closeout/delivery_inventory.json);
 it deliberately reports path-change records rather than unique paths and makes
-no claim about test count, effort, or quality.
+no claim about test count, effort, or quality. It covers the six planned
+capability slices from SF-S5-MR2 through SF-S5-MR10; the two evidence-correction
+attempts remain visible in Git/PR history but are excluded to avoid circular
+self-provenance and because they add no seventh trading capability.
 
 ## Three findings worth keeping
 

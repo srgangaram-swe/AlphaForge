@@ -9,7 +9,7 @@ a prerequisite for reproducing a result.
 
 Framework selection and the measured adoption gate: [ADR 0018](adr/0018-bounded-distributed-research-execution.md).
 The repeated-evidence correction and transactional publication contract are in
-[ADR 0021](adr/0021-content-addressed-sprint-evidence.md).
+[ADR 0022](adr/0022-content-addressed-sprint-evidence.md).
 
 ---
 

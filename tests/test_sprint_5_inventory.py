@@ -224,15 +224,15 @@ def test_malformed_slice_specs_fail_closed(field: str, value: object) -> None:
 def test_missing_duplicate_and_wrong_slices_fail_exact_plan_reconciliation(
     inventory: DeliveryInventory,
 ) -> None:
-    with pytest.raises(Sprint5InventoryError, match="complete frozen Sprint 5 plan"):
+    with pytest.raises(Sprint5InventoryError, match="six frozen Sprint 5 capability slices"):
         replace(inventory, slices=inventory.slices[:-1])
-    with pytest.raises(Sprint5InventoryError, match="complete frozen Sprint 5 plan"):
+    with pytest.raises(Sprint5InventoryError, match="six frozen Sprint 5 capability slices"):
         replace(
             inventory,
             slices=(inventory.slices[0], inventory.slices[0], *inventory.slices[2:]),
         )
     wrong_commit = replace(inventory.slices[0], commit=inventory.slices[0].parent)
-    with pytest.raises(Sprint5InventoryError, match="complete frozen Sprint 5 plan"):
+    with pytest.raises(Sprint5InventoryError, match="six frozen Sprint 5 capability slices"):
         replace(inventory, slices=(wrong_commit, *inventory.slices[1:]))
 
 

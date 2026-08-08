@@ -10,12 +10,12 @@
       "sha256": "85cfbbd411981afbefbc1293861f21edca31ebaa4a607733b38ab1ca4817d581"
     },
     "distribution_crossover.csv": {
-      "bytes": 2062,
-      "sha256": "46f58c7d51600808efa3b4fb9cedfbd5e31ec10b05f4c0de683211804e30978a"
+      "bytes": 2081,
+      "sha256": "af4be6beacb26b58658f3aa17f6937aafe17aa94010f574913b3ddc3b82092c6"
     },
     "distribution_crossover_raw.json": {
-      "bytes": 17255,
-      "sha256": "035708f13a08f856f28d6acfc4603abfba475a1279209d8e6ae6fed07f02bc5d"
+      "bytes": 21302,
+      "sha256": "8d94a488f4c651a85e5241ba75381e847f502939b58329f94a7eff150ebc1de6"
     },
     "readiness_decision.json": {
       "bytes": 4698,
@@ -26,33 +26,95 @@
       "sha256": "6ea899b9e81df1e8a5d2c2148001bf8295f606e6f7efee5a82f09f92a89873d6"
     },
     "sprint_5_closeout.png": {
-      "bytes": 310759,
-      "sha256": "24e155a75cbeb31730932513e122407a6d604e9c0d557af2fd93357cd412a678"
+      "bytes": 312639,
+      "sha256": "95f5e6b56af0cb94ea849db73b587d74d110b8a635a6ff62205b77fff758e53c"
     }
   },
-  "bundle_id": "eee04de8f8200d24ad91d329dd2f999fad32cb027858ac28ab1eb0ef85faf6e5",
+  "bundle_id": "f78446e63ffdce97ee5ce5515cbccedcc494a02e1a6bf03e565534d0f65b1de2",
   "capital_at_risk_usd": "0",
   "checklist_identity": "e6eedb99ae73e9f775d51997636be9799a34b25dfa9ebd33423cc13527f66b3c",
+  "delivery_source_head": "60f572b933d925dcdbd48c167e810be2910b3d25",
   "generator": {
     "callable": "alphaforge.readiness.sprint_5_evidence.publish_sprint_5_evidence",
     "render_dependencies": {
+      "Pillow": "12.3.0",
       "matplotlib": "3.11.1",
+      "numpy": "2.5.1",
       "pandas": "3.0.5",
       "seaborn": "0.13.2"
     },
-    "source_path": "alphaforge/readiness/sprint_5_evidence.py",
-    "source_sha256": "9903e6c80a62bac978b2cd997d2986abb767ad27690181b5c66b4128523960c6"
+    "render_runtime": {
+      "freetype_version": "2.14.3",
+      "libc_name": "unknown",
+      "libc_version": "unknown",
+      "machine": "arm64",
+      "matplotlib_backend": "Agg",
+      "platform_release": "24.5.0",
+      "platform_system": "Darwin",
+      "python_implementation": "CPython",
+      "python_version": "3.13.11"
+    },
+    "source_files": {
+      "alphaforge/distributed/benchmark_evidence.py": {
+        "bytes": 70843,
+        "sha256": "5945c3af8466e7acd3122f275599d3de038a9480eabc2ea9e76ea3838989afd0"
+      },
+      "alphaforge/distributed/executor.py": {
+        "bytes": 15141,
+        "sha256": "b7091bf8e8f199383f8a9d10d530c569bf1f22fe0eac7427d6aaaa9ca1a37dad"
+      },
+      "alphaforge/distributed/tasks.py": {
+        "bytes": 10361,
+        "sha256": "edeeccbe848c07928735ab51418007908684db481ad9cf411e0acffa9be17561"
+      },
+      "alphaforge/readiness/capital.py": {
+        "bytes": 15771,
+        "sha256": "d24a001ff2369d06394313ea522552852481bd5cfe8fd57e33a2993e6255bf14"
+      },
+      "alphaforge/readiness/checklist.py": {
+        "bytes": 24577,
+        "sha256": "f36a1c527d9e0f972f777cf756441498302f40fdbb34e806b81fc4b582da10f3"
+      },
+      "alphaforge/readiness/sprint_5_evidence.py": {
+        "bytes": 71499,
+        "sha256": "eb34483872c0555cdf90804937c1e6c0103c1c52ccf2a10050b1cbbef13dc786"
+      },
+      "alphaforge/readiness/sprint_5_inventory.py": {
+        "bytes": 38431,
+        "sha256": "c484f81ebb1234c595ee9bfb5cd5110b5abcf1b20f8196eed6f06c5bb742bcd4"
+      },
+      "alphaforge/research/_bounded_io.py": {
+        "bytes": 9906,
+        "sha256": "63b212e766e94e48cacce8c7579764be1a54a510fe06092ce9f2f01d63affab3"
+      },
+      "benchmarks/benchmark_distributed_crossover.py": {
+        "bytes": 6642,
+        "sha256": "b4fac0d712a3dc209e4c9c63240db8eb06d7b5cfd95dd80c04c796fc6e8912fe"
+      },
+      "pyproject.toml": {
+        "bytes": 2395,
+        "sha256": "db1e5f3fdf8f218da99e44e126a7da065aaf39f05c70510911ae7ba14429be89"
+      },
+      "scripts/publish_sprint_5_evidence.py": {
+        "bytes": 1597,
+        "sha256": "29ce71716770bc348be3d0009f8d19377346de9d7662fc4361e4bfcc42735545"
+      },
+      "uv.lock": {
+        "bytes": 535377,
+        "sha256": "f85ee97c99aa83f0a0efe4ec89db012a83d66f3b604fbe9ff9f10261356e41dc"
+      }
+    }
   },
   "inputs": {
-    "benchmark_id": "8cc47ca698f154a0998a968dbc208361947ae69bc14971a02ce680b1f781130d",
-    "benchmark_sha256": "035708f13a08f856f28d6acfc4603abfba475a1279209d8e6ae6fed07f02bc5d",
+    "benchmark_id": "b301cc0d6974443352627e6bb4a0896375ac0b042e16e6d736b1fb4e0a9787d6",
+    "benchmark_sha256": "8d94a488f4c651a85e5241ba75381e847f502939b58329f94a7eff150ebc1de6",
     "delivery_inventory_id": "f727a1b4e7be21e3f7c2522804358b1d3b4f2dc96337456cd125f449872e97a0",
     "delivery_inventory_sha256": "85cfbbd411981afbefbc1293861f21edca31ebaa4a607733b38ab1ca4817d581"
   },
   "limitations": [
     "Synthetic deterministic workload and Git metadata only; no market data or broker connection.",
     "Single-machine wall-clock measurements are environment-specific and are not a performance SLA or a cluster benchmark.",
-    "Changed-path counts describe frozen Git scope, not tests, quality, effort, or semantic complexity.",
+    "Per-slice changed-path record counts describe frozen Git scope; a repository path can appear in more than one slice, and the counts are not tests, quality, effort, or semantic complexity metrics.",
     "The readiness framework records but cannot independently verify human policy or legal attestations.",
     "No strategy is qualified; no paper/live trading or capital is authorized."
   ],
@@ -71,7 +133,6 @@
     "timing_clock_resolution_seconds": 4.166666666666666e-08
   },
   "schema_version": "2.0.0",
-  "source_ref": "60f572b933d925dcdbd48c167e810be2910b3d25",
   "sprint": 5,
   "total_items": 17,
   "track": "AlphaForge",

@@ -1,9 +1,9 @@
-# ADR 0021 — Content-addressed and transactional sprint evidence
+# ADR 0022 — Content-addressed and transactional sprint evidence
 
 - **Status:** Accepted
 - **Date:** 2026-08-08
 - **Work item:** SF-S5-MR11 (#112), Signal Foundry Sprint 5
-- **Corrects:** ADR 0018's single-sample performance table and the first Sprint 5 close-out bundle
+- **Supersedes:** ADR 0021 and corrects ADR 0018's single-sample performance table plus the first two Sprint 5 close-out bundles
 
 ## Context
 
@@ -13,6 +13,13 @@ computed from source evidence. The performance values also differed from ADR 001
 a separate single run. Neither set reported warm-up policy, repeated samples, or dispersion. The
 publisher wrote artifacts directly into the final directory and its manifest listed filenames but
 did not bind their bytes.
+
+PR #114 and ADR 0021 made a first corrective attempt, but its benchmark record still did not bind
+the exact workload, task builder, harness, executor, dependency lock, or realized task graphs. Its
+delivery ledger read current working-tree files instead of frozen Git blobs. Its verifier checked
+file hashes without independently re-deriving the semantic artifacts, and its check-then-
+`os.replace` publication could overwrite a concurrently created destination. That attempt is
+retained in history and explicitly superseded rather than silently rewritten.
 
 Those defects do not change the distributed executor, readiness gate, or capital boundary. They do
 make the close-out evidence unsuitable for release: a reviewer cannot determine which measurement
@@ -34,6 +41,11 @@ verifiable inputs:
    It records exact commit, tree, parent, path, blob, mode, byte size, and deterministic category.
    The plot labels these values as per-slice tracked-path changes—not unique paths, tests,
    collected cases, effort, or quality.
+
+The delivery panel covers the six planned capability slices from SF-S5-MR2 through SF-S5-MR10.
+It intentionally excludes both evidence-correction attempts: a publisher cannot include its own
+future squash commit without circular provenance, and those corrections do not add a seventh
+trading capability. Their commits remain independently visible in Git and the pull-request record.
 
 The committed benchmark workload is resource-bounded by work sizes, task count, worker count,
 warm-ups, repetitions, and total declared operations. A shared monotonic budget is checked between
@@ -81,6 +93,8 @@ dispersion and operational cost. The historical single-sample 2.77× value canno
 - Git path counts establish delivery scope, not semantic complexity, correctness, or productivity.
 - Regeneration requires the frozen Git objects and the committed benchmark record. It does not need
   network access, market data, broker access, credentials, or a cluster.
+- Exact PNG verification is renderer-environment-sensitive by design. A different font or renderer
+  fails verification instead of silently producing bytes under the old manifest.
 
 ## Alternatives considered
 
