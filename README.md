@@ -184,6 +184,15 @@ experiment wearing the original's name. Budgets are admitted before a batch
 starts and enforced while it runs, with no soft or best-effort mode. See also
 [ADR 0019](docs/adr/0019-checkpoint-bindings-and-hard-budgets.md).
 
+The [live-readiness framework](docs/live_readiness.md) is the last gate before
+capital, and it is designed against the person operating it: no weighted score, no
+override parameter anywhere (asserted by parsing the module AST), absence treated
+as failure rather than omission, and a content-identified checklist so an edit to
+admit a candidate is detectable. Capital configuration is **inert by default** and
+has no method capable of raising a cap. **The current verdict is `NOT_READY` with
+every one of its seventeen items unmet.** See also
+[ADR 0020](docs/adr/0020-live-readiness-gate-and-inert-capital.md).
+
 The [bounded distributed execution contract](docs/distributed_execution.md)
 profiles the serial pipeline *before* distributing anything and reports the Amdahl
 bound that caps achievable speedup. The measured sweep is 97.3% parallel, but its
