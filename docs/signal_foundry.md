@@ -222,3 +222,14 @@ threat model, broker-specific contract, reconciliation and recovery design,
 operational rehearsal, explicit capital-at-risk cap, legal and tax review, and
 the owner's affirmative approval. None of those capabilities are present in
 this release.
+
+Those requirements are now written down rather than merely asserted. The
+[broker connectivity requirements](broker_connectivity_requirements.md) specify
+the capability matrix, non-code prerequisites and their lead times, credential
+custody, failure-mode behaviour, reconciliation cadence, and the nine-item
+capital-authorization gate that stands between paper evidence and a live order.
+**Zero of the nine are currently satisfied**, and the first — a strategy holding
+a `QUALIFIED_FOR_PAPER` verdict — is blocked by research outcomes rather than by
+engineering. The broker selection and its pre-frozen rubric are recorded in
+[ADR 0015](adr/0015-broker-selection-for-paper-and-live-trading.md). No broker
+client, credential, endpoint, or connection exists in this release.
