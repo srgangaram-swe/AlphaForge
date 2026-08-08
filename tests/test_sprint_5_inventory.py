@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import yaml
 
 import alphaforge.readiness.sprint_5_inventory as inventory_module
 from alphaforge.readiness.sprint_5_inventory import (
@@ -561,3 +562,19 @@ def test_checkout_rejects_lookalike_or_credential_bearing_origins(
 )
 def test_path_classification_is_stable_and_mutually_exclusive(path: str, category: str) -> None:
     assert _classify_path(_validate_repository_path(path)) == category
+
+
+def test_ci_inventory_verification_fetches_frozen_git_objects() -> None:
+    """Keep the remote test matrix capable of resolving frozen Sprint 5 commits."""
+
+    workflow = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    )
+    checkout = next(
+        step
+        for step in workflow["jobs"]["test"]["steps"]
+        if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+
+    assert checkout["with"]["fetch-depth"] == 0
+    assert checkout["with"]["persist-credentials"] is False
