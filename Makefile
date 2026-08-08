@@ -4,7 +4,7 @@ SIGNAL_FOUNDRY_CONFIG ?= configs/signal_foundry_research.yaml
 SPRINT_3_DECISION_CONFIG ?= configs/sprint_3_decision.yaml
 MEAN_VARIANCE_STUDY_CONFIG ?= configs/mean_variance_study.yaml
 
-.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence temporal-evidence deep-sequence-evidence time-frequency-evidence latent-representation-evidence ensemble-evidence decision-policy-evidence sprint-3-decision-evidence mean-variance-evidence signal-foundry-evidence train evaluate \
+.PHONY: install install-all lock-check config-check test lint format typecheck policy check download-data build-features label-evidence temporal-evidence deep-sequence-evidence time-frequency-evidence latent-representation-evidence ensemble-evidence decision-policy-evidence sprint-3-decision-evidence sprint-5-benchmark sprint-5-evidence mean-variance-evidence signal-foundry-evidence train evaluate \
         walk-forward backtest signal-foundry paper dashboard api report demo docker-build clean \
         native bench bench-native bench-event bench-execution-frictions
 
@@ -87,6 +87,16 @@ sprint-3-decision-evidence:
 	$(PYTHON) scripts/publish_sprint_3_decision.py \
 		--config "$(SPRINT_3_DECISION_CONFIG)" \
 		--output "$(OUTPUT)"
+
+# Usage: make sprint-5-benchmark OUTPUT=/absolute/path/to/new/raw-evidence.json
+sprint-5-benchmark:
+	@test -n "$(OUTPUT)" || (echo "OUTPUT must name a new raw benchmark JSON file" >&2; exit 2)
+	$(PYTHON) benchmarks/benchmark_distributed_crossover.py --output "$(OUTPUT)"
+
+# Usage: make sprint-5-evidence OUTPUT=/absolute/path/to/new/closeout-directory
+sprint-5-evidence:
+	@test -n "$(OUTPUT)" || (echo "OUTPUT must name a new evidence directory" >&2; exit 2)
+	$(PYTHON) scripts/publish_sprint_5_evidence.py --output "$(OUTPUT)"
 
 # Usage: make mean-variance-evidence OUTPUT=/absolute/path/to/new/evidence-directory
 mean-variance-evidence:

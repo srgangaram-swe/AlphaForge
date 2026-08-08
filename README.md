@@ -195,13 +195,20 @@ every one of its seventeen items unmet.** See also
 
 The [bounded distributed execution contract](docs/distributed_execution.md)
 profiles the serial pipeline *before* distributing anything and reports the Amdahl
-bound that caps achievable speedup. The measured sweep is 97.3% parallel, but its
-0.49 ms per-task cost sits **below** the measured 2–20 ms crossover where
-distribution starts paying — so a cluster framework is selected and gated rather
-than adopted. Tasks declare CPU, RAM, GPU, scratch, duration, seed, timeout, and
-retry bounds; results assemble by content-addressed identity, never completion
-order; and cluster access is never required to reproduce a result. See also
-[ADR 0018](docs/adr/0018-bounded-distributed-research-execution.md).
+bound that caps achievable speedup. The reference crossover evidence now retains
+one warm-up and seven raw serial/process-pool repetitions at every declared work
+size, binds the exact workload, task builder, harness, execution contracts,
+dependency lock, and realized task graphs, verifies result membership and output
+parity, and reports medians with dispersion. In the current
+macOS `spawn` environment every measured process-pool median is slower, including
+the largest declared work size, so there is **no observed break-even bracket**.
+That result is environment-specific, not a universal threshold or SLA, and keeps
+cluster adoption gated. Tasks declare CPU, RAM, GPU, scratch, duration, seed,
+timeout, and retry bounds; results assemble by content-addressed identity, never
+completion order; and cluster access is never required to reproduce a result.
+See [ADR 0018](docs/adr/0018-bounded-distributed-research-execution.md)
+and its evidence-method correction in [ADR
+0022](docs/adr/0022-content-addressed-sprint-evidence.md).
 
 The [robustness analysis contract](docs/robustness_analysis.md) freezes the
 parameter grid, feature ablations, and negative controls, and reports stable
