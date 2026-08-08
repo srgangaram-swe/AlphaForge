@@ -177,6 +177,13 @@ broker state **halts on any divergence and never repairs or liquidates**, becaus
 an automatic correction acts on exactly the state known to be wrong. See also
 [ADR 0017](docs/adr/0017-durable-session-state-and-halt-on-divergence.md).
 
+The [checkpointing and budget contract](docs/checkpointing_and_budgets.md) binds
+each checkpoint to the code, data, configuration, dependency set, seed, and task
+graph that produced it, so a resumed run cannot silently become a different
+experiment wearing the original's name. Budgets are admitted before a batch
+starts and enforced while it runs, with no soft or best-effort mode. See also
+[ADR 0019](docs/adr/0019-checkpoint-bindings-and-hard-budgets.md).
+
 The [live-readiness framework](docs/live_readiness.md) is the last gate before
 capital, and it is designed against the person operating it: no weighted score, no
 override parameter anywhere (asserted by parsing the module AST), absence treated
