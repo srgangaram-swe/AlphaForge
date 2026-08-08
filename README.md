@@ -177,6 +177,13 @@ broker state **halts on any divergence and never repairs or liquidates**, becaus
 an automatic correction acts on exactly the state known to be wrong. See also
 [ADR 0017](docs/adr/0017-durable-session-state-and-halt-on-divergence.md).
 
+The [checkpointing and budget contract](docs/checkpointing_and_budgets.md) binds
+each checkpoint to the code, data, configuration, dependency set, seed, and task
+graph that produced it, so a resumed run cannot silently become a different
+experiment wearing the original's name. Budgets are admitted before a batch
+starts and enforced while it runs, with no soft or best-effort mode. See also
+[ADR 0019](docs/adr/0019-checkpoint-bindings-and-hard-budgets.md).
+
 The [bounded distributed execution contract](docs/distributed_execution.md)
 profiles the serial pipeline *before* distributing anything and reports the Amdahl
 bound that caps achievable speedup. The measured sweep is 97.3% parallel, but its

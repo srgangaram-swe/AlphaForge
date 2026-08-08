@@ -9,12 +9,43 @@
 - :mod:`~alphaforge.distributed.executor` — the local reference backend, a
   process-pool backend, and a parity check that refuses a backend which changes
   results.
+- :mod:`~alphaforge.distributed.budgets` — hard resource limits admitted before
+  a batch starts and enforced while it runs. No best-effort mode.
+- :mod:`~alphaforge.distributed.checkpoints` — atomic versioned checkpoints that
+  bind code, data, config, dependencies, seed, and task graph, and refuse to
+  resume into a different world.
 
 **Cluster access is never required for reproducibility.** The local backend is
 always available and defines the correct answer; any other backend is an optional
 accelerator that must match it exactly.
 """
 
+from alphaforge.distributed.budgets import (
+    AdmissionDecision,
+    BudgetBreach,
+    BudgetError,
+    BudgetExceededError,
+    ExperimentBudget,
+    LimitKind,
+    ResourceUsage,
+    admit,
+    breach_report,
+    declared_usage,
+    enforce,
+)
+from alphaforge.distributed.checkpoints import (
+    CHECKPOINT_SCHEMA_VERSION,
+    REQUIRED_BINDINGS,
+    CheckpointCorruptError,
+    CheckpointError,
+    CheckpointIncompatibleError,
+    CheckpointManifest,
+    CheckpointStore,
+    ConcurrentWriterError,
+    manifest_from_payload,
+    task_graph_hash,
+    verify_resumable,
+)
 from alphaforge.distributed.executor import (
     MAX_TOTAL_SECONDS,
     MAX_WORKERS,
@@ -44,25 +75,47 @@ from alphaforge.distributed.tasks import (
 )
 
 __all__ = [
+    "AdmissionDecision",
+    "BatchReport",
+    "BudgetBreach",
+    "BudgetError",
+    "BudgetExceededError",
+    "CHECKPOINT_SCHEMA_VERSION",
+    "CheckpointCorruptError",
+    "CheckpointError",
+    "CheckpointIncompatibleError",
+    "CheckpointManifest",
+    "CheckpointStore",
+    "ConcurrentWriterError",
+    "ExecutionError",
+    "ExperimentBudget",
+    "LimitKind",
     "MAX_RETRIES",
     "MAX_TASKS_PER_BATCH",
     "MAX_TOTAL_SECONDS",
     "MAX_WORKERS",
     "MIN_USEFUL_PARALLEL_FRACTION",
-    "BatchReport",
-    "ExecutionError",
     "ProfilingError",
+    "REQUIRED_BINDINGS",
     "ResourceRequest",
+    "ResourceUsage",
     "SerialProfile",
     "StageTiming",
     "TaskContractError",
     "TaskOutcome",
     "TaskResult",
     "TaskSpec",
+    "admit",
     "assert_backend_parity",
     "assert_unique_tasks",
+    "breach_report",
     "content_hash",
+    "declared_usage",
+    "enforce",
     "execute_local",
     "execute_process_pool",
+    "manifest_from_payload",
     "profile_stages",
+    "task_graph_hash",
+    "verify_resumable",
 ]
