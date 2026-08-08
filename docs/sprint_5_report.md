@@ -5,7 +5,9 @@ at the end of it is closed with all seventeen items unmet.**
 
 ![Sprint 5 close-out](evidence/signal_foundry_sprint_5/closeout/sprint_5_closeout.png)
 
-*Four panels, three of them unflattering by design: the readiness gate with every
+*Every panel is computed from a committed record — raw nanosecond samples and a
+Git-derived delivery ledger — under [ADR 0021](adr/0021-reproducible-sprint-evidence.md).
+Four panels, three of them unflattering by design: the readiness gate with every
 item unmet, the capital cap sitting at zero against its ceiling, and the measured
 crossover showing this repository's own sweep falls below the point where
 distributing it helps. Synthetic and simulated evidence; no market data, no broker
@@ -19,13 +21,16 @@ connection, no capital at risk. Regenerate with
 | MR | Issue | Slice | Tests |
 | --- | --- | --- | --- |
 | SF-S5-MR2 | [#99](https://github.com/srgangaram-swe/AlphaForge/issues/99) | Broker connectivity requirements and selection (docs only) | — |
-| SF-S5-MR3 | [#45](https://github.com/srgangaram-swe/AlphaForge/issues/45) | Broker-neutral contract and deny-by-default paper adapter | 108 |
+| SF-S5-MR3 | [#45](https://github.com/srgangaram-swe/AlphaForge/issues/45) | Broker-neutral contract and deny-by-default paper adapter | 87 |
 | SF-S5-MR4 | [#46](https://github.com/srgangaram-swe/AlphaForge/issues/46) | Durable session state and halt-on-divergence reconciliation | 47 |
-| SF-S5-MR8 | [#47](https://github.com/srgangaram-swe/AlphaForge/issues/47) | Bounded distributed research execution | 50 |
-| SF-S5-MR9 | [#48](https://github.com/srgangaram-swe/AlphaForge/issues/48) | Checkpoint bindings and hard budgets | 59 |
-| SF-S5-MR10 | [#49](https://github.com/srgangaram-swe/AlphaForge/issues/49) | Live-readiness gate and inert capital configuration | 66 |
+| SF-S5-MR8 | [#47](https://github.com/srgangaram-swe/AlphaForge/issues/47) | Bounded distributed research execution | 43 |
+| SF-S5-MR9 | [#48](https://github.com/srgangaram-swe/AlphaForge/issues/48) | Checkpoint bindings and hard budgets | 51 |
+| SF-S5-MR10 | [#49](https://github.com/srgangaram-swe/AlphaForge/issues/49) | Live-readiness gate and inert capital configuration | 46 |
+| SF-S5-MR11 | [#112](https://github.com/srgangaram-swe/AlphaForge/issues/112) | Reproducible, content-addressed close-out evidence | — |
 
-**330 tests added.** ADRs 0015–0020.
+**274 test functions added across the merged slices** (they expand to more
+collected cases under parametrization — the ledger counts functions and says so).
+ADRs 0015–0021.
 
 ## Three findings worth keeping
 
@@ -101,3 +106,23 @@ In dependency order: a qualified candidate (research, not engineering), then a
 paper-trading period long enough to produce stability and cost-validation
 evidence, then the operational drills, then the two human attestations. The gate
 is deliberately ordered so the first item cannot be satisfied by effort.
+
+
+## Correction (SF-S5-MR11)
+
+The first version of this report and its figure carried two defects, both filed
+as [#112](https://github.com/srgangaram-swe/AlphaForge/issues/112) and corrected
+before Sprint 5 was re-promoted:
+
+- **A false provenance claim.** The generator's docstring asserted every panel was
+  computed from source modules while two panels used hand-typed constants. The
+  claim was repeated in a PR body, this report, and an issue-closing comment.
+  Panels now read committed records, and a test parses the generator's AST to fail
+  on module-level numeric literals.
+- **A conflated count.** "330 tests" was pytest's *collected case* count labelled
+  as tests added; parametrized functions expand. The Git-derived ledger reports
+  **274 test functions** and the axis states exactly what is counted.
+
+The crossover numbers were also re-measured with warmups and seven repetitions,
+and [ADR 0018](adr/0018-bounded-distributed-research-execution.md) is annotated
+rather than rewritten. Its decision is unchanged.

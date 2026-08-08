@@ -1,54 +1,72 @@
 {
-  "absolute_ceiling": "1000",
+  "artifact_count": 6,
   "artifacts": [
-    "checklist.json",
-    "distribution_crossover.csv",
-    "manifest.json",
-    "readiness_decision.json",
-    "readiness_report.md",
-    "sprint_5_closeout.png"
+    {
+      "bytes": 5123,
+      "name": "checklist.json",
+      "sha256": "f679cd5208f7eb59dc968adc22e5b4fe3a3cd59ee1e7ffca8592c2e9b2e6aa0f"
+    },
+    {
+      "bytes": 539,
+      "name": "crossover_summary.csv",
+      "sha256": "3a73ff2a797039a68082d333ab797028b332902473c8164b0952189be6ac1e70"
+    },
+    {
+      "bytes": 4431,
+      "name": "delivery_ledger.json",
+      "sha256": "1682a1f75c87974c8355d7a47322cad0f9ff2eed257faa128e2930c920dd24e2"
+    },
+    {
+      "bytes": 4698,
+      "name": "readiness_decision.json",
+      "sha256": "ba7d5c08fca6131126b1f2280b662fe4597fbfe6d0a30bc9b91f97d7feb7198e"
+    },
+    {
+      "bytes": 1996,
+      "name": "readiness_report.md",
+      "sha256": "6ea899b9e81df1e8a5d2c2148001bf8295f606e6f7efee5a82f09f92a89873d6"
+    },
+    {
+      "bytes": 291490,
+      "name": "sprint_5_closeout.png",
+      "sha256": "854727fc8b15999585398a4b006cd4332bdb2079fe612fe46c2d5678f330917a"
+    }
   ],
   "capital_at_risk": "0",
-  "checklist_identity": "e6eedb99ae73e9f775d51997636be9799a34b25dfa9ebd33423cc13527f66b3c",
+  "crossover_interval_ms": [
+    2.04199478125,
+    20.8378736875
+  ],
+  "environment": {
+    "cpu_count": 10,
+    "machine": "arm64",
+    "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "python_version": "3.13.11",
+    "timing_clock": "time.perf_counter_ns"
+  },
+  "generator": "alphaforge.readiness.sprint_5_evidence",
+  "input_identities": {
+    "crossover_measurements": "8ae15e47a9d6440b2b9567f1134ad3b6d07a343c32fec303837b39af08bb98fb",
+    "delivery_ledger": "541d0f10d435ef6bfe5bb52b36b35c8bb186530487c2e046cc9ec9f8861dc071",
+    "readiness_checklist": "e6eedb99ae73e9f775d51997636be9799a34b25dfa9ebd33423cc13527f66b3c"
+  },
   "limitations": [
-    "Synthetic and simulated evidence only; no market data and no broker connection.",
-    "The readiness framework cannot verify policy or legal attestations; it records them and says so.",
-    "Crossover measurements are single-machine wall clock on macOS/arm64.",
+    "Single-machine wall clock on one synthetic CPU-bound workload.",
+    "Not a service-level objective and not a performance guarantee.",
+    "Not a cluster benchmark: only in-process and process-pool backends are measured.",
+    "Absolute timings depend on machine load; the crossover interval is the durable finding.",
+    "Process-pool startup cost dominates below the crossover and is platform-specific.",
+    "The readiness framework records policy and legal attestations; it cannot verify that a review occurred or reached its stated conclusion.",
     "No strategy is qualified, so no paper or live trading is authorized."
   ],
+  "schema_version": 2,
+  "self_hash_note": "manifest.json is absent from `artifacts` because a file cannot contain its own SHA-256: writing the digest changes the bytes the digest was computed over, and no fixed point exists. Verify the manifest against an external reference \u2014 the merge commit that introduced it \u2014 and every other artifact against this manifest.",
+  "source_ref": "60f572b",
   "sprint": 5,
+  "total_bytes": 308277,
   "total_items": 17,
-  "unmet_by_category": {
-    "evidence": [
-      "cost_model_validated",
-      "paper_duration",
-      "paper_stability",
-      "qualified_candidate"
-    ],
-    "legal": [
-      "legal_regulatory_review"
-    ],
-    "operational": [
-      "audit_and_tax_export",
-      "broker_failure_drill",
-      "deactivation_procedure",
-      "kill_switch_verified",
-      "operational_rehearsal"
-    ],
-    "policy": [
-      "employment_policy_review",
-      "owner_approval"
-    ],
-    "reconciliation": [
-      "broker_state_known",
-      "reconciliation_clean"
-    ],
-    "security": [
-      "capital_cap_enforced",
-      "credential_custody",
-      "risk_limits_enforced"
-    ]
-  },
+  "total_test_functions": 274,
   "unmet_count": 17,
   "verdict": "NOT_READY"
 }
