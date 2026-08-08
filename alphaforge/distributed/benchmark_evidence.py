@@ -44,9 +44,47 @@ from alphaforge.research._bounded_io import (
     read_regular_file_snapshot,
 )
 
-SCHEMA_VERSION: Final = "2.0.0"
+SCHEMA_VERSION: Final = "3.0.0"
 BENCHMARK_NAME: Final = "local_process_pool_distributed_crossover"
 TIMING_CLOCK: Final = "perf_counter_ns"
+PRODUCTION_EXECUTION_PROFILE: Final = "production"
+TEST_EXECUTION_PROFILE: Final = "test_injected"
+PRODUCTION_WORKLOAD_NAME: Final = "deterministic-sqrt-modulo-seven-cpu-probe"
+PRODUCTION_WORKLOAD_VERSION: Final = "1.0.0"
+PRODUCTION_WORKLOAD_ENTRYPOINT: Final = "benchmarks.benchmark_distributed_crossover.busy_work"
+PRODUCTION_TASK_BUILDER_ENTRYPOINT: Final = "benchmarks.benchmark_distributed_crossover.build_batch"
+PRODUCTION_HARNESS_NAME: Final = "local-process-pool-distributed-crossover"
+PRODUCTION_HARNESS_VERSION: Final = "3.0.0"
+PRODUCTION_HARNESS_ENTRYPOINT: Final = "benchmarks.benchmark_distributed_crossover.main"
+PRODUCTION_SERIAL_EXECUTOR_ENTRYPOINT: Final = "alphaforge.distributed.executor.execute_local"
+PRODUCTION_POOL_EXECUTOR_ENTRYPOINT: Final = "alphaforge.distributed.executor.execute_process_pool"
+PRODUCTION_TIMING_CLOCK_ENTRYPOINT: Final = "time.perf_counter_ns"
+PRODUCTION_BUDGET_CLOCK_ENTRYPOINT: Final = "time.monotonic"
+PRODUCTION_IMPLEMENTATION_BINDINGS: Final[tuple[tuple[str, str], ...]] = (
+    ("workload_name", PRODUCTION_WORKLOAD_NAME),
+    ("workload_version", PRODUCTION_WORKLOAD_VERSION),
+    ("workload_entrypoint", PRODUCTION_WORKLOAD_ENTRYPOINT),
+    ("task_builder_entrypoint", PRODUCTION_TASK_BUILDER_ENTRYPOINT),
+    ("harness_name", PRODUCTION_HARNESS_NAME),
+    ("harness_version", PRODUCTION_HARNESS_VERSION),
+    ("harness_entrypoint", PRODUCTION_HARNESS_ENTRYPOINT),
+    ("serial_executor_entrypoint", PRODUCTION_SERIAL_EXECUTOR_ENTRYPOINT),
+    ("pool_executor_entrypoint", PRODUCTION_POOL_EXECUTOR_ENTRYPOINT),
+    ("timing_clock_entrypoint", PRODUCTION_TIMING_CLOCK_ENTRYPOINT),
+    ("budget_clock_entrypoint", PRODUCTION_BUDGET_CLOCK_ENTRYPOINT),
+)
+PRODUCTION_SOURCE_BINDINGS: Final[tuple[tuple[str, str], ...]] = (
+    ("workload_source_sha256", "benchmarks/benchmark_distributed_crossover.py"),
+    ("task_builder_source_sha256", "benchmarks/benchmark_distributed_crossover.py"),
+    ("harness_source_sha256", "benchmarks/benchmark_distributed_crossover.py"),
+    (
+        "evidence_contract_source_sha256",
+        "alphaforge/distributed/benchmark_evidence.py",
+    ),
+    ("executor_source_sha256", "alphaforge/distributed/executor.py"),
+    ("task_contract_source_sha256", "alphaforge/distributed/tasks.py"),
+    ("dependency_lock_sha256", "uv.lock"),
+)
 MIN_REPETITIONS: Final = 7
 MAX_REPETITIONS: Final = 100
 MIN_WARMUPS: Final = 1
@@ -79,6 +117,11 @@ SerialExecutor = Callable[[BenchmarkFunction, Sequence[TaskSpec], float], BatchR
 PoolExecutor = Callable[[BenchmarkFunction, Sequence[TaskSpec], int, float], BatchReport]
 Clock = Callable[[], int]
 BudgetClock = Callable[[], float]
+
+_PRODUCTION_LOCAL_EXECUTOR: Final = execute_local
+_PRODUCTION_POOL_EXECUTOR: Final = execute_process_pool
+_PRODUCTION_TIMING_CLOCK: Final = time.perf_counter_ns
+_PRODUCTION_BUDGET_CLOCK: Final = time.monotonic
 
 
 class BenchmarkEvidenceError(ValueError):
@@ -180,11 +223,16 @@ class BenchmarkImplementation:
 
     workload_name: str
     workload_version: str
+    execution_profile: str
     workload_entrypoint: str
     task_builder_entrypoint: str
     harness_name: str
     harness_version: str
     harness_entrypoint: str
+    serial_executor_entrypoint: str
+    pool_executor_entrypoint: str
+    timing_clock_entrypoint: str
+    budget_clock_entrypoint: str
     workload_source_sha256: str
     task_builder_source_sha256: str
     harness_source_sha256: str
@@ -194,6 +242,10 @@ class BenchmarkImplementation:
     dependency_lock_sha256: str
 
     def __post_init__(self) -> None:
+        profile = _text(self.execution_profile, name="execution_profile", maximum=64)
+        if profile not in {PRODUCTION_EXECUTION_PROFILE, TEST_EXECUTION_PROFILE}:
+            raise BenchmarkEvidenceError("execution_profile is unsupported")
+        object.__setattr__(self, "execution_profile", profile)
         for name in ("workload_name", "harness_name"):
             object.__setattr__(self, name, _text(getattr(self, name), name=name, maximum=128))
         for name in ("workload_version", "harness_version"):
@@ -206,6 +258,10 @@ class BenchmarkImplementation:
             "workload_entrypoint",
             "task_builder_entrypoint",
             "harness_entrypoint",
+            "serial_executor_entrypoint",
+            "pool_executor_entrypoint",
+            "timing_clock_entrypoint",
+            "budget_clock_entrypoint",
         ):
             object.__setattr__(self, name, _entrypoint(getattr(self, name), name=name))
         for name in (
@@ -218,6 +274,12 @@ class BenchmarkImplementation:
             "dependency_lock_sha256",
         ):
             object.__setattr__(self, name, _sha256(getattr(self, name), name=name))
+        if profile == PRODUCTION_EXECUTION_PROFILE:
+            for name, expected in PRODUCTION_IMPLEMENTATION_BINDINGS:
+                if getattr(self, name) != expected:
+                    raise BenchmarkEvidenceError(
+                        f"production implementation requires {name}={expected!r}"
+                    )
 
     @property
     def identity(self) -> str:
@@ -231,11 +293,16 @@ class BenchmarkImplementation:
         return {
             "workload_name": self.workload_name,
             "workload_version": self.workload_version,
+            "execution_profile": self.execution_profile,
             "workload_entrypoint": self.workload_entrypoint,
             "task_builder_entrypoint": self.task_builder_entrypoint,
             "harness_name": self.harness_name,
             "harness_version": self.harness_version,
             "harness_entrypoint": self.harness_entrypoint,
+            "serial_executor_entrypoint": self.serial_executor_entrypoint,
+            "pool_executor_entrypoint": self.pool_executor_entrypoint,
+            "timing_clock_entrypoint": self.timing_clock_entrypoint,
+            "budget_clock_entrypoint": self.budget_clock_entrypoint,
             "workload_source_sha256": self.workload_source_sha256,
             "task_builder_source_sha256": self.task_builder_source_sha256,
             "harness_source_sha256": self.harness_source_sha256,
@@ -252,11 +319,16 @@ class BenchmarkImplementation:
         expected = {
             "workload_name",
             "workload_version",
+            "execution_profile",
             "workload_entrypoint",
             "task_builder_entrypoint",
             "harness_name",
             "harness_version",
             "harness_entrypoint",
+            "serial_executor_entrypoint",
+            "pool_executor_entrypoint",
+            "timing_clock_entrypoint",
+            "budget_clock_entrypoint",
             "workload_source_sha256",
             "task_builder_source_sha256",
             "harness_source_sha256",
@@ -267,6 +339,64 @@ class BenchmarkImplementation:
         }
         data = _mapping(value, expected, name="implementation")
         return cls(**{key: data[key] for key in expected})
+
+
+def require_production_implementation(implementation: BenchmarkImplementation) -> None:
+    """Require the exact public benchmark execution contract.
+
+    A test-injected run is valid internal test evidence, but it must never be
+    published as the measured Sprint 5 production benchmark.
+    """
+
+    if not isinstance(implementation, BenchmarkImplementation):
+        raise BenchmarkEvidenceError("implementation must be BenchmarkImplementation")
+    if implementation.execution_profile != PRODUCTION_EXECUTION_PROFILE:
+        raise BenchmarkEvidenceError(
+            "published benchmark requires the production execution profile"
+        )
+    for name, expected in PRODUCTION_IMPLEMENTATION_BINDINGS:
+        if getattr(implementation, name) != expected:
+            raise BenchmarkEvidenceError(f"published benchmark implementation differs at {name}")
+
+
+def verify_production_implementation_sources(
+    implementation: BenchmarkImplementation,
+    source_records: Mapping[str, object],
+) -> None:
+    """Reconcile every declared implementation digest to an exact source path.
+
+    ``source_records`` is the already repository-verified manifest mapping.  Its
+    byte-size fields remain part of that outer manifest contract; this function
+    binds each benchmark implementation role to the corresponding SHA-256.
+    """
+
+    require_production_implementation(implementation)
+    if not isinstance(source_records, Mapping) or any(
+        not isinstance(path, str) for path in source_records
+    ):
+        raise BenchmarkEvidenceError("implementation source records must be a string-keyed object")
+    for field, path in PRODUCTION_SOURCE_BINDINGS:
+        if path not in source_records:
+            raise BenchmarkEvidenceError(f"implementation source record is missing: {path}")
+        record = _mapping(
+            source_records[path],
+            {"bytes", "sha256"},
+            name=f"implementation source record {path}",
+        )
+        _integer(
+            record["bytes"],
+            name=f"implementation source record {path}.bytes",
+            minimum=1,
+            maximum=MAX_IDENTITY_SOURCE_BYTES,
+        )
+        observed = _sha256(
+            record["sha256"],
+            name=f"implementation source record {path}.sha256",
+        )
+        if getattr(implementation, field) != observed:
+            raise BenchmarkEvidenceError(
+                f"benchmark {field} does not match repository source {path}"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1033,7 +1163,7 @@ class BenchmarkEvidence:
 
     @classmethod
     def from_dict(cls, value: object) -> BenchmarkEvidence:
-        """Validate and reconstruct a strict schema-v1 evidence document."""
+        """Validate and reconstruct a strict current-schema evidence document."""
 
         expected = {
             "schema_version",
@@ -1098,7 +1228,11 @@ def _default_serial_executor(
     tasks: Sequence[TaskSpec],
     total_timeout_seconds: float,
 ) -> BatchReport:
-    return execute_local(function, tasks, total_timeout_seconds=total_timeout_seconds)
+    return _PRODUCTION_LOCAL_EXECUTOR(
+        function,
+        tasks,
+        total_timeout_seconds=total_timeout_seconds,
+    )
 
 
 def _default_pool_executor(
@@ -1107,12 +1241,17 @@ def _default_pool_executor(
     workers: int,
     total_timeout_seconds: float,
 ) -> BatchReport:
-    return execute_process_pool(
+    return _PRODUCTION_POOL_EXECUTOR(
         function,
         tasks,
         workers=workers,
         total_timeout_seconds=total_timeout_seconds,
     )
+
+
+_PRODUCTION_SERIAL_ADAPTER: Final = _default_serial_executor
+_PRODUCTION_POOL_ADAPTER: Final = _default_pool_executor
+_PRODUCTION_ENVIRONMENT_COLLECTOR: Final = collect_benchmark_environment
 
 
 def _validated_report(
@@ -1354,19 +1493,52 @@ def _validate_runtime_source_bindings(implementation: BenchmarkImplementation) -
     )
 
 
-def run_crossover_benchmark(
+def _validate_production_runtime_bindings(implementation: BenchmarkImplementation) -> None:
+    """Prove that the public runner still names and invokes its fixed runtime."""
+
+    require_production_implementation(implementation)
+    if execute_local is not _PRODUCTION_LOCAL_EXECUTOR:
+        raise BenchmarkEvidenceError("production local executor binding was replaced")
+    if execute_process_pool is not _PRODUCTION_POOL_EXECUTOR:
+        raise BenchmarkEvidenceError("production process-pool executor binding was replaced")
+    if _default_serial_executor is not _PRODUCTION_SERIAL_ADAPTER:
+        raise BenchmarkEvidenceError("production serial adapter binding was replaced")
+    if _default_pool_executor is not _PRODUCTION_POOL_ADAPTER:
+        raise BenchmarkEvidenceError("production process-pool adapter binding was replaced")
+    if collect_benchmark_environment is not _PRODUCTION_ENVIRONMENT_COLLECTOR:
+        raise BenchmarkEvidenceError("production environment collector binding was replaced")
+    if time.perf_counter_ns is not _PRODUCTION_TIMING_CLOCK:
+        raise BenchmarkEvidenceError("production timing clock binding was replaced")
+    if time.monotonic is not _PRODUCTION_BUDGET_CLOCK:
+        raise BenchmarkEvidenceError("production budget clock binding was replaced")
+    _validate_callable_binding(
+        _PRODUCTION_LOCAL_EXECUTOR,
+        expected_entrypoint=implementation.serial_executor_entrypoint,
+        expected_source_sha256=implementation.executor_source_sha256,
+        role="production local executor",
+    )
+    _validate_callable_binding(
+        _PRODUCTION_POOL_EXECUTOR,
+        expected_entrypoint=implementation.pool_executor_entrypoint,
+        expected_source_sha256=implementation.executor_source_sha256,
+        role="production process-pool executor",
+    )
+
+
+def _run_crossover_benchmark_with_runtime(
     config: BenchmarkConfig,
     *,
     function: BenchmarkFunction,
     task_builder: TaskBuilder,
     harness: Callable[..., object],
-    serial_executor: SerialExecutor = _default_serial_executor,
-    pool_executor: PoolExecutor = _default_pool_executor,
-    clock_ns: Clock = time.perf_counter_ns,
-    budget_clock: BudgetClock = time.monotonic,
-    environment: BenchmarkEnvironment | None = None,
+    serial_executor: SerialExecutor,
+    pool_executor: PoolExecutor,
+    clock_ns: Clock,
+    budget_clock: BudgetClock,
+    environment: BenchmarkEnvironment,
+    required_profile: str,
 ) -> BenchmarkEvidence:
-    """Run warmups and repeated local/process-pool samples with exact parity.
+    """Execute one profile-locked benchmark runtime.
 
     Backend order alternates by repetition so cache/thermal order cannot always
     favor the same backend. Timing is descriptive; no numeric SLA is asserted.
@@ -1380,8 +1552,18 @@ def run_crossover_benchmark(
 
     if not isinstance(config, BenchmarkConfig):
         raise BenchmarkEvidenceError("config must be BenchmarkConfig")
+    if config.implementation.execution_profile != required_profile:
+        raise BenchmarkEvidenceError(
+            f"benchmark runtime requires execution_profile={required_profile!r}"
+        )
     if not callable(function) or not callable(task_builder) or not callable(harness):
         raise BenchmarkEvidenceError("function, task_builder, and harness must be callable")
+    if not callable(serial_executor) or not callable(pool_executor):
+        raise BenchmarkEvidenceError("serial_executor and pool_executor must be callable")
+    if not callable(clock_ns) or not callable(budget_clock):
+        raise BenchmarkEvidenceError("benchmark clocks must be callable")
+    if not isinstance(environment, BenchmarkEnvironment):
+        raise BenchmarkEvidenceError("environment must be BenchmarkEnvironment")
     _validate_callable_binding(
         function,
         expected_entrypoint=config.implementation.workload_entrypoint,
@@ -1401,10 +1583,6 @@ def run_crossover_benchmark(
         role="benchmark harness",
     )
     _validate_runtime_source_bindings(config.implementation)
-    if environment is None:
-        if clock_ns is not time.perf_counter_ns:
-            raise BenchmarkEvidenceError("an injected clock requires explicit environment metadata")
-        environment = collect_benchmark_environment()
     budget = _RunBudget.start(budget_clock, config.max_total_seconds)
     samples: list[BenchmarkSample] = []
     for iterations in config.iteration_counts:
@@ -1473,6 +1651,74 @@ def run_crossover_benchmark(
         config=config,
         environment=environment,
         samples=samples,
+    )
+
+
+_PRODUCTION_RUNTIME_RUNNER: Final = _run_crossover_benchmark_with_runtime
+_PRODUCTION_RUNTIME_VALIDATOR: Final = _validate_production_runtime_bindings
+
+
+def run_crossover_benchmark(
+    config: BenchmarkConfig,
+    *,
+    function: BenchmarkFunction,
+    task_builder: TaskBuilder,
+    harness: Callable[..., object],
+) -> BenchmarkEvidence:
+    """Run the source-bound production crossover benchmark.
+
+    Runtime dependencies are deliberately not injectable at this public
+    boundary.  The exact local/process-pool executors and the two clocks are
+    identity-checked immediately before use so test doubles cannot emit evidence
+    claiming the production execution profile.
+    """
+
+    if not isinstance(config, BenchmarkConfig):
+        raise BenchmarkEvidenceError("config must be BenchmarkConfig")
+    if _run_crossover_benchmark_with_runtime is not _PRODUCTION_RUNTIME_RUNNER:
+        raise BenchmarkEvidenceError("production benchmark runtime binding was replaced")
+    if _validate_production_runtime_bindings is not _PRODUCTION_RUNTIME_VALIDATOR:
+        raise BenchmarkEvidenceError("production runtime validator binding was replaced")
+    _PRODUCTION_RUNTIME_VALIDATOR(config.implementation)
+    return _PRODUCTION_RUNTIME_RUNNER(
+        config,
+        function=function,
+        task_builder=task_builder,
+        harness=harness,
+        serial_executor=_PRODUCTION_SERIAL_ADAPTER,
+        pool_executor=_PRODUCTION_POOL_ADAPTER,
+        clock_ns=_PRODUCTION_TIMING_CLOCK,
+        budget_clock=_PRODUCTION_BUDGET_CLOCK,
+        environment=_PRODUCTION_ENVIRONMENT_COLLECTOR(),
+        required_profile=PRODUCTION_EXECUTION_PROFILE,
+    )
+
+
+def _run_crossover_benchmark_for_testing(
+    config: BenchmarkConfig,
+    *,
+    function: BenchmarkFunction,
+    task_builder: TaskBuilder,
+    harness: Callable[..., object],
+    environment: BenchmarkEnvironment,
+    serial_executor: SerialExecutor = _default_serial_executor,
+    pool_executor: PoolExecutor = _default_pool_executor,
+    clock_ns: Clock = _PRODUCTION_TIMING_CLOCK,
+    budget_clock: BudgetClock = _PRODUCTION_BUDGET_CLOCK,
+) -> BenchmarkEvidence:
+    """Exercise benchmark mechanics with explicit non-publishable test evidence."""
+
+    return _run_crossover_benchmark_with_runtime(
+        config,
+        function=function,
+        task_builder=task_builder,
+        harness=harness,
+        serial_executor=serial_executor,
+        pool_executor=pool_executor,
+        clock_ns=clock_ns,
+        budget_clock=budget_clock,
+        environment=environment,
+        required_profile=TEST_EXECUTION_PROFILE,
     )
 
 
@@ -1830,7 +2076,22 @@ __all__ = [
     "MAX_WORKERS",
     "MIN_REPETITIONS",
     "MIN_WARMUPS",
+    "PRODUCTION_BUDGET_CLOCK_ENTRYPOINT",
+    "PRODUCTION_EXECUTION_PROFILE",
+    "PRODUCTION_HARNESS_ENTRYPOINT",
+    "PRODUCTION_HARNESS_NAME",
+    "PRODUCTION_HARNESS_VERSION",
+    "PRODUCTION_IMPLEMENTATION_BINDINGS",
+    "PRODUCTION_POOL_EXECUTOR_ENTRYPOINT",
+    "PRODUCTION_SERIAL_EXECUTOR_ENTRYPOINT",
+    "PRODUCTION_SOURCE_BINDINGS",
+    "PRODUCTION_TASK_BUILDER_ENTRYPOINT",
+    "PRODUCTION_TIMING_CLOCK_ENTRYPOINT",
+    "PRODUCTION_WORKLOAD_ENTRYPOINT",
+    "PRODUCTION_WORKLOAD_NAME",
+    "PRODUCTION_WORKLOAD_VERSION",
     "SCHEMA_VERSION",
+    "TEST_EXECUTION_PROFILE",
     "TIMING_CLOCK",
     "BenchmarkConfig",
     "BenchmarkEnvironment",
@@ -1844,8 +2105,10 @@ __all__ = [
     "collect_benchmark_environment",
     "load_benchmark_evidence",
     "parse_benchmark_evidence_bytes",
+    "require_production_implementation",
     "run_crossover_benchmark",
     "summarize_benchmark",
     "task_declaration_graph_sha256",
+    "verify_production_implementation_sources",
     "write_benchmark_evidence",
 ]

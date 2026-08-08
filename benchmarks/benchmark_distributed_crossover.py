@@ -20,6 +20,18 @@ from typing import Any, Final
 
 from alphaforge.distributed.benchmark_evidence import (
     DEFAULT_MAX_TOTAL_SECONDS,
+    PRODUCTION_BUDGET_CLOCK_ENTRYPOINT,
+    PRODUCTION_EXECUTION_PROFILE,
+    PRODUCTION_HARNESS_ENTRYPOINT,
+    PRODUCTION_HARNESS_NAME,
+    PRODUCTION_HARNESS_VERSION,
+    PRODUCTION_POOL_EXECUTOR_ENTRYPOINT,
+    PRODUCTION_SERIAL_EXECUTOR_ENTRYPOINT,
+    PRODUCTION_TASK_BUILDER_ENTRYPOINT,
+    PRODUCTION_TIMING_CLOCK_ENTRYPOINT,
+    PRODUCTION_WORKLOAD_ENTRYPOINT,
+    PRODUCTION_WORKLOAD_NAME,
+    PRODUCTION_WORKLOAD_VERSION,
     BenchmarkConfig,
     BenchmarkEvidenceError,
     BenchmarkImplementation,
@@ -35,8 +47,6 @@ DEFAULT_TASK_COUNT: Final = 32
 DEFAULT_WORKERS: Final = 8
 DEFAULT_WARMUPS: Final = 1
 DEFAULT_REPETITIONS: Final = 7
-WORKLOAD_VERSION: Final = "1.0.0"
-HARNESS_VERSION: Final = "2.0.0"
 MAX_SOURCE_BYTES: Final = 20_000_000
 
 
@@ -65,13 +75,18 @@ def benchmark_implementation() -> BenchmarkImplementation:
             "benchmark source identity inputs must be bounded regular repository files"
         ) from exc
     return BenchmarkImplementation(
-        workload_name="deterministic-sqrt-modulo-seven-cpu-probe",
-        workload_version=WORKLOAD_VERSION,
-        workload_entrypoint="benchmarks.benchmark_distributed_crossover.busy_work",
-        task_builder_entrypoint="benchmarks.benchmark_distributed_crossover.build_batch",
-        harness_name="local-process-pool-distributed-crossover",
-        harness_version=HARNESS_VERSION,
-        harness_entrypoint="benchmarks.benchmark_distributed_crossover.main",
+        workload_name=PRODUCTION_WORKLOAD_NAME,
+        workload_version=PRODUCTION_WORKLOAD_VERSION,
+        execution_profile=PRODUCTION_EXECUTION_PROFILE,
+        workload_entrypoint=PRODUCTION_WORKLOAD_ENTRYPOINT,
+        task_builder_entrypoint=PRODUCTION_TASK_BUILDER_ENTRYPOINT,
+        harness_name=PRODUCTION_HARNESS_NAME,
+        harness_version=PRODUCTION_HARNESS_VERSION,
+        harness_entrypoint=PRODUCTION_HARNESS_ENTRYPOINT,
+        serial_executor_entrypoint=PRODUCTION_SERIAL_EXECUTOR_ENTRYPOINT,
+        pool_executor_entrypoint=PRODUCTION_POOL_EXECUTOR_ENTRYPOINT,
+        timing_clock_entrypoint=PRODUCTION_TIMING_CLOCK_ENTRYPOINT,
+        budget_clock_entrypoint=PRODUCTION_BUDGET_CLOCK_ENTRYPOINT,
         workload_source_sha256=identities["benchmark"],
         task_builder_source_sha256=identities["benchmark"],
         harness_source_sha256=identities["benchmark"],

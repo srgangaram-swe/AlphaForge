@@ -18,6 +18,7 @@ import pytest
 
 import alphaforge.readiness.sprint_5_evidence as evidence_module
 from alphaforge.distributed.benchmark_evidence import (
+    TEST_EXECUTION_PROFILE,
     BenchmarkEvidence,
     load_benchmark_evidence,
     parse_benchmark_evidence_bytes,
@@ -106,6 +107,24 @@ def _rebind_artifact(
     _write_manifest(destination, manifest)
 
 
+def _reidentified_benchmark(
+    evidence: BenchmarkEvidence,
+    *,
+    implementation_changes: dict[str, str],
+) -> BenchmarkEvidence:
+    """Recompute every internal identity around a forged implementation claim."""
+
+    implementation = replace(evidence.config.implementation, **implementation_changes)
+    config = replace(evidence.config, implementation=implementation)
+    samples = tuple(replace(sample, config_sha256=config.identity) for sample in evidence.samples)
+    return BenchmarkEvidence.from_samples(
+        config=config,
+        environment=evidence.environment,
+        samples=samples,
+        limitations=evidence.limitations,
+    )
+
+
 def test_the_published_verdict_is_fail_closed() -> None:
     decision = sprint_5_readiness()
     assert decision.verdict is Verdict.NOT_READY
@@ -159,6 +178,35 @@ def test_manifest_binds_every_material_source_and_renderer_input() -> None:
         }
         assert "source_ref" not in manifest
         assert len(manifest["delivery_source_head"]) == 40
+
+
+@pytest.mark.parametrize(
+    ("implementation_changes", "match"),
+    [
+        ({"executor_source_sha256": "a" * 64}, "does not reconcile to repository sources"),
+        (
+            {"execution_profile": TEST_EXECUTION_PROFILE},
+            "does not use the production execution contract",
+        ),
+    ],
+)
+def test_publisher_rejects_reidentified_forged_or_test_runtime_evidence(
+    implementation_changes: dict[str, str],
+    match: str,
+) -> None:
+    with _publication_parent() as parent:
+        source = parent / "reidentified-forgery.json"
+        original = load_benchmark_evidence(REPOSITORY / BENCHMARK)
+        forged = _reidentified_benchmark(
+            original,
+            implementation_changes=implementation_changes,
+        )
+        source.write_bytes(forged.canonical_bytes())
+        destination = parent / "closeout"
+
+        with pytest.raises(Sprint5EvidenceError, match=match):
+            _publish(destination, source)
+        _assert_no_transaction_residue(parent, destination)
 
 
 def test_one_bounded_benchmark_snapshot_is_parsed_and_copied_exactly(

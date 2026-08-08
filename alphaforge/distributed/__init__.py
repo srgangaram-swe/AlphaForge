@@ -22,6 +22,8 @@ accelerator that must match it exactly.
 
 from alphaforge.distributed.benchmark_evidence import (
     BENCHMARK_NAME,
+    PRODUCTION_EXECUTION_PROFILE,
+    TEST_EXECUTION_PROFILE,
     BenchmarkConfig,
     BenchmarkEnvironment,
     BenchmarkEvidence,
@@ -34,9 +36,11 @@ from alphaforge.distributed.benchmark_evidence import (
     collect_benchmark_environment,
     load_benchmark_evidence,
     parse_benchmark_evidence_bytes,
+    require_production_implementation,
     run_crossover_benchmark,
     summarize_benchmark,
     task_declaration_graph_sha256,
+    verify_production_implementation_sources,
     write_benchmark_evidence,
 )
 from alphaforge.distributed.benchmark_evidence import (
@@ -127,12 +131,14 @@ __all__ = [
     "MAX_WORKERS",
     "MIN_USEFUL_PARALLEL_FRACTION",
     "ProfilingError",
+    "PRODUCTION_EXECUTION_PROFILE",
     "REQUIRED_BINDINGS",
     "ResourceRequest",
     "ResourceUsage",
     "DistributionSummary",
     "SerialProfile",
     "StageTiming",
+    "TEST_EXECUTION_PROFILE",
     "TaskContractError",
     "TaskOutcome",
     "TaskResult",
@@ -153,9 +159,11 @@ __all__ = [
     "profile_stages",
     "parse_benchmark_evidence_bytes",
     "run_crossover_benchmark",
+    "require_production_implementation",
     "summarize_benchmark",
     "task_declaration_graph_sha256",
     "task_graph_hash",
     "verify_resumable",
+    "verify_production_implementation_sources",
     "write_benchmark_evidence",
 ]

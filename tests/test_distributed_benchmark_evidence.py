@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import os
 from collections.abc import Callable, Iterator, Sequence
@@ -14,6 +15,7 @@ from typing import Any, cast
 import pytest
 
 import alphaforge.distributed.benchmark_evidence as benchmark_module
+import benchmarks.benchmark_distributed_crossover as production_benchmark
 from alphaforge.distributed.benchmark_evidence import (
     BENCHMARK_NAME,
     MAX_BENCHMARK_SECONDS,
@@ -26,7 +28,9 @@ from alphaforge.distributed.benchmark_evidence import (
     MAX_WARMUPS,
     MAX_WORKERS,
     MIN_REPETITIONS,
+    PRODUCTION_SOURCE_BINDINGS,
     SCHEMA_VERSION,
+    TEST_EXECUTION_PROFILE,
     BenchmarkConfig,
     BenchmarkEnvironment,
     BenchmarkEvidence,
@@ -39,6 +43,7 @@ from alphaforge.distributed.benchmark_evidence import (
     run_crossover_benchmark,
     summarize_benchmark,
     task_declaration_graph_sha256,
+    verify_production_implementation_sources,
     write_benchmark_evidence,
 )
 from alphaforge.distributed.executor import BatchReport, TaskOutcome, TaskResult
@@ -86,11 +91,16 @@ def _implementation(
     values: dict[str, object] = {
         "workload_name": "deterministic-test-workload",
         "workload_version": "1.2.3",
+        "execution_profile": TEST_EXECUTION_PROFILE,
         "workload_entrypoint": _callable_entrypoint(workload),
         "task_builder_entrypoint": _callable_entrypoint(builder),
         "harness_name": "deterministic-test-harness",
         "harness_version": "2.0.0",
         "harness_entrypoint": _callable_entrypoint(harness),
+        "serial_executor_entrypoint": "tests.injected_runtime.serial_executor",
+        "pool_executor_entrypoint": "tests.injected_runtime.pool_executor",
+        "timing_clock_entrypoint": "tests.injected_runtime.timing_clock_ns",
+        "budget_clock_entrypoint": "tests.injected_runtime.budget_clock",
         "workload_source_sha256": workload_sha256,
         "task_builder_source_sha256": workload_sha256,
         "harness_source_sha256": workload_sha256,
@@ -244,6 +254,12 @@ def _report(
     )
 
 
+def _run_test_benchmark(config: BenchmarkConfig, **kwargs: Any) -> BenchmarkEvidence:
+    """Run explicit test-profile evidence through the private injection seam."""
+
+    return benchmark_module._run_crossover_benchmark_for_testing(config, **kwargs)
+
+
 def test_task_graph_identity_is_order_independent_and_binds_full_declarations() -> None:
     tasks = _tasks(3, 11)
     baseline = task_declaration_graph_sha256(tasks)
@@ -325,15 +341,142 @@ def test_environment_contains_only_public_declared_fields() -> None:
     assert not {"username", "home", "environment", "hostname"}.intersection(environment)
 
 
+def test_public_runner_has_no_runtime_injection_boundary() -> None:
+    config = BenchmarkConfig(
+        implementation=_implementation(),
+        task_count=2,
+        workers=2,
+        iteration_counts=(1,),
+    )
+    assert set(inspect.signature(run_crossover_benchmark).parameters) == {
+        "config",
+        "function",
+        "task_builder",
+        "harness",
+    }
+    for field in (
+        "serial_executor",
+        "pool_executor",
+        "clock_ns",
+        "budget_clock",
+        "environment",
+    ):
+        with pytest.raises(TypeError, match="unexpected keyword"):
+            run_crossover_benchmark(
+                config,
+                function=_sum_workload,
+                task_builder=_tasks,
+                harness=_benchmark_harness,
+                **cast(Any, {field: lambda *args: 1}),
+            )
+
+
+def test_public_and_private_runners_refuse_the_opposite_execution_profiles() -> None:
+    test_config = BenchmarkConfig(
+        implementation=_implementation(),
+        task_count=2,
+        workers=2,
+        iteration_counts=(1,),
+    )
+    with pytest.raises(BenchmarkEvidenceError, match="production execution profile"):
+        run_crossover_benchmark(
+            test_config,
+            function=_sum_workload,
+            task_builder=_tasks,
+            harness=_benchmark_harness,
+        )
+
+    production_config = BenchmarkConfig(
+        implementation=production_benchmark.benchmark_implementation(),
+        task_count=2,
+        workers=2,
+        iteration_counts=(1,),
+    )
+    with pytest.raises(BenchmarkEvidenceError, match="test_injected"):
+        _run_test_benchmark(
+            production_config,
+            function=production_benchmark.busy_work,
+            task_builder=production_benchmark.build_batch,
+            harness=production_benchmark.main,
+            environment=_environment(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("target", "match"),
+    [
+        ("execute_local", "local executor binding"),
+        ("execute_process_pool", "process-pool executor binding"),
+        ("_default_serial_executor", "serial adapter binding"),
+        ("_default_pool_executor", "process-pool adapter binding"),
+        ("collect_benchmark_environment", "environment collector binding"),
+        ("_run_crossover_benchmark_with_runtime", "benchmark runtime binding"),
+        ("_validate_production_runtime_bindings", "runtime validator binding"),
+        ("perf_counter_ns", "timing clock binding"),
+        ("monotonic", "budget clock binding"),
+    ],
+)
+def test_public_runner_refuses_replaced_production_runtime_bindings(
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+    match: str,
+) -> None:
+    config = BenchmarkConfig(
+        implementation=production_benchmark.benchmark_implementation(),
+        task_count=2,
+        workers=2,
+        iteration_counts=(1,),
+    )
+    owner = (
+        benchmark_module.time if target in {"perf_counter_ns", "monotonic"} else benchmark_module
+    )
+    monkeypatch.setattr(owner, target, lambda *args, **kwargs: 1)
+    with pytest.raises(BenchmarkEvidenceError, match=match):
+        run_crossover_benchmark(
+            config,
+            function=production_benchmark.busy_work,
+            task_builder=production_benchmark.build_batch,
+            harness=production_benchmark.main,
+        )
+
+
+def test_production_contract_rejects_forged_entrypoints_and_rehashed_sources() -> None:
+    implementation = production_benchmark.benchmark_implementation()
+    with pytest.raises(BenchmarkEvidenceError, match="workload_entrypoint"):
+        replace(
+            implementation,
+            workload_entrypoint="benchmarks.benchmark_distributed_crossover.other_work",
+        )
+
+    repository = Path(__file__).resolve().parents[1]
+    records = {
+        path: {
+            "bytes": (repository / path).stat().st_size,
+            "sha256": hashlib.sha256((repository / path).read_bytes()).hexdigest(),
+        }
+        for _, path in PRODUCTION_SOURCE_BINDINGS
+    }
+    verify_production_implementation_sources(implementation, records)
+    for field, path in PRODUCTION_SOURCE_BINDINGS:
+        forged_digest = "a" * 64
+        if forged_digest == getattr(implementation, field):
+            forged_digest = "b" * 64
+        forged = replace(implementation, **{field: forged_digest})
+        with pytest.raises(BenchmarkEvidenceError, match=f"{field}.*{path}"):
+            verify_production_implementation_sources(forged, records)
+
+
 @pytest.mark.parametrize(
     ("field", "value", "match"),
     [
         ("workload_name", " padded", "workload_name"),
+        ("execution_profile", "production-like", "execution_profile"),
         ("workload_version", "v1", "semantic version"),
         ("harness_version", "01.0.0", "semantic version"),
         ("harness_entrypoint", "main", "fully-qualified"),
         ("workload_entrypoint", "busy_work", "fully-qualified"),
         ("task_builder_entrypoint", "module.bad-name", "fully-qualified"),
+        ("serial_executor_entrypoint", "executor", "fully-qualified"),
         ("workload_source_sha256", "A" * 64, "SHA-256"),
         ("dependency_lock_sha256", True, "SHA-256"),
     ],
@@ -437,7 +580,7 @@ def test_config_rejects_workers_above_tasks_and_aggregate_work() -> None:
 )
 def test_runner_rejects_lambda_partial_and_builtin_workloads(candidate: object) -> None:
     with pytest.raises(BenchmarkEvidenceError, match="module-level|named"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(),
                 task_count=2,
@@ -462,7 +605,7 @@ def test_runner_rejects_nested_and_mismatched_callable_identities() -> None:
         iteration_counts=(1,),
     )
     with pytest.raises(BenchmarkEvidenceError, match="named module-level"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             config,
             function=nested,
             task_builder=_tasks,
@@ -470,7 +613,7 @@ def test_runner_rejects_nested_and_mismatched_callable_identities() -> None:
             environment=_environment(),
         )
     with pytest.raises(BenchmarkEvidenceError, match="declared entrypoint"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             config,
             function=_index_workload,
             task_builder=_tasks,
@@ -478,7 +621,7 @@ def test_runner_rejects_nested_and_mismatched_callable_identities() -> None:
             environment=_environment(),
         )
     with pytest.raises(BenchmarkEvidenceError, match="declared entrypoint"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             config,
             function=_sum_workload,
             task_builder=_tasks,
@@ -486,7 +629,7 @@ def test_runner_rejects_nested_and_mismatched_callable_identities() -> None:
             environment=_environment(),
         )
     with pytest.raises(BenchmarkEvidenceError, match="declared entrypoint"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             config,
             function=_sum_workload,
             task_builder=_alternate_tasks,
@@ -497,7 +640,7 @@ def test_runner_rejects_nested_and_mismatched_callable_identities() -> None:
 
 def test_runner_rejects_callable_source_hash_mismatch() -> None:
     with pytest.raises(BenchmarkEvidenceError, match="declared SHA-256"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(workload_source_sha256="a" * 64),
                 task_count=2,
@@ -524,7 +667,7 @@ def test_runner_rejects_callable_source_hash_mismatch() -> None:
 )
 def test_runner_rejects_internal_source_binding_mismatch(field: str, match: str) -> None:
     with pytest.raises(BenchmarkEvidenceError, match=match):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(**cast(Any, {field: "a" * 64})),
                 task_count=2,
@@ -541,7 +684,7 @@ def test_runner_rejects_internal_source_binding_mismatch(field: str, match: str)
 def test_runner_collects_at_most_task_count_plus_one_from_unbounded_builder() -> None:
     _UNBOUNDED_YIELDS.clear()
     with pytest.raises(BenchmarkEvidenceError, match="more than the declared 2"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(task_builder=_unbounded_tasks),
                 task_count=2,
@@ -567,7 +710,7 @@ def test_runner_rejects_short_and_noniterable_task_builders(
     builder: Callable[..., object], match: str
 ) -> None:
     with pytest.raises(BenchmarkEvidenceError, match=match):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(task_builder=builder),
                 task_count=2,
@@ -584,7 +727,7 @@ def test_runner_rejects_short_and_noniterable_task_builders(
 def test_runner_checks_budget_after_non_preemptive_builder_return() -> None:
     readings = iter((0.0, 0.0, 1.0))
     with pytest.raises(BenchmarkEvidenceError, match="total wall-time budget"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(),
                 task_count=2,
@@ -624,7 +767,7 @@ def test_runner_alternates_backend_order_and_is_completion_order_independent() -
         return _report("process_pool", workers, operation, tasks, reverse=True)
 
     clock_values = iter(range(100, 100_000, 100))
-    evidence = run_crossover_benchmark(
+    evidence = _run_test_benchmark(
         BenchmarkConfig(
             implementation=_implementation(),
             task_count=2,
@@ -672,7 +815,7 @@ def test_runner_refuses_backend_parity_failure() -> None:
         return _report("process_pool", workers, operation, tasks, corrupt=True)
 
     with pytest.raises(ValueError, match="changes results|different output"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(workload=_index_workload),
                 task_count=2,
@@ -711,7 +854,7 @@ def test_runner_refuses_results_from_a_different_task_graph() -> None:
         return _report("process_pool", workers, operation, tasks)
 
     with pytest.raises(BenchmarkEvidenceError, match="bound task graph"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(),
                 task_count=2,
@@ -750,7 +893,7 @@ def test_runner_enforces_one_wall_deadline_across_warmups_and_samples() -> None:
     # Start, bounded graph collection, pre-serial warmup, then post-serial expiry.
     budget_readings = iter((*([0.0] * 9), 1.0))
     with pytest.raises(BenchmarkEvidenceError, match="total wall-time budget"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(workload=_index_workload),
                 task_count=2,
@@ -775,7 +918,7 @@ def test_runner_enforces_one_wall_deadline_across_warmups_and_samples() -> None:
 def test_runner_rejects_non_monotonic_budget_clock() -> None:
     readings = iter((2.0, 1.0))
     with pytest.raises(BenchmarkEvidenceError, match="monotonic"):
-        run_crossover_benchmark(
+        _run_test_benchmark(
             BenchmarkConfig(
                 implementation=_implementation(workload=_identity_workload),
                 task_count=2,
@@ -810,7 +953,7 @@ def test_raw_order_does_not_change_summary_or_identity() -> None:
     ("mutation", "match"),
     [
         (lambda doc: doc.update({"unknown": 1}), "unknown"),
-        (lambda doc: doc.update({"schema_version": "3.0.0"}), "unsupported schema"),
+        (lambda doc: doc.update({"schema_version": "4.0.0"}), "unsupported schema"),
         (lambda doc: doc["config"].update({"task_count": True}), "task_count"),
         (lambda doc: doc["samples"][0].update({"serial_ns": -1}), "serial_ns"),
         (lambda doc: doc["samples"][0].update({"parity": False}), "parity"),
@@ -829,6 +972,15 @@ def test_raw_order_does_not_change_summary_or_identity() -> None:
         (
             lambda doc: doc["config"]["implementation"].update({"harness_source_sha256": "c" * 64}),
             "config identity",
+        ),
+        (
+            lambda doc: doc["config"]["implementation"].update(
+                {
+                    "execution_profile": "production",
+                    "workload_entrypoint": "benchmarks.benchmark_distributed_crossover.other_work",
+                }
+            ),
+            "production implementation requires",
         ),
         (lambda doc: doc["summary"][0]["speedup"].update({"median": 999.0}), "summary"),
         (lambda doc: doc.update({"raw_samples_sha256": "a" * 64}), "raw sample digest"),

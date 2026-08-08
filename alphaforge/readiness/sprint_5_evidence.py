@@ -38,8 +38,11 @@ import pandas as pd
 import seaborn as sns
 
 from alphaforge.distributed.benchmark_evidence import (
+    BenchmarkEvidence,
     BenchmarkEvidenceError,
     parse_benchmark_evidence_bytes,
+    require_production_implementation,
+    verify_production_implementation_sources,
 )
 from alphaforge.readiness.capital import ABSOLUTE_MAX_CAPITAL, LiveCapitalConfig
 from alphaforge.readiness.checklist import (
@@ -1457,7 +1460,7 @@ def _validate_manifest(snapshot: RegularFileSnapshot) -> dict[str, Any]:
 def _verify_artifact_semantics(
     manifest: Mapping[str, Any],
     snapshots: Mapping[str, RegularFileSnapshot],
-) -> tuple[dict[str, Any], DeliveryInventory]:
+) -> tuple[BenchmarkEvidence, DeliveryInventory]:
     """Reconcile every machine-readable claim to its copied source artifacts."""
 
     try:
@@ -1466,6 +1469,12 @@ def _verify_artifact_semantics(
         )
     except BenchmarkEvidenceError as exc:
         raise Sprint5EvidenceError("copied benchmark evidence is invalid") from exc
+    try:
+        require_production_implementation(benchmark.config.implementation)
+    except BenchmarkEvidenceError as exc:
+        raise Sprint5EvidenceError(
+            "copied benchmark does not use the production execution contract"
+        ) from exc
     benchmark_payload = benchmark.to_dict()
     inventory_value = _parse_json_snapshot(
         snapshots["delivery_inventory.json"], field="delivery inventory"
@@ -1522,11 +1531,12 @@ def _verify_artifact_semantics(
         raise Sprint5EvidenceError("inert capital amount does not reconcile")
     if manifest["absolute_code_ceiling_usd"] != str(ABSOLUTE_MAX_CAPITAL):
         raise Sprint5EvidenceError("absolute capital ceiling does not reconcile")
-    return benchmark_payload, inventory
+    return benchmark, inventory
 
 
 def _verify_repository_provenance(
     manifest: Mapping[str, Any],
+    benchmark: BenchmarkEvidence,
     inventory: DeliveryInventory,
     repository: Path,
 ) -> None:
@@ -1538,6 +1548,15 @@ def _verify_repository_provenance(
     current_sources = _source_records(_source_snapshots(repository))
     if manifest["generator"]["source_files"] != current_sources:
         raise Sprint5EvidenceError("generator source provenance differs from repository bytes")
+    try:
+        verify_production_implementation_sources(
+            benchmark.config.implementation,
+            current_sources,
+        )
+    except BenchmarkEvidenceError as exc:
+        raise Sprint5EvidenceError(
+            "benchmark implementation does not reconcile to repository sources"
+        ) from exc
 
 
 def _verify_bundle_at(
@@ -1574,9 +1593,9 @@ def _verify_bundle_at(
         raise Sprint5EvidenceError("renderer dependency versions differ from the manifest")
     if generator["render_runtime"] != _render_runtime():
         raise Sprint5EvidenceError("renderer runtime differs from the manifest")
-    _, inventory = _verify_artifact_semantics(manifest, snapshots)
+    benchmark, inventory = _verify_artifact_semantics(manifest, snapshots)
     if repository is not None:
-        _verify_repository_provenance(manifest, inventory, repository)
+        _verify_repository_provenance(manifest, benchmark, inventory, repository)
     else:
         warnings.warn(
             "standalone Sprint 5 verification checked bundle bytes, schemas, cross-artifact "
@@ -1723,6 +1742,12 @@ def publish_sprint_5_evidence(
             benchmark = parse_benchmark_evidence_bytes(benchmark_snapshot.data)
         except BenchmarkEvidenceError as exc:
             raise Sprint5EvidenceError("benchmark input is not valid benchmark evidence") from exc
+        try:
+            require_production_implementation(benchmark.config.implementation)
+        except BenchmarkEvidenceError as exc:
+            raise Sprint5EvidenceError(
+                "benchmark input does not use the production execution contract"
+            ) from exc
         benchmark_payload = benchmark.to_dict()
         inventory = build_sprint_5_inventory(repository)
         inventory_payload = inventory.to_dict()
