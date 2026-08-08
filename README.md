@@ -158,6 +158,51 @@ manifest. See [Reproducibility and experiment provenance](docs/reproducibility.m
 for the identity, seed, environment, artifact, and credential-redaction
 contracts.
 
+The [broker contract and paper adapter](docs/broker_contract_and_paper_adapter.md)
+supplies typed, vendor-neutral account, order, fill, position, clock, and quote
+records behind a deny-by-default authorization boundary. **No live capability
+exists** — it is absent rather than disabled by a flag, endpoints are allowlisted
+rather than denylisted, and tests parse the module AST to prove that no override
+parameter and no networking import exists. A paper session additionally requires a
+`QUALIFIED_FOR_PAPER` decision, which no candidate currently holds, so no session
+can be opened. See also
+[ADR 0016](docs/adr/0016-deny-by-default-broker-authorization.md).
+
+The [durable session state and reconciliation contract](docs/durable_state_and_reconciliation.md)
+makes broker idempotency survive a process restart: intent is persisted before the
+broker is contacted, snapshots are atomic and hash-chained, and recovery refuses
+tampered, truncated, gapped, schema-incompatible, foreign, stale, or
+clock-rolled-back records rather than loading a best guess. Reconciliation against
+broker state **halts on any divergence and never repairs or liquidates**, because
+an automatic correction acts on exactly the state known to be wrong. See also
+[ADR 0017](docs/adr/0017-durable-session-state-and-halt-on-divergence.md).
+
+The [checkpointing and budget contract](docs/checkpointing_and_budgets.md) binds
+each checkpoint to the code, data, configuration, dependency set, seed, and task
+graph that produced it, so a resumed run cannot silently become a different
+experiment wearing the original's name. Budgets are admitted before a batch
+starts and enforced while it runs, with no soft or best-effort mode. See also
+[ADR 0019](docs/adr/0019-checkpoint-bindings-and-hard-budgets.md).
+
+The [live-readiness framework](docs/live_readiness.md) is the last gate before
+capital, and it is designed against the person operating it: no weighted score, no
+override parameter anywhere (asserted by parsing the module AST), absence treated
+as failure rather than omission, and a content-identified checklist so an edit to
+admit a candidate is detectable. Capital configuration is **inert by default** and
+has no method capable of raising a cap. **The current verdict is `NOT_READY` with
+every one of its seventeen items unmet.** See also
+[ADR 0020](docs/adr/0020-live-readiness-gate-and-inert-capital.md).
+
+The [bounded distributed execution contract](docs/distributed_execution.md)
+profiles the serial pipeline *before* distributing anything and reports the Amdahl
+bound that caps achievable speedup. The measured sweep is 97.3% parallel, but its
+0.49 ms per-task cost sits **below** the measured 2–20 ms crossover where
+distribution starts paying — so a cluster framework is selected and gated rather
+than adopted. Tasks declare CPU, RAM, GPU, scratch, duration, seed, timeout, and
+retry bounds; results assemble by content-addressed identity, never completion
+order; and cluster access is never required to reproduce a result. See also
+[ADR 0018](docs/adr/0018-bounded-distributed-research-execution.md).
+
 The [robustness analysis contract](docs/robustness_analysis.md) freezes the
 parameter grid, feature ablations, and negative controls, and reports stable
 regions rather than a single optimum.
