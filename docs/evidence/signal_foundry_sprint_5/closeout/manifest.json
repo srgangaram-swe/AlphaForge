@@ -30,7 +30,7 @@
       "sha256": "d01beda1d4e3fa2cf15238a9b07719505a789b9ca75b916bd0bec292ee4e42fa"
     }
   },
-  "bundle_id": "523e8fec8ae9fb0426dbfd4ab700d2cf1395d7694ab920296f678635b85031d5",
+  "bundle_id": "70e28564a4b843c7e805907f71c12bc9c29336153e54c07bc147c71ce1aca8de",
   "capital_at_risk_usd": "0",
   "checklist_identity": "e6eedb99ae73e9f775d51997636be9799a34b25dfa9ebd33423cc13527f66b3c",
   "delivery_source_head": "60f572b933d925dcdbd48c167e810be2910b3d25",
@@ -80,8 +80,8 @@
         "sha256": "d46a74c9d188c79de6c3a6961e88a22c3dcb6c1d1cb26df3d6392674050b3189"
       },
       "alphaforge/readiness/sprint_5_inventory.py": {
-        "bytes": 38431,
-        "sha256": "c484f81ebb1234c595ee9bfb5cd5110b5abcf1b20f8196eed6f06c5bb742bcd4"
+        "bytes": 38572,
+        "sha256": "02c98f4f52efe36a95f6aee2f6ce797a7df004693a7507e2562e2cd6066c26b1"
       },
       "alphaforge/research/_bounded_io.py": {
         "bytes": 9906,

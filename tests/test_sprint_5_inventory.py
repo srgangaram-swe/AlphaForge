@@ -487,6 +487,66 @@ def test_a_repository_with_the_wrong_origin_fails_before_object_inspection(tmp_p
 
 
 @pytest.mark.parametrize(
+    "origin",
+    [
+        "https://github.com/srgangaram-swe/AlphaForge.git",
+        "https://github.com/srgangaram-swe/AlphaForge",
+    ],
+)
+def test_checkout_accepts_only_exact_github_https_origin_forms(
+    tmp_path: Path,
+    origin: str,
+) -> None:
+    checkout = tmp_path / "expected-origin"
+    subprocess.run(
+        ["git", "init", "--quiet", str(checkout)],
+        check=True,
+        capture_output=True,
+        timeout=5,
+    )
+    subprocess.run(
+        ["git", "-C", str(checkout), "remote", "add", "origin", origin],
+        check=True,
+        capture_output=True,
+        timeout=5,
+    )
+
+    assert inventory_module._validate_checkout(checkout) == checkout
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://token@github.com/srgangaram-swe/AlphaForge.git",
+        "https://github.com/srgangaram-swe/AlphaForge.git?ref=main",
+        "https://github.com/srgangaram-swe/AlphaForge/",
+        "https://github.com/srgangaram-swe/alphaforge.git",
+        "git@github.com:srgangaram-swe/AlphaForge.git",
+    ],
+)
+def test_checkout_rejects_lookalike_or_credential_bearing_origins(
+    tmp_path: Path,
+    origin: str,
+) -> None:
+    checkout = tmp_path / "lookalike-origin"
+    subprocess.run(
+        ["git", "init", "--quiet", str(checkout)],
+        check=True,
+        capture_output=True,
+        timeout=5,
+    )
+    subprocess.run(
+        ["git", "-C", str(checkout), "remote", "add", "origin", origin],
+        check=True,
+        capture_output=True,
+        timeout=5,
+    )
+
+    with pytest.raises(Sprint5InventoryError, match="does not identify AlphaForge"):
+        inventory_module._validate_checkout(checkout)
+
+
+@pytest.mark.parametrize(
     ("path", "category"),
     [
         (".github/workflows/ci.yml", "automation"),

@@ -44,6 +44,12 @@ from typing import Any, Final
 
 INVENTORY_SCHEMA_VERSION: Final = "1.0.0"
 EXPECTED_ORIGIN_URL: Final = "https://github.com/srgangaram-swe/AlphaForge.git"
+_EXPECTED_ORIGIN_URLS: Final = frozenset(
+    {
+        EXPECTED_ORIGIN_URL,
+        EXPECTED_ORIGIN_URL.removesuffix(".git"),
+    }
+)
 SOURCE_HEAD: Final = "60f572b933d925dcdbd48c167e810be2910b3d25"
 
 FULL_GIT_SHA_LENGTH: Final = 40
@@ -804,7 +810,7 @@ def _validate_checkout(repository_root: str | Path) -> Path:
         field="origin URL",
         maximum=1024,
     )
-    if origin != EXPECTED_ORIGIN_URL:
+    if origin not in _EXPECTED_ORIGIN_URLS:
         raise Sprint5InventoryError("repository_root origin does not identify AlphaForge")
     return root
 
