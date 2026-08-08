@@ -1,0 +1,54 @@
+{
+  "absolute_ceiling": "1000",
+  "artifacts": [
+    "checklist.json",
+    "distribution_crossover.csv",
+    "manifest.json",
+    "readiness_decision.json",
+    "readiness_report.md",
+    "sprint_5_closeout.png"
+  ],
+  "capital_at_risk": "0",
+  "checklist_identity": "e6eedb99ae73e9f775d51997636be9799a34b25dfa9ebd33423cc13527f66b3c",
+  "limitations": [
+    "Synthetic and simulated evidence only; no market data and no broker connection.",
+    "The readiness framework cannot verify policy or legal attestations; it records them and says so.",
+    "Crossover measurements are single-machine wall clock on macOS/arm64.",
+    "No strategy is qualified, so no paper or live trading is authorized."
+  ],
+  "sprint": 5,
+  "total_items": 17,
+  "unmet_by_category": {
+    "evidence": [
+      "cost_model_validated",
+      "paper_duration",
+      "paper_stability",
+      "qualified_candidate"
+    ],
+    "legal": [
+      "legal_regulatory_review"
+    ],
+    "operational": [
+      "audit_and_tax_export",
+      "broker_failure_drill",
+      "deactivation_procedure",
+      "kill_switch_verified",
+      "operational_rehearsal"
+    ],
+    "policy": [
+      "employment_policy_review",
+      "owner_approval"
+    ],
+    "reconciliation": [
+      "broker_state_known",
+      "reconciliation_clean"
+    ],
+    "security": [
+      "capital_cap_enforced",
+      "credential_custody",
+      "risk_limits_enforced"
+    ]
+  },
+  "unmet_count": 17,
+  "verdict": "NOT_READY"
+}

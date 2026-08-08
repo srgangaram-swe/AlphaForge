@@ -177,6 +177,15 @@ broker state **halts on any divergence and never repairs or liquidates**, becaus
 an automatic correction acts on exactly the state known to be wrong. See also
 [ADR 0017](docs/adr/0017-durable-session-state-and-halt-on-divergence.md).
 
+The [live-readiness framework](docs/live_readiness.md) is the last gate before
+capital, and it is designed against the person operating it: no weighted score, no
+override parameter anywhere (asserted by parsing the module AST), absence treated
+as failure rather than omission, and a content-identified checklist so an edit to
+admit a candidate is detectable. Capital configuration is **inert by default** and
+has no method capable of raising a cap. **The current verdict is `NOT_READY` with
+every one of its seventeen items unmet.** See also
+[ADR 0020](docs/adr/0020-live-readiness-gate-and-inert-capital.md).
+
 The [bounded distributed execution contract](docs/distributed_execution.md)
 profiles the serial pipeline *before* distributing anything and reports the Amdahl
 bound that caps achievable speedup. The measured sweep is 97.3% parallel, but its
