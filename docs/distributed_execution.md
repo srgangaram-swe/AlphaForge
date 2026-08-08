@@ -8,7 +8,8 @@ a prerequisite for reproducing a result.
 > it does not act.
 
 Framework selection and the measured adoption gate: [ADR 0018](adr/0018-bounded-distributed-research-execution.md).
-Reproduce the measurements: `python benchmarks/benchmark_distributed_crossover.py`.
+The repeated-evidence correction and transactional publication contract are in
+[ADR 0021](adr/0021-content-addressed-sprint-evidence.md).
 
 ---
 
@@ -35,29 +36,37 @@ Parallel fraction **0.9727** — 36.6× at infinite workers, 6.7× at eight.
 
 ## 2. But the parallel fraction is not the whole answer
 
-A 97% parallel fraction says what *could* be gained. It says nothing about
-whether the fixed cost of distributing is smaller than the work being
-distributed. Measured with 32 tasks across 8 processes:
+A high parallel fraction says what *could* be gained. It says nothing about
+whether process startup, scheduling, serialization, and result assembly cost less
+than the work being distributed.
 
-| Per-task cost | Serial | 8 workers | Speedup |
-| --- | --- | --- | --- |
-| 0.047 ms | 1.5 ms | 89.7 ms | **0.02×** |
-| 1.92 ms | 61.5 ms | 93.0 ms | **0.66×** |
-| 19.25 ms | 616.0 ms | 206.6 ms | **2.98×** |
-| 78.7 ms | 2519.5 ms | 575.6 ms | **4.38×** |
+The release reference therefore measures four declared work sizes with 32 tasks,
+8 workers, one warm-up, and seven timed repetitions. Backend order alternates,
+every serial and process-pool output identity must match, and the raw nanosecond
+records are retained. The record binds the named workload and task builder to
+their exact source bytes, binds the harness, evidence contract, executor, task
+contract, and dependency lock, and records each realized task-declaration graph
+by SHA-256. The runner refuses a callable or result set that differs from those
+bindings. The close-out CSV derives median, interquartile range, and range from
+those exact records. The Seaborn figure shows every repetition—not
+only the most favorable point—and reports a median bracket around 1× only if the
+measurements actually contain one. The current macOS `spawn` reference contains
+none: the process pool is slower at every declared size, including the largest.
+Results describe the recorded machine and process-start method; they are not a
+cluster benchmark, universal crossover, SLA, or numeric CI gate.
 
-**The crossover interval is 2.04–20.84 ms per task**, re-measured under
-[ADR 0021](adr/0021-reproducible-sprint-evidence.md) with one warmup and seven
-repetitions per size and reported as an interval because four sizes bound where
-break-even lies without locating it. Below it, distribution is up to fifty times
-*slower*. Raw samples:
-`docs/evidence/signal_foundry_sprint_5/raw/crossover_measurements.json`.
+The current artifacts are:
 
-The Sprint 4 sweep runs at **0.49 ms per point** — well below the crossover. A
-97% parallel fraction with a sub-millisecond task cost is exactly the shape that
-looks ideal on paper and loses to a `for` loop in practice. That is why ADR 0018
-selects Dask but gates adoption on a per-task cost threshold rather than adopting
-it now.
+- [raw repeated benchmark](evidence/signal_foundry_sprint_5/closeout/distribution_crossover_raw.json)
+- [derived crossover summary](evidence/signal_foundry_sprint_5/closeout/distribution_crossover.csv)
+- [content-addressed manifest](evidence/signal_foundry_sprint_5/closeout/manifest.json)
+
+The corrected measurement does not support ADR 0018's historical single-sample
+crossover or speedup estimates in this environment. Its 20 ms value is retained
+only as a conservative floor, not sufficient evidence: any adoption now requires
+fresh repeated evidence on the target backend and workload. This is exactly the
+workload shape that can look ideal by Amdahl's law and still lose to a local loop
+after fixed costs are measured.
 
 ## 3. Tasks declare what they need
 
@@ -142,9 +151,11 @@ commit removes it.
   criterion cannot honestly be claimed until a cluster backend exists.
 - **No GPU scheduling is exercised.** `gpus` is declared and validated, but no
   backend honours it.
-- **Per-task timeouts are checked after the call returns.** A task that hangs
-  forever in-process is bounded by the batch budget, not its own. Hard
-  preemption needs the cluster backend.
+- **In-process Python is not preempted.** Per-task and shared batch budgets are
+  checked between builder advances and after backend calls return; they detect
+  an overrun but cannot interrupt arbitrary Python that never returns. The
+  committed benchmark workload is finite by its validated iteration bound.
+  Hard preemption requires a backend with an independently killable worker.
 - **Measurements are single-machine wall clock** on macOS/arm64 and are labelled
   as such throughout.
 - **`ProcessPoolExecutor` requires module-scope functions**, the same constraint
@@ -165,5 +176,17 @@ different-task-set case; worker failure attribution; worker-count refusals;
 duplicate rejection before any worker starts; deterministic assembly under
 saturation; and the report contracts.
 
-`benchmarks/benchmark_distributed_crossover.py` regenerates the crossover table
-and asserts parity at every size.
+Generate a new, previously absent raw record with:
+
+```bash
+python benchmarks/benchmark_distributed_crossover.py \
+  --output runs/distributed-crossover.json
+```
+
+The benchmark refuses unsafe bounds and existing files. It records the complete
+configuration, timing clock, privacy-safe runtime/machine fields, raw repetitions,
+derived summaries, limitations, source-bound workload/harness identity,
+task-graph identities, and semantic parity identities. Publication creates and
+anchors directory components without following symlinks. Publish a
+close-out bundle only after deliberately promoting that record to the committed
+input path and reviewing its environment and limitations.

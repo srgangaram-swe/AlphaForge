@@ -5,6 +5,14 @@
 - **Work item:** SF-S5-MR8 (#47), Signal Foundry Sprint 5
 - **Builds on:** ADR 0014 (frozen perturbation and qualification gate)
 
+> **Measurement-method correction (2026-08-08):** the table below is the historical,
+> single-sample observation used for the original architecture decision. It is not the current
+> close-out reference and must not be interpreted as a distribution or SLA. [ADR
+> 0021](0021-content-addressed-sprint-evidence.md) supersedes the measurement method with bounded
+> warm-ups, repeated raw samples, dispersion, parity identities, content-addressed inputs, and
+> transactional publication. Dask remains the selected future framework, but the numeric
+> single-sample crossover and speedup are no longer sufficient adoption evidence.
+
 ## Context
 
 The robustness sweeps built in Sprint 4 are embarrassingly parallel: each grid
@@ -139,9 +147,9 @@ this measurement does not currently supply.
   honours it yet.
 - No network partition testing, because there is no network. That criterion
   cannot honestly be claimed until a cluster backend exists.
-- Per-task timeouts are checked after the call returns, so a task that hangs
-  forever in-process is bounded by the *batch* budget rather than its own. Hard
-  per-task preemption needs the cluster backend.
+- Per-task and shared batch budgets are checked only between completed
+  in-process calls. A call that never returns cannot be preempted by this
+  backend; hard preemption requires an independently killable worker.
 
 ## Alternatives considered
 

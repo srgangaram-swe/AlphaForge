@@ -1,72 +1,80 @@
 {
-  "artifact_count": 6,
-  "artifacts": [
-    {
+  "absolute_code_ceiling_usd": "1000",
+  "artifacts": {
+    "checklist.json": {
       "bytes": 5123,
-      "name": "checklist.json",
       "sha256": "f679cd5208f7eb59dc968adc22e5b4fe3a3cd59ee1e7ffca8592c2e9b2e6aa0f"
     },
-    {
-      "bytes": 539,
-      "name": "crossover_summary.csv",
-      "sha256": "3a73ff2a797039a68082d333ab797028b332902473c8164b0952189be6ac1e70"
+    "delivery_inventory.json": {
+      "bytes": 16459,
+      "sha256": "85cfbbd411981afbefbc1293861f21edca31ebaa4a607733b38ab1ca4817d581"
     },
-    {
-      "bytes": 4431,
-      "name": "delivery_ledger.json",
-      "sha256": "1682a1f75c87974c8355d7a47322cad0f9ff2eed257faa128e2930c920dd24e2"
+    "distribution_crossover.csv": {
+      "bytes": 2062,
+      "sha256": "46f58c7d51600808efa3b4fb9cedfbd5e31ec10b05f4c0de683211804e30978a"
     },
-    {
+    "distribution_crossover_raw.json": {
+      "bytes": 17255,
+      "sha256": "035708f13a08f856f28d6acfc4603abfba475a1279209d8e6ae6fed07f02bc5d"
+    },
+    "readiness_decision.json": {
       "bytes": 4698,
-      "name": "readiness_decision.json",
       "sha256": "ba7d5c08fca6131126b1f2280b662fe4597fbfe6d0a30bc9b91f97d7feb7198e"
     },
-    {
+    "readiness_report.md": {
       "bytes": 1996,
-      "name": "readiness_report.md",
       "sha256": "6ea899b9e81df1e8a5d2c2148001bf8295f606e6f7efee5a82f09f92a89873d6"
     },
-    {
-      "bytes": 291490,
-      "name": "sprint_5_closeout.png",
-      "sha256": "854727fc8b15999585398a4b006cd4332bdb2079fe612fe46c2d5678f330917a"
+    "sprint_5_closeout.png": {
+      "bytes": 310759,
+      "sha256": "24e155a75cbeb31730932513e122407a6d604e9c0d557af2fd93357cd412a678"
     }
-  ],
-  "capital_at_risk": "0",
-  "crossover_interval_ms": [
-    2.04199478125,
-    20.8378736875
-  ],
-  "environment": {
-    "cpu_count": 10,
-    "machine": "arm64",
-    "platform": "macOS-15.5-arm64-arm-64bit-Mach-O",
-    "processor": "arm",
-    "python_version": "3.13.11",
-    "timing_clock": "time.perf_counter_ns"
   },
-  "generator": "alphaforge.readiness.sprint_5_evidence",
-  "input_identities": {
-    "crossover_measurements": "8ae15e47a9d6440b2b9567f1134ad3b6d07a343c32fec303837b39af08bb98fb",
-    "delivery_ledger": "541d0f10d435ef6bfe5bb52b36b35c8bb186530487c2e046cc9ec9f8861dc071",
-    "readiness_checklist": "e6eedb99ae73e9f775d51997636be9799a34b25dfa9ebd33423cc13527f66b3c"
+  "bundle_id": "eee04de8f8200d24ad91d329dd2f999fad32cb027858ac28ab1eb0ef85faf6e5",
+  "capital_at_risk_usd": "0",
+  "checklist_identity": "e6eedb99ae73e9f775d51997636be9799a34b25dfa9ebd33423cc13527f66b3c",
+  "generator": {
+    "callable": "alphaforge.readiness.sprint_5_evidence.publish_sprint_5_evidence",
+    "render_dependencies": {
+      "matplotlib": "3.11.1",
+      "pandas": "3.0.5",
+      "seaborn": "0.13.2"
+    },
+    "source_path": "alphaforge/readiness/sprint_5_evidence.py",
+    "source_sha256": "9903e6c80a62bac978b2cd997d2986abb767ad27690181b5c66b4128523960c6"
+  },
+  "inputs": {
+    "benchmark_id": "8cc47ca698f154a0998a968dbc208361947ae69bc14971a02ce680b1f781130d",
+    "benchmark_sha256": "035708f13a08f856f28d6acfc4603abfba475a1279209d8e6ae6fed07f02bc5d",
+    "delivery_inventory_id": "f727a1b4e7be21e3f7c2522804358b1d3b4f2dc96337456cd125f449872e97a0",
+    "delivery_inventory_sha256": "85cfbbd411981afbefbc1293861f21edca31ebaa4a607733b38ab1ca4817d581"
   },
   "limitations": [
-    "Single-machine wall clock on one synthetic CPU-bound workload.",
-    "Not a service-level objective and not a performance guarantee.",
-    "Not a cluster benchmark: only in-process and process-pool backends are measured.",
-    "Absolute timings depend on machine load; the crossover interval is the durable finding.",
-    "Process-pool startup cost dominates below the crossover and is platform-specific.",
-    "The readiness framework records policy and legal attestations; it cannot verify that a review occurred or reached its stated conclusion.",
-    "No strategy is qualified, so no paper or live trading is authorized."
+    "Synthetic deterministic workload and Git metadata only; no market data or broker connection.",
+    "Single-machine wall-clock measurements are environment-specific and are not a performance SLA or a cluster benchmark.",
+    "Changed-path counts describe frozen Git scope, not tests, quality, effort, or semantic complexity.",
+    "The readiness framework records but cannot independently verify human policy or legal attestations.",
+    "No strategy is qualified; no paper/live trading or capital is authorized."
   ],
-  "schema_version": 2,
-  "self_hash_note": "manifest.json is absent from `artifacts` because a file cannot contain its own SHA-256: writing the digest changes the bytes the digest was computed over, and no fixed point exists. Verify the manifest against an external reference \u2014 the merge commit that introduced it \u2014 and every other artifact against this manifest.",
-  "source_ref": "60f572b",
+  "manifest_integrity": "The manifest does not recursively hash itself. Git anchors manifest.json; this index hashes every other artifact.",
+  "measurement_environment": {
+    "logical_cpu_count": 10,
+    "machine": "arm64",
+    "platform": "Darwin",
+    "platform_release": "24.5.0",
+    "process_start_method": "spawn",
+    "python_implementation": "CPython",
+    "python_version": "3.13.11",
+    "timing_clock_adjustable": false,
+    "timing_clock_implementation": "mach_absolute_time()",
+    "timing_clock_monotonic": true,
+    "timing_clock_resolution_seconds": 4.166666666666666e-08
+  },
+  "schema_version": "2.0.0",
+  "source_ref": "60f572b933d925dcdbd48c167e810be2910b3d25",
   "sprint": 5,
-  "total_bytes": 308277,
   "total_items": 17,
-  "total_test_functions": 274,
+  "track": "AlphaForge",
   "unmet_count": 17,
   "verdict": "NOT_READY"
 }
