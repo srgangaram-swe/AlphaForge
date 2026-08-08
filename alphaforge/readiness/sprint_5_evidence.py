@@ -189,13 +189,13 @@ def publish_sprint_5_evidence(output: Path | str) -> dict[str, Any]:
 
     decision = sprint_5_readiness()
     (destination / "readiness_decision.json").write_text(
-        json.dumps(decision.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+        json.dumps(decision.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     (destination / "readiness_report.md").write_text(
-        render_readiness_report(decision), encoding="utf-8"
+        render_readiness_report(decision) + "\n", encoding="utf-8"
     )
     (destination / "checklist.json").write_text(
-        json.dumps(minimal_capital_checklist().to_dict(), indent=2, sort_keys=True),
+        json.dumps(minimal_capital_checklist().to_dict(), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     pd.DataFrame(
@@ -227,7 +227,7 @@ def publish_sprint_5_evidence(output: Path | str) -> dict[str, Any]:
         ],
     }
     (destination / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     return manifest
 

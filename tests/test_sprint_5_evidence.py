@@ -102,3 +102,21 @@ def test_the_decision_json_is_machine_readable(tmp_path: Path) -> None:
     )
     assert payload["ready"] is False
     assert payload["unmet_by_category"]
+
+
+def test_every_text_artifact_ends_with_a_newline(tmp_path: Path) -> None:
+    """The repository's end-of-file hook rejects files without one.
+
+    Regression: the generator originally omitted them, so every regeneration
+    produced a diff that failed CI hygiene while passing locally on
+    already-fixed files.
+    """
+    destination = tmp_path / "closeout"
+    publish_sprint_5_evidence(destination)
+    for name in (
+        "checklist.json",
+        "manifest.json",
+        "readiness_decision.json",
+        "readiness_report.md",
+    ):
+        assert (destination / name).read_text(encoding="utf-8").endswith("\n"), name
