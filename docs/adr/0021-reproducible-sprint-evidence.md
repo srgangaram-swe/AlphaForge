@@ -1,10 +1,20 @@
 # ADR 0021 — Reproducible, content-addressed sprint evidence
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0022](0022-content-addressed-sprint-evidence.md)
 - **Date:** 2026-08-08
 - **Work item:** SF-S5-MR11 (#112), Signal Foundry Sprint 5
 - **Amends:** ADR 0018 (bounded distributed research execution) — see "Correction" below
 - **Supersedes:** nothing
+- **Superseded by:** ADR 0022 after post-merge provenance and publication-race review
+
+> **Historical attempt; not current release evidence.** PR #114 implemented this decision,
+> but a post-merge acceptance audit found that the benchmark was not bound to the exact
+> workload, harness, executor, dependency lock, and realized task graphs; the delivery
+> ledger read current working-tree files rather than frozen blobs; verification did not
+> independently rederive semantic artifacts; and `os.replace` could overwrite a raced
+> destination. The numeric crossover and test-function claims below therefore describe
+> the superseded attempt and must not be used as current evidence. ADR 0022 records the
+> fail-closed replacement while this document remains intact as decision history.
 
 ## Context
 
