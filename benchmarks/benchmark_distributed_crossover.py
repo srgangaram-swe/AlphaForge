@@ -1,160 +1,202 @@
-"""Measure where distributing work starts to pay for itself.
+"""Generate repeated raw evidence for the local distribution crossover.
 
-SF-S5-MR11 replaces the single-sample version this file used to contain. That
-one took one unwarmed timing per work size and reported it as a finding; the
-numbers it produced also disagreed with the ones quoted in ADR 0018, because
-they came from a different run of the same unstable procedure.
-
-This harness records **at least one warmup and at least seven measured
-repetitions** per work size, keeps every raw nanosecond sample, and verifies
-that the two backends produced identical output before reporting a ratio at all.
-A speedup between backends that disagree is not a speedup.
+The timed region is one complete bounded batch execution.  Every work size has
+at least one warmup and seven measured serial/process-pool repetitions, with
+backend order alternated and semantic parity required for every pair.  Results
+are descriptive single-machine evidence, never a numeric CI gate or SLA.
 
 Run::
 
-    python benchmarks/benchmark_distributed_crossover.py --output raw.json
-
-Single-machine wall clock on a synthetic workload. **Not a service-level
-objective**, not a cluster benchmark, and not a claim about any real pipeline.
+    python benchmarks/benchmark_distributed_crossover.py \
+        --output runs/distributed-crossover.json
 """
 
 from __future__ import annotations
 
 import argparse
-import json
-import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
-from alphaforge.distributed import (
-    ResourceRequest,
-    TaskSpec,
-    execute_local,
-    execute_process_pool,
+from alphaforge.distributed.benchmark_evidence import (
+    DEFAULT_MAX_TOTAL_SECONDS,
+    PRODUCTION_BUDGET_CLOCK_ENTRYPOINT,
+    PRODUCTION_EXECUTION_PROFILE,
+    PRODUCTION_HARNESS_ENTRYPOINT,
+    PRODUCTION_HARNESS_NAME,
+    PRODUCTION_HARNESS_VERSION,
+    PRODUCTION_POOL_EXECUTOR_ENTRYPOINT,
+    PRODUCTION_SERIAL_EXECUTOR_ENTRYPOINT,
+    PRODUCTION_TASK_BUILDER_ENTRYPOINT,
+    PRODUCTION_TIMING_CLOCK_ENTRYPOINT,
+    PRODUCTION_WORKLOAD_ENTRYPOINT,
+    PRODUCTION_WORKLOAD_NAME,
+    PRODUCTION_WORKLOAD_VERSION,
+    BenchmarkConfig,
+    BenchmarkEvidenceError,
+    BenchmarkImplementation,
+    run_crossover_benchmark,
+    summarize_benchmark,
+    write_benchmark_evidence,
 )
-from alphaforge.evidence.measurements import (
-    MIN_REPETITIONS,
-    MIN_WARMUPS,
-    SCHEMA_VERSION,
-    BenchmarkEnvironment,
-    CrossoverEvidence,
-    WorkSizeMeasurement,
-)
+from alphaforge.distributed.tasks import ResourceRequest, TaskSpec
+from alphaforge.research._bounded_io import BoundedIOError, read_regular_file_snapshot
 
-#: Work sizes chosen to bracket the crossover, not to flatter it.
-ITERATION_COUNTS: tuple[int, ...] = (1_000, 50_000, 500_000, 2_000_000)
-TASK_COUNT = 32
-WORKERS = 8
+DEFAULT_ITERATION_COUNTS: Final = (1_000, 50_000, 500_000, 2_000_000)
+DEFAULT_TASK_COUNT: Final = 32
+DEFAULT_WORKERS: Final = 8
+DEFAULT_WARMUPS: Final = 1
+DEFAULT_REPETITIONS: Final = 7
+MAX_SOURCE_BYTES: Final = 20_000_000
 
-LIMITATIONS: tuple[str, ...] = (
-    "Single-machine wall clock on one synthetic CPU-bound workload.",
-    "Not a service-level objective and not a performance guarantee.",
-    "Not a cluster benchmark: only in-process and process-pool backends are measured.",
-    "Absolute timings depend on machine load; the crossover interval is the durable finding.",
-    "Process-pool startup cost dominates below the crossover and is platform-specific.",
-)
+
+def benchmark_implementation() -> BenchmarkImplementation:
+    """Bind the run to exact workload, harness, contracts, and dependency bytes."""
+
+    repository = Path(__file__).resolve().parents[1]
+    relative_sources = {
+        "benchmark": Path("benchmarks/benchmark_distributed_crossover.py"),
+        "evidence": Path("alphaforge/distributed/benchmark_evidence.py"),
+        "executor": Path("alphaforge/distributed/executor.py"),
+        "tasks": Path("alphaforge/distributed/tasks.py"),
+        "lock": Path("uv.lock"),
+    }
+    try:
+        identities = {
+            name: read_regular_file_snapshot(
+                repository / relative,
+                max_bytes=MAX_SOURCE_BYTES,
+                root=repository,
+            ).sha256
+            for name, relative in relative_sources.items()
+        }
+    except BoundedIOError as exc:
+        raise BenchmarkEvidenceError(
+            "benchmark source identity inputs must be bounded regular repository files"
+        ) from exc
+    return BenchmarkImplementation(
+        workload_name=PRODUCTION_WORKLOAD_NAME,
+        workload_version=PRODUCTION_WORKLOAD_VERSION,
+        execution_profile=PRODUCTION_EXECUTION_PROFILE,
+        workload_entrypoint=PRODUCTION_WORKLOAD_ENTRYPOINT,
+        task_builder_entrypoint=PRODUCTION_TASK_BUILDER_ENTRYPOINT,
+        harness_name=PRODUCTION_HARNESS_NAME,
+        harness_version=PRODUCTION_HARNESS_VERSION,
+        harness_entrypoint=PRODUCTION_HARNESS_ENTRYPOINT,
+        serial_executor_entrypoint=PRODUCTION_SERIAL_EXECUTOR_ENTRYPOINT,
+        pool_executor_entrypoint=PRODUCTION_POOL_EXECUTOR_ENTRYPOINT,
+        timing_clock_entrypoint=PRODUCTION_TIMING_CLOCK_ENTRYPOINT,
+        budget_clock_entrypoint=PRODUCTION_BUDGET_CLOCK_ENTRYPOINT,
+        workload_source_sha256=identities["benchmark"],
+        task_builder_source_sha256=identities["benchmark"],
+        harness_source_sha256=identities["benchmark"],
+        evidence_contract_source_sha256=identities["evidence"],
+        executor_source_sha256=identities["executor"],
+        task_contract_source_sha256=identities["tasks"],
+        dependency_lock_sha256=identities["lock"],
+    )
 
 
 def busy_work(payload: dict[str, Any]) -> float:
-    """Deterministic CPU-bound work scaled by ``iters``.
+    """Return deterministic CPU work whose cost is controlled by ``iters``."""
 
-    Module-scope and pure so the process pool can pickle it; rounded so both
-    backends produce identical output rather than merely close output.
-    """
     total = 0.0
     for index in range(int(payload["iters"])):
         total += (index % 7) ** 0.5
     return round(total, 6)
 
 
-def _batch(count: int, iters: int) -> list[TaskSpec]:
-    return [
+def build_batch(count: int, iterations: int) -> tuple[TaskSpec, ...]:
+    """Build one content-addressed synthetic task batch."""
+
+    return tuple(
         TaskSpec(
             name=f"probe-{index}",
-            payload={"index": index, "iters": iters},
+            payload={"index": index, "iters": iterations},
             seed=index,
             resources=ResourceRequest(
-                cpus=1.0, memory_mb=256, gpus=0, scratch_mb=0, expected_seconds=300.0
+                cpus=1.0,
+                memory_mb=256,
+                gpus=0,
+                scratch_mb=0,
+                expected_seconds=60.0,
             ),
-            timeout_seconds=600.0,
+            timeout_seconds=300.0,
         )
         for index in range(count)
-    ]
-
-
-def measure(iterations: int, *, repetitions: int, warmups: int) -> WorkSizeMeasurement:
-    """Measure one work size with warmups and repeated samples."""
-    tasks = _batch(TASK_COUNT, iterations)
-
-    for _ in range(warmups):
-        execute_local(busy_work, tasks)
-        execute_process_pool(busy_work, tasks, workers=WORKERS)
-
-    serial_samples: list[int] = []
-    pool_samples: list[int] = []
-    parity_identity = ""
-    for _ in range(repetitions):
-        started = time.perf_counter_ns()
-        serial = execute_local(busy_work, tasks)
-        serial_samples.append(time.perf_counter_ns() - started)
-
-        started = time.perf_counter_ns()
-        pooled = execute_process_pool(busy_work, tasks, workers=WORKERS)
-        pool_samples.append(time.perf_counter_ns() - started)
-
-        if serial.assembly_hash() != pooled.assembly_hash():
-            raise SystemExit(
-                f"backend parity failed at {iterations} iterations: a speedup between "
-                "backends that disagree is not a speedup"
-            )
-        parity_identity = serial.assembly_hash()
-
-    return WorkSizeMeasurement(
-        iterations=iterations,
-        task_count=TASK_COUNT,
-        workers=WORKERS,
-        warmups=warmups,
-        serial_ns=tuple(serial_samples),
-        pool_ns=tuple(pool_samples),
-        parity_identity=parity_identity,
     )
 
 
-def main() -> None:
-    """Run the harness and write raw evidence."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True, help="raw evidence JSON destination")
-    parser.add_argument("--repetitions", type=int, default=MIN_REPETITIONS)
-    parser.add_argument("--warmups", type=int, default=MIN_WARMUPS)
-    arguments = parser.parse_args()
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Measure the bounded local serial/process-pool crossover.",
+    )
+    parser.add_argument("--tasks", type=int, default=DEFAULT_TASK_COUNT)
+    parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    parser.add_argument("--warmups", type=int, default=DEFAULT_WARMUPS)
+    parser.add_argument("--repetitions", type=int, default=DEFAULT_REPETITIONS)
+    parser.add_argument(
+        "--max-total-seconds",
+        type=float,
+        default=DEFAULT_MAX_TOTAL_SECONDS,
+        help=(
+            "total wall-time budget checked between completed calls and passed to backends; "
+            "in-process Python is not preempted"
+        ),
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        nargs="+",
+        default=list(DEFAULT_ITERATION_COUNTS),
+        metavar="COUNT",
+        help="one or more deterministic iteration counts per task",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="new JSON evidence file to create (existing files are refused)",
+    )
+    return parser
 
-    measurements = tuple(
-        measure(iterations, repetitions=arguments.repetitions, warmups=arguments.warmups)
-        for iterations in ITERATION_COUNTS
-    )
-    evidence = CrossoverEvidence(
-        schema_version=SCHEMA_VERSION,
-        environment=BenchmarkEnvironment.capture(),
-        measurements=measurements,
-        limitations=LIMITATIONS,
-    )
-    arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    arguments.output.write_text(
-        json.dumps(evidence.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
 
-    bounds = evidence.crossover_bounds_ms()
-    print(f"{'per-task ms':>12} {'speedup':>9} {'range':>18}  reps")
-    for item in evidence.measurements:
-        low, high = item.speedup_range
-        print(
-            f"{item.per_task_ms:12.3f} {item.speedup:8.2f}x "
-            f"{low:8.2f}-{high:.2f}x {len(item.serial_ns):5d}"
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run the benchmark once, publish raw JSON, and print concise medians."""
+
+    parser = _parser()
+    args = parser.parse_args(argv)
+    try:
+        config = BenchmarkConfig(
+            implementation=benchmark_implementation(),
+            task_count=args.tasks,
+            workers=args.workers,
+            warmups=args.warmups,
+            repetitions=args.repetitions,
+            iteration_counts=tuple(args.iterations),
+            max_total_seconds=args.max_total_seconds,
         )
-    print()
-    print(f"crossover interval (ms/task): {bounds}")
-    print(f"evidence identity: {evidence.identity()[:16]}")
+        evidence = run_crossover_benchmark(
+            config,
+            function=busy_work,
+            task_builder=build_batch,
+            harness=main,
+        )
+        output = write_benchmark_evidence(evidence, args.output)
+    except (BenchmarkEvidenceError, FileExistsError, OSError, ValueError) as exc:
+        parser.error(str(exc))
+    print(
+        f"wrote {len(evidence.samples)} raw samples to {output} "
+        f"(benchmark_id={evidence.benchmark_id[:12]})"
+    )
+    for record in summarize_benchmark(evidence):
+        print(
+            f"iterations={record.iterations} n={record.sample_count} "
+            f"per_task_median_ms={record.per_task_ms.median:.6g} "
+            f"speedup_median={record.speedup.median:.6g}"
+        )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

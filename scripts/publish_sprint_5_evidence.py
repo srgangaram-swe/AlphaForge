@@ -5,8 +5,9 @@ Run::
     python scripts/publish_sprint_5_evidence.py \
         --output docs/evidence/signal_foundry_sprint_5/closeout
 
-Deterministic and network-independent. Refuses a non-empty destination so a
-republish cannot overwrite evidence that is already cited.
+Deterministic and network-independent. The bounded raw benchmark input and
+frozen Git objects are verified before a transactional publication into an
+absent repository-local destination.
 """
 
 from __future__ import annotations
@@ -24,11 +25,29 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("docs/evidence/signal_foundry_sprint_5/closeout"),
-        help="destination directory; must not already contain files",
+        required=True,
+        help="repository-local destination directory; must not exist",
+    )
+    parser.add_argument(
+        "--benchmark-input",
+        type=Path,
+        default=Path(
+            "docs/evidence/signal_foundry_sprint_5/inputs/" "distribution_crossover_raw.json"
+        ),
+        help="committed bounded raw benchmark JSON",
+    )
+    parser.add_argument(
+        "--repository-root",
+        type=Path,
+        default=Path.cwd(),
+        help="AlphaForge Git worktree (defaults to the current directory)",
     )
     arguments = parser.parse_args()
-    manifest = publish_sprint_5_evidence(arguments.output)
+    manifest = publish_sprint_5_evidence(
+        repository_root=arguments.repository_root,
+        benchmark_input=arguments.benchmark_input,
+        output=arguments.output,
+    )
     print(json.dumps(manifest, indent=2, sort_keys=True))
 
 
