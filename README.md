@@ -85,6 +85,11 @@ AlphaForge is an educational quantitative research and ML engineering project. I
 
 ## Architecture
 
+The next repository boundary is documented in the [Signal Foundry preservation ledger](docs/preservation_ledger.md)
+and [ADR 0023](docs/adr/0023-lossless-signal-foundry-preservation.md). The exhaustive
+pre-import inventory preserves historical provenance and reports migration blockers;
+it is not a completed monorepo or a trading-readiness claim.
+
 ```mermaid
 flowchart LR
     A[Signalattice bundle / public / synthetic] --> B[Validation and quality report]
