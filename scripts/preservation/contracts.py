@@ -160,7 +160,18 @@ def static_interfaces(path: str, content: bytes, node_limit: int) -> list[dict[s
                 if isinstance(node.func, ast.Attribute)
                 else (node.func.id if isinstance(node.func, ast.Name) else "")
             )
-            receiver = ast.unparse(node.func.value) if isinstance(node.func, ast.Attribute) else ""
+            # Do not recursively unparse untrusted expressions: long valid
+            # attribute chains can exceed Python's recursion limit. Only names
+            # and attributes participate in static receiver classification.
+            receiver_parts: list[str] = []
+            if isinstance(node.func, ast.Attribute):
+                receiver_node: ast.expr = node.func.value
+                while isinstance(receiver_node, ast.Attribute):
+                    receiver_parts.append(receiver_node.attr)
+                    receiver_node = receiver_node.value
+                if isinstance(receiver_node, ast.Name):
+                    receiver_parts.append(receiver_node.id)
+            receiver = ".".join(reversed(receiver_parts))
             route_receiver = receiver.split(".")[-1] in {"app", "api", "router"}
             cli_receiver = any(part in receiver for part in ("parser", "click", "typer"))
             if name in verbs and (route_receiver or cli_receiver):

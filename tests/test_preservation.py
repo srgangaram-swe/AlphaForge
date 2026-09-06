@@ -199,6 +199,13 @@ data.get("not an API")
         static_interfaces("x.py", b"a = 1", 1)
 
 
+def test_deep_receiver_does_not_recursively_format_source() -> None:
+    content = ("a." * 600 + 'router.get("/v1/test")').encode()
+    records = static_interfaces("deep.py", content, 10_000)
+    assert len(records) == 1
+    assert records[0]["literals"] == ["/v1/test"]
+
+
 @pytest.mark.parametrize(
     "change", ["license", "missing-license", "symlink", "lfs", "secret", "raw"]
 )
