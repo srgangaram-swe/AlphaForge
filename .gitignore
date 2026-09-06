@@ -39,3 +39,7 @@ runs/
 .DS_Store
 .idea/
 .vscode/
+
+# Private local planning context
+ai.md
+.preservation/

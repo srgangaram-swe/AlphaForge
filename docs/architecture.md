@@ -1,5 +1,9 @@
 # Architecture
 
+The planned repository consolidation is governed by [ADR 0023](adr/0023-lossless-signal-foundry-preservation.md)
+and its [executable preservation ledger](preservation_ledger.md). It does not change
+the runtime architecture below or claim completed migration.
+
 AlphaForge is a modular research pipeline:
 
 ```mermaid
