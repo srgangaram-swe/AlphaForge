@@ -10,6 +10,7 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -19,9 +20,11 @@ import pytest
 import alphaforge.readiness.sprint_5_evidence as evidence_module
 from alphaforge.distributed.benchmark_evidence import (
     TEST_EXECUTION_PROFILE,
+    BenchmarkConfig,
     BenchmarkEvidence,
     load_benchmark_evidence,
     parse_benchmark_evidence_bytes,
+    run_crossover_benchmark,
     write_benchmark_evidence,
 )
 from alphaforge.readiness import Verdict, minimal_capital_checklist
@@ -32,6 +35,14 @@ from alphaforge.readiness.sprint_5_evidence import (
     publish_sprint_5_evidence,
     sprint_5_readiness,
     verify_sprint_5_bundle,
+)
+from benchmarks.benchmark_distributed_crossover import (
+    benchmark_implementation,
+    build_batch,
+    busy_work,
+)
+from benchmarks.benchmark_distributed_crossover import (
+    main as benchmark_main,
 )
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -56,13 +67,41 @@ def _publication_parent() -> Iterator[Path]:
         shutil.rmtree(parent, ignore_errors=True)
 
 
+@lru_cache(maxsize=1)
 def _valid_benchmark_bytes() -> bytes:
-    """Require the committed benchmark to be current, canonical, and strict."""
+    """Measure current-source production paths once; never relabel old timings.
 
-    payload = (REPOSITORY / BENCHMARK).read_bytes()
+    A dependency update legitimately invalidates the historical benchmark's lock
+    binding. Tiny real serial/process-pool measurements exercise publication
+    without treating the archived reference as a run under a different lock.
+    Timings are not golden values; repeated publications share this one snapshot.
+    """
+    measured = run_crossover_benchmark(
+        BenchmarkConfig(
+            implementation=benchmark_implementation(),
+            task_count=2,
+            workers=2,
+            iteration_counts=(10, 100),
+            warmups=1,
+            repetitions=7,
+            max_total_seconds=60.0,
+        ),
+        function=busy_work,
+        task_builder=build_batch,
+        harness=benchmark_main,
+    )
+    payload = measured.canonical_bytes()
     evidence = parse_benchmark_evidence_bytes(payload)
     assert evidence.canonical_bytes() == payload
     return payload
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _measure_before_fault_injection() -> Iterator[None]:
+    """Freeze real measurements before any test monkeypatches shared I/O hooks."""
+    _valid_benchmark_bytes()
+    yield
+    _valid_benchmark_bytes.cache_clear()
 
 
 def _publish(destination: Path, benchmark: Path | None = None) -> dict[str, Any]:
@@ -131,6 +170,20 @@ def test_the_published_verdict_is_fail_closed() -> None:
     assert len(decision.unmet) == len(minimal_capital_checklist().items) == 17
 
 
+def test_historical_timings_cannot_be_relabelled_as_current_lock_evidence() -> None:
+    historical = load_benchmark_evidence(REPOSITORY / BENCHMARK)
+    current = parse_benchmark_evidence_bytes(_valid_benchmark_bytes())
+    assert (
+        historical.config.implementation.dependency_lock_sha256
+        != current.config.implementation.dependency_lock_sha256
+    )
+    with _publication_parent() as parent:
+        destination = parent / "stale-benchmark"
+        with pytest.raises(Sprint5EvidenceError, match="does not reconcile to repository sources"):
+            _publish(destination, BENCHMARK)
+        _assert_no_transaction_residue(parent, destination)
+
+
 def test_bundle_hashes_every_non_manifest_artifact_and_verifies() -> None:
     with _publication_parent() as parent:
         destination = parent / "closeout"
@@ -196,7 +249,7 @@ def test_publisher_rejects_reidentified_forged_or_test_runtime_evidence(
 ) -> None:
     with _publication_parent() as parent:
         source = parent / "reidentified-forgery.json"
-        original = load_benchmark_evidence(REPOSITORY / BENCHMARK)
+        original = parse_benchmark_evidence_bytes(_valid_benchmark_bytes())
         forged = _reidentified_benchmark(
             original,
             implementation_changes=implementation_changes,

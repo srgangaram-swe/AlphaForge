@@ -11,8 +11,10 @@ data or provider credentials. It:
 
 - rejects pull requests that introduce dependencies with moderate-or-higher
   known advisories or denied licenses through GitHub's dependency review;
-- installs the committed `uv.lock` resolution and runs `pip-audit` in strict
-  mode against the isolated environment;
+- retains the strict hashed runtime/data/ML dependency audit;
+- verifies a separate hashed runtime-plus-development export against the exact
+  lock graph, installs it into a clean environment, and audits those pins in
+  strict mode without a second resolver;
 - scans full reachable Git history with Gitleaks; and
 - runs again on protected-branch pushes and a weekly schedule where applicable.
 
@@ -26,6 +28,13 @@ All third-party GitHub Actions are pinned to full commit SHAs, checkout does
 not persist credentials, jobs have hard timeouts, and workflow permissions are
 deny-by-default. Dependabot proposes weekly Python and Actions updates; each
 proposal still follows the protected `dev -> prod -> main` review flow.
+
+The development gate addresses [GHSA-qwm4-qh6w-59xr](https://github.com/advisories/GHSA-qwm4-qh6w-59xr).
+The dev extra explicitly requires pip >=26.2.0 (locked as the equivalent 26.2)
+and declares the already-locked `packaging` parser dependency. No audit ignore or
+severity downgrade is used. [Scope, reproducibility, and measured evidence](development_audit.md)
+describe the additional coverage and remaining gaps. A passing `dev` audit does
+not close a default-branch Dependabot alert before a checked forward promotion.
 
 ## Release automation
 
