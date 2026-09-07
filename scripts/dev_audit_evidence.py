@@ -11,7 +11,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import matplotlib
 
@@ -31,12 +31,27 @@ from scripts.dev_audit import (
 )
 
 
+def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise AuditContractError("duplicate-audit-json-key")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value: str) -> NoReturn:
+    raise AuditContractError("nonstandard-audit-json-constant")
+
+
 def audit_findings(content: bytes, expected: set[Key]) -> list[dict[str, Any]]:
     """Require exactly one complete advisory result per active locked dependency."""
     if not content or len(content) > MAX_BYTES:
         raise AuditContractError("audit-size-limit")
     try:
-        report = json.loads(content)
+        report = json.loads(
+            content, object_pairs_hook=_unique_object, parse_constant=_reject_constant
+        )
     except (ValueError, UnicodeError, RecursionError) as exc:
         raise AuditContractError("invalid-audit-json") from exc
     if not isinstance(report, dict) or not isinstance(report.get("dependencies"), list):
@@ -51,6 +66,7 @@ def audit_findings(content: bytes, expected: set[Key]) -> list[dict[str, Any]]:
             not isinstance(item, dict)
             or not isinstance(item.get("name"), str)
             or not isinstance(item.get("version"), str)
+            or len(item["version"]) > 128
         ):
             raise AuditContractError("invalid-audit-package")
         try:

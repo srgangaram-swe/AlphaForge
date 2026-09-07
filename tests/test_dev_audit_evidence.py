@@ -109,6 +109,19 @@ def test_bad_audit_serialization_is_bounded(content):
         audit_findings(content, set())
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        b'{"dependencies": [], "dependencies": [], "fixes": []}',
+        b'{"dependencies": [], "fixes": [], "untrusted": NaN}',
+        b'{"dependencies": [{"name":"pip","name":"pip","version":"26.2","vulns":[]}], "fixes": []}',
+    ],
+)
+def test_ambiguous_and_nonstandard_json_is_rejected(content):
+    with pytest.raises(AuditContractError, match="invalid-audit-json"):
+        audit_findings(content, set())
+
+
 def test_existing_advisory_and_unrelated_lock_drift_block_publication(inputs, document):
     before, after, requirements, old, new = inputs
     payload = json.loads(new)
