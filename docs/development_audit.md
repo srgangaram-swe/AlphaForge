@@ -125,6 +125,13 @@ tools, and pre-commit's separate environments are not newly covered by this gate
 Their existing checks remain in force.
 
 The preservation ledger and prior sprint artifacts remain byte-identical.
+The first full CI run exposed a stale Sprint 5 test input: its historical timing
+record correctly failed the publisher's current-lock hash check after this
+dependency update. Publication tests now measure a tiny real serial/process-pool
+benchmark once per module under the current lock, then reuse that immutable
+snapshot for byte-repeatability and fault-injection assertions. A regression
+test explicitly rejects relabeling the archived timings as a current-lock run.
+No historical timing, hash, production verifier, or acceptance threshold changes.
 The next source import must re-freeze and review this source/lock advancement;
 old ledger bindings are historical records, not silently updated approvals.
 The four historical missing-license findings still require the explicit owner
