@@ -65,6 +65,31 @@ jobs:
             --progress-spinner=off \
             --requirement /tmp/alphaforge-audit-requirements.txt
 
+      - name: Export and verify hashed runtime plus development tool closure
+        run: |
+          uv export \
+            --locked --no-dev --extra dev --no-emit-project \
+            --no-header --no-annotate --format requirements-txt \
+            --output-file /tmp/alphaforge-dev-audit-requirements.txt
+          uv run --no-sync python -m scripts.dev_audit \
+            /tmp/alphaforge-dev-audit-requirements.txt
+
+      - name: Install clean hash-checked development audit environment
+        run: |
+          uv venv /tmp/alphaforge-dev-audit
+          uv --no-config pip sync \
+            --python /tmp/alphaforge-dev-audit/bin/python \
+            --default-index https://pypi.org/simple \
+            --require-hashes --only-binary :all: \
+            /tmp/alphaforge-dev-audit-requirements.txt
+
+      - name: Audit development tools without executing a second resolver
+        run: |
+          /tmp/alphaforge-dev-audit/bin/python -m pip_audit \
+            --strict --require-hashes --disable-pip \
+            --vulnerability-service pypi --timeout 15 --progress-spinner=off \
+            --requirement /tmp/alphaforge-dev-audit-requirements.txt
+
   secret-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 10
